@@ -20,6 +20,7 @@ _cache = {
     "_hospitals": {"data": [], "ttl": None},
     "_departments": {"data": [], "ttl": None},
     "_doctors": {"data": [], "ttl": None},
+    "_users_by_email": {"data": {}, "ttl": None},  # email -> user dict
 }
 CACHE_TTL_SECONDS = 300  # 5 minutes
 
@@ -47,6 +48,25 @@ def _set_cache_data(cache_key: str, data):
 
 def _load_fallback_cache():
     """Load fallback cache from local JSON files (bootstrap only)."""
+    try:
+        # Load users (needed for authentication fallback)
+        users_file = os.path.join(os.path.dirname(__file__), "..", "data", "users_cache.json")
+        if os.path.exists(users_file):
+            with open(users_file, 'r') as f:
+                data = json.load(f)
+                users_by_email = {}
+                for user in data.get("users", []):
+                    email = user.get("email", "").lower()
+                    if email:
+                        users_by_email[email] = user
+                _cache["_users_by_email"] = {
+                    "data": users_by_email,
+                    "ttl": datetime.utcnow() + timedelta(seconds=86400)  # 24h for users
+                }
+                print(f"✓ Loaded {len(users_by_email)} users from fallback cache")
+    except Exception as e:
+        print(f"Note: Could not load users fallback cache: {e}")
+
     try:
         # Load hospitals
         hospitals_file = os.path.join(os.path.dirname(__file__), "..", "data", "hospitals_cache.json")
@@ -238,7 +258,7 @@ def get_user_by_id(user_id: str) -> Optional[dict]:
 
 
 def get_user_by_email(email: str) -> Optional[dict]:
-    """Get user by email directly from Firebase."""
+    """Get user by email - Firebase first, fallback to cache if quota exceeded."""
     email_lower = email.lower()
     try:
         docs = (
@@ -249,10 +269,20 @@ def get_user_by_email(email: str) -> Optional[dict]:
         )
         for doc in docs:
             user = {"id": doc.id, **doc.to_dict()}
-            user.pop("password_hash", None)
+            # Update cache with fresh data
+            users_cache = _cache.get("_users_by_email", {"data": {}})
+            users_cache["data"][email_lower] = user
             return user
-    except Exception:
-        pass
+    except Exception as e:
+        # On quota or connection error, fallback to cached user
+        if "quota" in str(e).lower() or "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+            print(f"⚠️ Firebase quota hit on user lookup, using cache: {email_lower}")
+            users_by_email = _cache.get("_users_by_email", {"data": {}}).get("data", {})
+            cached_user = users_by_email.get(email_lower)
+            if cached_user:
+                return dict(cached_user)  # return a copy
+        else:
+            print(f"Error accessing Firebase user {email_lower}: {e}")
     return None
 
 
