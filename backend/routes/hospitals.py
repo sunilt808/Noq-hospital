@@ -18,7 +18,10 @@ class StandardResponse(BaseModel):
 @router.post("/register", response_model=StandardResponse, status_code=201)
 def register_hospital(hospital: HospitalCreate):
     """Register a new hospital (HM self-registration)."""
-    existing = user_service.get_user_by_email(hospital.email)
+    try:
+        existing = user_service.get_user_by_email(hospital.email)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     if existing:
         raise HTTPException(status_code=409, detail="An account with this email already exists.")
 
@@ -48,7 +51,10 @@ def get_hospitals(status_filter: Optional[str] = Query(None, alias="status"), pa
     if payload.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required.")
 
-    hospitals = user_service.get_all_hospitals(status=status_filter)
+    try:
+        hospitals = user_service.get_all_hospitals(status=status_filter)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     return StandardResponse(
         success=True,
         message="Hospitals fetched.",
@@ -59,7 +65,10 @@ def get_hospitals(status_filter: Optional[str] = Query(None, alias="status"), pa
 @router.get("/available", response_model=StandardResponse)
 def get_available_hospitals():
     """Get hospitals available for booking. Public endpoint - no auth required."""
-    hospitals = user_service.get_all_hospitals()
+    try:
+        hospitals = user_service.get_all_hospitals()
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     allowed_statuses = {"approved", "active"}
     
     filtered = [

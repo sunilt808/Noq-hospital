@@ -23,7 +23,7 @@ class StandardResponse(BaseModel):
 @router.get("", response_model=StandardResponse)
 def get_reviews(hospital_id: Optional[str] = None):
     """Get reviews - PUBLIC endpoint."""
-    from firebase import db
+    from database import db
     from google.cloud.firestore_v1.base_query import FieldFilter
     
     ref = db.collection("reviews")

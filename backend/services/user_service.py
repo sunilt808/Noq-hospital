@@ -1,6 +1,6 @@
 # backend/services/user_service.py - User, hospital, and auth logic
 
-from firebase import db, auth as firebase_auth
+from database import db, auth as firebase_auth
 from google.cloud.firestore_v1.base_query import FieldFilter
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -15,14 +15,20 @@ import json
 
 from datetime import datetime, timedelta
 
-# In-memory cache with TTL (not persisted, just for quota management)
+# In-memory cache with TTL (kept for compatibility; no fallback reads)
 _cache = {
     "_hospitals": {"data": [], "ttl": None},
     "_departments": {"data": [], "ttl": None},
     "_doctors": {"data": [], "ttl": None},
+    "_users": {"data": [], "ttl": None},
     "_users_by_email": {"data": {}, "ttl": None},  # email -> user dict
 }
 CACHE_TTL_SECONDS = 300  # 5 minutes
+
+
+def _is_quota_error(error: Exception) -> bool:
+    text = str(error).lower()
+    return "quota" in text or "resource_exhausted" in text or "429" in text
 
 def _is_cache_valid(cache_key: str) -> bool:
     """Check if cache is still valid."""
@@ -59,6 +65,10 @@ def _load_fallback_cache():
                     email = user.get("email", "").lower()
                     if email:
                         users_by_email[email] = user
+                _cache["_users"] = {
+                    "data": data.get("users", []),
+                    "ttl": datetime.utcnow() + timedelta(seconds=86400)
+                }
                 _cache["_users_by_email"] = {
                     "data": users_by_email,
                     "ttl": datetime.utcnow() + timedelta(seconds=86400)  # 24h for users
@@ -112,7 +122,7 @@ def _load_fallback_cache():
     except Exception as e:
         print(f"Note: Could not load doctors fallback cache: {e}")
 
-# Load fallback caches on service startup
+# Load fallback caches on service startup to keep HM workflows usable when quota is hit
 _load_fallback_cache()
 
 
@@ -233,15 +243,35 @@ def create_user(data: dict) -> dict:
 
 
 def get_all_users(role: Optional[str] = None, hospital_id: Optional[str] = None) -> List[dict]:
-    ref = db.collection("users")
-    if role:
-        ref = ref.where(filter=FieldFilter("role", "==", role))
-    if hospital_id:
-        ref = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id))
-    users = [{"id": u.id, **u.to_dict()} for u in ref.stream()]
-    for u in users:
-        u.pop("password_hash", None)
-    return users
+    try:
+        ref = db.collection("users")
+        if role:
+            ref = ref.where(filter=FieldFilter("role", "==", role))
+        if hospital_id:
+            ref = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id))
+        users = [{"id": u.id, **u.to_dict()} for u in ref.stream()]
+        for u in users:
+            u.pop("password_hash", None)
+        # Update doctors cache on successful fetch
+        if role == "doctor" and not hospital_id:
+            _set_cache_data("_doctors", users)
+        _cache["_users"] = {
+            "data": users,
+            "ttl": datetime.utcnow() + timedelta(seconds=300),
+        }
+        return users
+    except Exception as e:
+        if _is_quota_error(e):
+            cached_users = _get_cached_data("_users") or _cache.get("_users", {}).get("data", []) or []
+            filtered = cached_users
+            if role:
+                filtered = [u for u in filtered if str(u.get("role", "")).lower() == str(role).lower()]
+            if hospital_id:
+                filtered = [u for u in filtered if str(u.get("hospital_id", "")) == str(hospital_id)]
+            for user in filtered:
+                user.pop("password_hash", None)
+            return filtered
+        raise RuntimeError("Failed to fetch users from server") from e
 
 
 def get_user_by_id(user_id: str) -> Optional[dict]:
@@ -258,7 +288,7 @@ def get_user_by_id(user_id: str) -> Optional[dict]:
 
 
 def get_user_by_email(email: str) -> Optional[dict]:
-    """Get user by email - Firebase first, fallback to cache if quota exceeded."""
+    """Get user by email from Firebase only."""
     email_lower = email.lower()
     try:
         docs = (
@@ -274,15 +304,13 @@ def get_user_by_email(email: str) -> Optional[dict]:
             users_cache["data"][email_lower] = user
             return user
     except Exception as e:
-        # On quota or connection error, fallback to cached user
-        if "quota" in str(e).lower() or "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
-            print(f"⚠️ Firebase quota hit on user lookup, using cache: {email_lower}")
+        if _is_quota_error(e):
             users_by_email = _cache.get("_users_by_email", {"data": {}}).get("data", {})
             cached_user = users_by_email.get(email_lower)
             if cached_user:
-                return dict(cached_user)  # return a copy
-        else:
-            print(f"Error accessing Firebase user {email_lower}: {e}")
+                return dict(cached_user)
+            return None
+        raise RuntimeError(f"Failed to fetch user {email_lower} from server") from e
     return None
 
 
@@ -346,10 +374,7 @@ def create_hospital(data: dict) -> dict:
 
 
 def get_all_hospitals(status: Optional[str] = None) -> List[dict]:
-    """Get all hospitals - Firebase first, fallback to cache if quota exceeded."""
-    # Try cache first
-    cached = _get_cached_data("_hospitals")
-    
+    """Get all hospitals from Firebase only."""
     try:
         ref = db.collection("hospitals")
         if status:
@@ -359,17 +384,12 @@ def get_all_hospitals(status: Optional[str] = None) -> List[dict]:
         _set_cache_data("_hospitals", hospitals)  # Update cache on success
         return hospitals
     except Exception as e:
-        # If quota exceeded or error, fallback to cache
-        if "quota" in str(e).lower() or "RESOURCE_EXHAUSTED" in str(e):
-            print(f"⚠️ Firebase quota limit hit, using cached data: {e}")
-            if cached:
-                if status:
-                    return [h for h in cached if h.get("status") == status]
-                return cached
-        
-        # If no cache and error, return empty list
-        print(f"Error accessing Firebase hospitals: {e}")
-        return []
+        if _is_quota_error(e):
+            cached = _get_cached_data("_hospitals") or _cache.get("_hospitals", {}).get("data", []) or []
+            if status:
+                return [h for h in cached if str(h.get("status", "")).lower() == str(status).lower()]
+            return cached
+        raise RuntimeError("Failed to fetch hospitals from server") from e
 
 
 def get_hospital_by_id(hospital_id: str) -> Optional[dict]:
@@ -396,10 +416,7 @@ def update_hospital_status(hospital_id: str, status: str, message: str = "") -> 
 # ─────────────────────────────────────────────
 
 def get_all_departments(hospital_id: Optional[str] = None) -> List[dict]:
-    """Get departments - Firebase first, fallback to cache if quota exceeded."""
-    # Try cache first
-    cached = _get_cached_data("_departments")
-    
+    """Get departments from Firebase only."""
     try:
         ref = db.collection("departments")
         if hospital_id:
@@ -409,17 +426,12 @@ def get_all_departments(hospital_id: Optional[str] = None) -> List[dict]:
         _set_cache_data("_departments", departments)  # Update cache on success
         return departments
     except Exception as e:
-        # If quota exceeded or error, fallback to cache
-        if "quota" in str(e).lower() or "RESOURCE_EXHAUSTED" in str(e):
-            print(f"⚠️ Firebase quota limit hit, using cached data: {e}")
-            if cached:
-                if hospital_id:
-                    return [d for d in cached if d.get("hospital_id") == hospital_id]
-                return cached
-        
-        # If no cache and error, return empty list
-        print(f"Error accessing Firebase departments: {e}")
-        return []
+        if _is_quota_error(e):
+            cached = _get_cached_data("_departments") or _cache.get("_departments", {}).get("data", []) or []
+            if hospital_id:
+                return [d for d in cached if str(d.get("hospital_id", "")) == str(hospital_id)]
+            return cached
+        raise RuntimeError("Failed to fetch departments from server") from e
 
 
 def get_department_by_id(department_id: str) -> Optional[dict]:
@@ -438,10 +450,7 @@ def get_department_by_id(department_id: str) -> Optional[dict]:
 # ─────────────────────────────────────────────
 
 def get_all_doctors(hospital_id: Optional[str] = None, department_id: Optional[str] = None) -> List[dict]:
-    """Get doctors - Firebase first, fallback to cache if quota exceeded."""
-    # Try cache first
-    cached = _get_cached_data("_doctors")
-    
+    """Get doctors from Firebase only."""
     try:
         ref = db.collection("doctors")
         if hospital_id:
@@ -453,20 +462,15 @@ def get_all_doctors(hospital_id: Optional[str] = None, department_id: Optional[s
         _set_cache_data("_doctors", doctors)  # Update cache on success
         return doctors
     except Exception as e:
-        # If quota exceeded or error, fallback to cache
-        if "quota" in str(e).lower() or "RESOURCE_EXHAUSTED" in str(e):
-            print(f"⚠️ Firebase quota limit hit, using cached data: {e}")
-            if cached:
-                result = cached
-                if hospital_id:
-                    result = [d for d in result if d.get("hospital_id") == hospital_id]
-                if department_id:
-                    result = [d for d in result if d.get("department_id") == department_id]
-                return result
-        
-        # If no cache and error, return empty list
-        print(f"Error accessing Firebase doctors: {e}")
-        return []
+        if _is_quota_error(e):
+            cached = _get_cached_data("_doctors") or _cache.get("_doctors", {}).get("data", []) or []
+            result = cached
+            if hospital_id:
+                result = [d for d in result if str(d.get("hospital_id", "")) == str(hospital_id)]
+            if department_id:
+                result = [d for d in result if str(d.get("department_id", "")) == str(department_id)]
+            return result
+        raise RuntimeError("Failed to fetch doctors from server") from e
 
 
 def get_doctor_by_id(doctor_id: str) -> Optional[dict]:
@@ -512,11 +516,17 @@ def authenticate_user(email: str, password: str, role: str) -> Optional[dict]:
     # Try password verification first
     if stored_hash and stored_hash == _hash_password(password):
         user.pop("password_hash", None)
+        user["hospitalId"] = user.get("hospital_id") or user.get("hospitalId") or user.get("HID") or ""
+        user["HID"] = user.get("hospital_id") or user.get("hospitalId") or user.get("HID") or ""
+        user["hospitalName"] = user.get("hospital_name") or user.get("hospitalName") or ""
         return user
     
     # If password failed but user has firebase_uid, allow Firebase login
     if user.get("firebase_uid"):
         user.pop("password_hash", None)
+        user["hospitalId"] = user.get("hospital_id") or user.get("hospitalId") or user.get("HID") or ""
+        user["HID"] = user.get("hospital_id") or user.get("hospitalId") or user.get("HID") or ""
+        user["hospitalName"] = user.get("hospital_name") or user.get("hospitalName") or ""
         return user
     
     return None

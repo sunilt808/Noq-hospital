@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from services import auth_service
 from pydantic import BaseModel
 from typing import Optional
-from firebase import db
+from database import db
 from google.cloud.firestore_v1.base_query import FieldFilter
 from datetime import datetime
 import uuid
@@ -30,18 +30,20 @@ class StandardResponse(BaseModel):
 @router.get("/my", response_model=StandardResponse)
 def get_my_appointments(payload: dict = Depends(auth_service.require_auth)):
     """Get appointments for current user."""
-    user_id = payload.get("sub")
-    ref = db.collection("appointments").where(filter=FieldFilter("patient_id", "==", user_id))
-    appointments = []
-    for doc in ref.stream():
-        appointments.append({"id": doc.id, **doc.to_dict()})
-    
-    appointments.sort(key=lambda x: x.get("appointment_date", ""), reverse=True)
-    return StandardResponse(
-        success=True,
-        message="Appointments fetched.",
-        data={"appointments": appointments, "count": len(appointments)},
-    )
+    try:
+        user_id = payload.get("sub")
+        ref = db.collection("appointments").where(filter=FieldFilter("patient_id", "==", user_id))
+        appointments = []
+        for doc in ref.stream():
+            appointments.append({"id": doc.id, **doc.to_dict()})
+        appointments.sort(key=lambda x: x.get("appointment_date", ""), reverse=True)
+        return StandardResponse(
+            success=True,
+            message="Appointments fetched.",
+            data={"appointments": appointments, "count": len(appointments)},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Unable to fetch appointments from server: {str(e)}")
 
 
 @router.post("/create", response_model=StandardResponse, status_code=201)

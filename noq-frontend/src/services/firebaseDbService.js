@@ -5,13 +5,8 @@ import api from "./api.js";
 const toId = (value) => String(value ?? "").trim();
 
 const fetchHospitalsFromApi = async () => {
-  console.log('🏥 Attempting to fetch hospitals from API...');
   try {
-    console.log('🏥 API GET /hospitals/available starting...');
     const res = await api.get("/hospitals/available");
-    console.log('🏥 API Response received:', res);
-    console.log('🏥 Response type:', typeof res, 'Is array:', Array.isArray(res));
-    
     const hospitals = Array.isArray(res?.data?.hospitals) 
       ? res.data.hospitals 
       : res?.hospitals 
@@ -19,22 +14,16 @@ const fetchHospitalsFromApi = async () => {
       : Array.isArray(res) 
       ? res 
       : [];
-    
-    console.log(`✅ Fetched ${hospitals.length} hospitals from API`, hospitals);
     return hospitals;
   } catch (error) {
-    console.error('❌ Hospital API fetch failed:', error);
-    console.error('❌ Error details:', error?.message, error?.response?.status, error?.response?.data);
+    console.warn('Hospital API fetch failed:', error?.message || error);
     return [];
   }
 };
 
 const fetchDoctorsFromApi = async () => {
-  console.log('👨‍⚕️ Attempting to fetch doctors from API...');
   try {
     const res = await api.get("/users/doctors-directory");
-    console.log('👨‍⚕️ API Response received:', res);
-    
     const doctors = Array.isArray(res?.data?.data?.doctors) 
       ? res.data.data.doctors 
       : Array.isArray(res?.data?.doctors)
@@ -42,18 +31,14 @@ const fetchDoctorsFromApi = async () => {
       : Array.isArray(res) 
       ? res 
       : [];
-    
-    console.log(`✅ Fetched ${doctors.length} doctors from API`, doctors);
     return doctors;
   } catch (error) {
-    console.error('❌ Doctor API fetch failed:', error);
-    console.error('❌ Error details:', error?.message, error?.response?.status);
+    console.warn('Doctor API fetch failed:', error?.message || error);
     return [];
   }
 };
 
 const fetchDiseasesFromApi = async (hospitalId, departmentId) => {
-  console.log('🦠 Attempting to fetch diseases from API...');
   try {
     let url = "/diseases";
     const params = [];
@@ -62,8 +47,6 @@ const fetchDiseasesFromApi = async (hospitalId, departmentId) => {
     if (params.length > 0) url += "?" + params.join("&");
     
     const res = await api.get(url);
-    console.log('🦠 API Response received:', res);
-    
     const diseases = Array.isArray(res?.data?.diseases) 
       ? res.data.diseases 
       : Array.isArray(res?.data?.data?.diseases)
@@ -71,11 +54,9 @@ const fetchDiseasesFromApi = async (hospitalId, departmentId) => {
       : Array.isArray(res) 
       ? res 
       : [];
-    
-    console.log(`✅ Fetched ${diseases.length} diseases from API`, diseases);
     return diseases;
   } catch (error) {
-    console.error('❌ Diseases API fetch failed:', error);
+    console.warn('Diseases API fetch failed:', error?.message || error);
     return [];
   }
 };
@@ -128,55 +109,23 @@ const firebaseDbService = {
         ...item.data(),
       }));
 
-      // 🔹 If someone asks for doctors but doctors are stored inside users
+      // Prefer Firestore result; for doctors allow users-role fallback from Firestore data.
       if (name === "doctors") {
-        console.log(`👨‍⚕️ Firestore doctors data returning, trying API for fresh data...`);
-        try {
-          const apiDoctors = await fetchDoctorsFromApi();
-          if (apiDoctors.length > 0) {
-            return apiDoctors;
-          }
-        } catch (apiError) {
-          console.warn("Doctors API fetch failed during Firestore success:", apiError);
-        }
-        // Fallback to Firestore doctors
         return data.filter(
           (u) => String(u.role || "").toLowerCase() === "doctor"
         );
       }
 
       if (name === "hospitals") {
-        console.log(`🏥 Firestore hospitals returned ${data.length} records, fetching from API backup...`);
-        try {
-          return await fetchHospitalsFromApi();
-        } catch (apiError) {
-          console.error("Hospitals API fallback failed:", apiError);
-        }
+        return data;
       }
 
       if (name === "departments") {
-        console.log(`🏢 Firestore departments returned ${data.length} records, trying API...`);
-        try {
-          const res = await api.get("/departments");
-          const departments = Array.isArray(res?.data?.departments) ? res.data.departments : [];
-          if (departments.length > 0) {
-            return departments;
-          }
-        } catch (apiError) {
-          console.warn("Departments API failed, using Firestore data");
-        }
+        return data;
       }
 
       if (name === "diseases") {
-        console.log(`🦠 Firestore diseases returned ${data.length} records, trying API...`);
-        try {
-          const diseases = await fetchDiseasesFromApi();
-          if (diseases.length > 0) {
-            return diseases;
-          }
-        } catch (apiError) {
-          console.warn("Diseases API failed, using Firestore data");
-        }
+        return data;
       }
 
       return data;
@@ -201,13 +150,12 @@ const firebaseDbService = {
       // 🔹 Departments fallback - ALWAYS try API
       if (name === "departments") {
         try {
-          console.log(`🏢 Departments: Firestore failed, trying API...`);
           const res = await api.get("/departments");
           return Array.isArray(res?.data?.departments)
             ? res.data.departments
             : [];
         } catch (apiError) {
-          console.error("Departments API fallback failed:", apiError);
+          console.warn("Departments API fallback failed:", apiError?.message || apiError);
           return [];
         }
       }
@@ -215,21 +163,19 @@ const firebaseDbService = {
       // 🔹 Diseases fallback - ALWAYS try API  
       if (name === "diseases") {
         try {
-          console.log(`🦠 Diseases: Firestore failed, trying API...`);
           return await fetchDiseasesFromApi();
         } catch (apiError) {
-          console.error("Diseases API fallback failed:", apiError);
+          console.warn("Diseases API fallback failed:", apiError?.message || apiError);
           return [];
         }
       }
 
       // 🔹 Hospitals fallback (on any Firestore error)
       if (name === "hospitals") {
-        console.log(`🏥 Firestore error for hospitals (${permissionDenied ? 'permission denied' : 'other error'}), trying API...`);
         try {
           return await fetchHospitalsFromApi();
         } catch (apiError) {
-          console.error("Hospitals API fallback failed:", apiError);
+          console.warn("Hospitals API fallback failed:", apiError?.message || apiError);
           return [];
         }
       }
@@ -237,10 +183,9 @@ const firebaseDbService = {
       // 🔹 Doctors fallback - ALWAYS try API for doctors (Firestore may be restricted or empty)
       if (name === "doctors" || name === "doctorUsers") {
         try {
-          console.log(`👨‍⚕️ Firestore doctors failed, using API...`);
           return await fetchDoctorsFromApi();
         } catch (apiError) {
-          console.error("Doctors API fallback also failed:", apiError);
+          console.warn("Doctors API fallback also failed:", apiError?.message || apiError);
           return [];
         }
       }
@@ -249,18 +194,11 @@ const firebaseDbService = {
       // (Firestore security rules restrict reading appointments, use backend instead)
       if (name === "appointments") {
         try {
-          console.log(`↙️ Using API for appointments collection (Firestore restricted)`);
           const res = await api.get("/appointments/my");
-          if (Array.isArray(res?.data?.appointments)) {
-            console.log(`✅ Fetched ${res.data.appointments.length} appointments from API`);
-            return res.data.appointments;
-          }
-          if (Array.isArray(res?.data?.data?.appointments)) {
-            console.log(`✅ Fetched ${res.data.data.appointments.length} appointments from API (nested)`);
-            return res.data.data.appointments;
-          }
+          if (Array.isArray(res?.data?.appointments)) return res.data.appointments;
+          if (Array.isArray(res?.data?.data?.appointments)) return res.data.data.appointments;
         } catch (apiError) {
-          console.warn("Appointments API failed:", apiError);
+          console.warn("Appointments API failed:", apiError?.message || apiError);
           return [];
         }
       }
@@ -268,18 +206,11 @@ const firebaseDbService = {
       // 🔹 Tokens fallback - ALWAYS use API for tokens
       if (name === "tokens") {
         try {
-          console.log(`↙️ Using API for tokens collection`);
           const res = await api.get("/tokens/my");
-          if (Array.isArray(res?.data?.tokens)) {
-            console.log(`✅ Fetched ${res.data.tokens.length} tokens from API`);
-            return res.data.tokens;
-          }
-          if (Array.isArray(res?.data?.data?.tokens)) {
-            console.log(`✅ Fetched ${res.data.data.tokens.length} tokens from API (nested)`);
-            return res.data.data.tokens;
-          }
+          if (Array.isArray(res?.data?.tokens)) return res.data.tokens;
+          if (Array.isArray(res?.data?.data?.tokens)) return res.data.data.tokens;
         } catch (apiError) {
-          console.warn("Tokens API failed:", apiError);
+          console.warn("Tokens API failed:", apiError?.message || apiError);
           return [];
         }
       }
@@ -287,10 +218,8 @@ const firebaseDbService = {
       // 🔹 Patients fallback
       if (name === "patients" && permissionDenied) {
         try {
-          console.log(`↙️ Falling back to API for patients collection`);
           const res = await api.get("/users/me");
           if (res?.data?.user) {
-            console.log(`✅ Fetched patient from API`);
             return [res.data.user];
           }
         } catch (apiError) {
@@ -301,18 +230,11 @@ const firebaseDbService = {
       // 🔹 Prescriptions fallback - Use API for prescriptions
       if (name === "prescriptions") {
         try {
-          console.log(`↙️ Using API for prescriptions collection`);
           const res = await api.get("/prescriptions/my");
-          if (Array.isArray(res?.data?.prescriptions)) {
-            console.log(`✅ Fetched ${res.data.prescriptions.length} prescriptions from API`);
-            return res.data.prescriptions;
-          }
-          if (Array.isArray(res?.data?.data?.prescriptions)) {
-            console.log(`✅ Fetched ${res.data.data.prescriptions.length} prescriptions from API (nested)`);
-            return res.data.data.prescriptions;
-          }
+          if (Array.isArray(res?.data?.prescriptions)) return res.data.prescriptions;
+          if (Array.isArray(res?.data?.data?.prescriptions)) return res.data.data.prescriptions;
         } catch (apiError) {
-          console.warn("Prescriptions API failed:", apiError);
+          console.warn("Prescriptions API failed:", apiError?.message || apiError);
           return [];
         }
       }

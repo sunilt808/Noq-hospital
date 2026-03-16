@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 firebase-admin
+pymongo
 python-jose[cryptography]
 PyJWT
 passlib[bcrypt]

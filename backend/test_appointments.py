@@ -1,4 +1,4 @@
-from firebase import db
+from database import db
 
 # Get a patient
 patients = list(db.collection("users").where("role", "==", "patient").limit(1).stream())

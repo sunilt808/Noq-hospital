@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from services import auth_service
 from pydantic import BaseModel
 from typing import Optional
-from firebase import db
+from database import db
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 router = APIRouter(prefix="/prescriptions", tags=["Prescriptions"])
@@ -27,18 +27,20 @@ class StandardResponse(BaseModel):
 @router.get("/my", response_model=StandardResponse)
 def get_my_prescriptions(payload: dict = Depends(auth_service.require_auth)):
     """Get prescriptions for current user (patient)."""
-    user_id = payload.get("sub")
-    ref = db.collection("prescriptions").where(filter=FieldFilter("patient_id", "==", user_id))
-    prescriptions = []
-    for doc in ref.stream():
-        prescriptions.append({"id": doc.id, **doc.to_dict()})
-    
-    prescriptions.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-    return StandardResponse(
-        success=True,
-        message="Prescriptions fetched.",
-        data={"prescriptions": prescriptions, "count": len(prescriptions)},
-    )
+    try:
+        user_id = payload.get("sub")
+        ref = db.collection("prescriptions").where(filter=FieldFilter("patient_id", "==", user_id))
+        prescriptions = []
+        for doc in ref.stream():
+            prescriptions.append({"id": doc.id, **doc.to_dict()})
+        prescriptions.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return StandardResponse(
+            success=True,
+            message="Prescriptions fetched.",
+            data={"prescriptions": prescriptions, "count": len(prescriptions)},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Unable to fetch prescriptions from server: {str(e)}")
 
 
 @router.get("/doctor/my", response_model=StandardResponse)

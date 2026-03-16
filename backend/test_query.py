@@ -1,6 +1,6 @@
 import jwt
 import os
-from firebase import db
+from database import db
 from services import auth_service
 
 # Demo: simulate what the backend does

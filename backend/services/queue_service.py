@@ -1,7 +1,6 @@
 # backend/services/queue_service.py - Queue & token business logic with Firestore
 
-from firebase import db
-from google.cloud.firestore_v1 import Client, transactional, Transaction
+from database import db
 from google.cloud.firestore_v1.base_query import FieldFilter
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -94,8 +93,7 @@ def call_next_in_queue(queue_id: str) -> Optional[dict]:
 #  TOKEN OPERATIONS
 # ─────────────────────────────────────────────
 
-@transactional
-def _create_token_tx(transaction: Transaction, queue_ref, token_ref, token_doc: dict):
+def _create_token_tx(transaction, queue_ref, token_ref, token_doc: dict):
     """Atomically increment queue counter and create token."""
     queue_snap = queue_ref.get(transaction=transaction)
     if not queue_snap.exists:

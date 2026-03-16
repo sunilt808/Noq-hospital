@@ -28,14 +28,49 @@ const Departments = () => {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [formData, setFormData] = useState({ name: '', customName: '', status: 'active' });
+  const [resolvedHospitalId, setResolvedHospitalId] = useState('');
 
   const hmHospitalId = String(currentUser?.hospitalId || currentUser?.hospital_id || currentUser?.HID || '');
+
+  useEffect(() => {
+    let active = true;
+
+    const resolveHospitalContext = async () => {
+      if (hmHospitalId) {
+        setResolvedHospitalId(hmHospitalId);
+        return;
+      }
+
+      try {
+        const hospitals = await firebaseDbService.getCollection('hospitals');
+        if (!active) return;
+        const matchedHospital = (hospitals || []).find((item) =>
+          String(item?.email || '').toLowerCase() === String(currentUser?.email || '').toLowerCase() ||
+          String(item?.hm_email || '').toLowerCase() === String(currentUser?.email || '').toLowerCase() ||
+          String(item?.hm_name || '').toLowerCase() === String(currentUser?.name || '').toLowerCase()
+        );
+        const fallbackId = String(matchedHospital?.id || matchedHospital?.HID || matchedHospital?.hospital_id || '');
+        setResolvedHospitalId(fallbackId);
+      } catch {
+        if (!active) return;
+        setResolvedHospitalId('');
+      }
+    };
+
+    if (currentUser) {
+      resolveHospitalContext();
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [currentUser, hmHospitalId]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [deptRes, docList, roomList] = await Promise.all([
-        api.get(`/departments${hmHospitalId ? `?hospital_id=${encodeURIComponent(hmHospitalId)}` : ''}`),
+        api.get(`/departments${resolvedHospitalId ? `?hospital_id=${encodeURIComponent(resolvedHospitalId)}` : ''}`),
         firebaseDbService.getCollection('doctors'),
         firebaseDbService.getCollection('rooms'),
       ]);
@@ -43,8 +78,8 @@ const Departments = () => {
       const deptList = Array.isArray(deptRes?.data?.departments) ? deptRes.data.departments : [];
 
       const byHospital = (item) => {
-        if (!hmHospitalId) return true;
-        return String(item?.hospital_id || item?.hospitalId || item?.HID || '') === hmHospitalId;
+        if (!resolvedHospitalId) return true;
+        return String(item?.hospital_id || item?.hospitalId || item?.HID || '') === resolvedHospitalId;
       };
 
       setDepartments(deptList.filter(byHospital));
@@ -61,7 +96,7 @@ const Departments = () => {
   useEffect(() => {
     if (!currentUser) return;
     loadData();
-  }, [currentUser, hmHospitalId]);
+  }, [currentUser, resolvedHospitalId]);
   
   const filteredDepartments = departments.filter(dept => {
     const deptName = String(dept?.name || '');
@@ -84,7 +119,7 @@ const Departments = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!hmHospitalId) {
+    if (!resolvedHospitalId) {
       alert('Hospital context not loaded yet. Please wait a moment and try again.');
       return;
     }
@@ -122,7 +157,7 @@ const Departments = () => {
             firebaseDbService.upsert('rooms', room.id, {
               ...room,
               deptName: selectedName,
-              hospital_id: room.hospital_id || room.hospitalId || hmHospitalId,
+              hospital_id: room.hospital_id || room.hospitalId || resolvedHospitalId,
             })
           )
       );
@@ -134,7 +169,7 @@ const Departments = () => {
             firebaseDbService.upsert('doctors', doc.id, {
               ...doc,
               departmentName: selectedName,
-              hospital_id: doc.hospital_id || doc.hospitalId || hmHospitalId,
+              hospital_id: doc.hospital_id || doc.hospitalId || resolvedHospitalId,
             })
           )
       );
@@ -143,7 +178,7 @@ const Departments = () => {
         await api.post('/departments', {
           name: selectedName,
           status: formData.status,
-          hospital_id: hmHospitalId,
+          hospital_id: resolvedHospitalId,
         });
       } catch (error) {
         alert(error?.message || 'Failed to create department. Please try again.');

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 import uuid
 
-from firebase import db
+from database import db
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 

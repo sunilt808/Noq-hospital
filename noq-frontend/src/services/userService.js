@@ -61,8 +61,25 @@ export const userService = {
 
   /* ── HOSPITALS ── */
   getHospitals: async () => {
-    const data = await api.get('/hospitals');
-    return data?.success ? (data?.data?.hospitals || []) : [];
+    try {
+      const data = await api.get('/hospitals');
+      return data?.success ? (data?.data?.hospitals || []) : [];
+    } catch (err) {
+      const message = String(err?.message || '').toLowerCase();
+      const shouldFallback =
+        message.includes('403') ||
+        message.includes('admin access required') ||
+        message.includes('503') ||
+        message.includes('quota') ||
+        message.includes('unavailable');
+
+      if (!shouldFallback) {
+        throw err;
+      }
+
+      const fallback = await api.get('/hospitals/available');
+      return fallback?.success ? (fallback?.data?.hospitals || []) : [];
+    }
   },
 
   getHospitalById: async (hid) => {

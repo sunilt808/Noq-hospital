@@ -25,6 +25,19 @@ const EMPTY_DATA = {
   audit_logs: [],
 };
 
+const ROLE_COLLECTIONS = {
+  admin: ['users', 'hospitals', 'doctors', 'patients', 'queues', 'appointments', 'departments', 'rooms', 'prescriptions', 'medicalRecords', 'reviews', 'diseases', 'advancedBookings', 'audit_logs'],
+  hm: ['hospitals', 'doctors', 'patients', 'queues', 'appointments', 'departments', 'rooms', 'prescriptions', 'reviews', 'diseases', 'advancedBookings'],
+  doctor: ['hospitals', 'doctors', 'queues', 'appointments', 'departments', 'rooms', 'prescriptions', 'diseases'],
+  patient: ['hospitals', 'doctors', 'appointments', 'departments', 'prescriptions', 'reviews', 'diseases'],
+  default: ['hospitals', 'departments', 'diseases'],
+};
+
+const getCollectionsForRole = (role) => {
+  const key = String(role || '').toLowerCase();
+  return ROLE_COLLECTIONS[key] || ROLE_COLLECTIONS.default;
+};
+
 const isEmptyData = (value) =>
   Object.values(value || {}).every((collection) => Array.isArray(collection) && collection.length === 0);
 
@@ -47,11 +60,10 @@ const useFirebaseData = () => {
     if (!isAuthenticated || !currentUser || !token) {
       lastLoadedKeyRef.current = '';
       setData((prev) => (isEmptyData(prev) ? prev : EMPTY_DATA));
+      setError(null);
       return;
     }
 
-    // Always load fresh data - don't cache based on auth key
-    // Appointments can be created/deleted without auth changing
     let cancelled = false;
 
     const loadAllData = async () => {
@@ -60,59 +72,38 @@ const useFirebaseData = () => {
         setLoading(true);
         setError(null);
 
-        const [
-          users, hospitals, doctors, patients, queues, appointments,
-          departments, rooms, prescriptions, medicalRecords,
-          reviews, diseases, advancedBookings, audit_logs
-        ] = await Promise.all([
-          firebaseDbService.getCollection('users'),
-          firebaseDbService.getCollection('hospitals'),
-          firebaseDbService.getCollection('doctors'),
-          firebaseDbService.getCollection('patients'),
-          firebaseDbService.getCollection('queues'),
-          firebaseDbService.getCollection('appointments'),
-          firebaseDbService.getCollection('departments'),
-          firebaseDbService.getCollection('rooms'),
-          firebaseDbService.getCollection('prescriptions'),
-          firebaseDbService.getCollection('medicalRecords'),
-          firebaseDbService.getCollection('reviews'),
-          firebaseDbService.getCollection('diseases'),
-          firebaseDbService.getCollection('advancedBookings'),
-          firebaseDbService.getCollection('audit_logs'),
-        ]);
+        const targetCollections = getCollectionsForRole(currentUser?.role);
+        const results = await Promise.allSettled(
+          targetCollections.map((name) => firebaseDbService.getCollection(name))
+        );
 
         if (cancelled) {
           return;
         }
 
-        setData({
-          users: users || [],
-          hospitals: hospitals || [],
-          doctors: doctors || [],
-          patients: patients || [],
-          queues: queues || [],
-          appointments: appointments || [],
-          departments: departments || [],
-          rooms: rooms || [],
-          prescriptions: prescriptions || [],
-          medicalRecords: medicalRecords || [],
-          reviews: reviews || [],
-          diseases: diseases || [],
-          advancedBookings: advancedBookings || [],
-          audit_logs: audit_logs || [],
+        const nextData = { ...EMPTY_DATA };
+        const failedCollections = [];
+
+        results.forEach((result, idx) => {
+          const collectionName = targetCollections[idx];
+          if (result.status === 'fulfilled') {
+            nextData[collectionName] = Array.isArray(result.value) ? result.value : [];
+          } else {
+            failedCollections.push(collectionName);
+          }
         });
-        console.log('📦 useFirebaseData setData:', { 
-          appointmentsCount: (appointments || []).length,
-          appointmentsSample: (appointments || []).slice(0, 1)
-        });
+
+        setData(nextData);
+        if (failedCollections.length > 0) {
+          setError(`Failed to load: ${failedCollections.join(', ')}`);
+        }
       } catch (err) {
         if (cancelled) {
           return;
         }
 
         lastLoadedKeyRef.current = '';
-        console.error('Failed to load Firebase data:', err);
-        setError(err.message);
+        setError(err?.message || 'Failed to load data');
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -122,17 +113,8 @@ const useFirebaseData = () => {
 
     loadAllData();
 
-    // Also set up periodic refresh every 10 seconds to catch new appointments
-    const refreshInterval = setInterval(() => {
-      if (!cancelled) {
-        console.log('🔄 Auto-refreshing Firebase data...');
-        loadAllData();
-      }
-    }, 10000);
-
     return () => {
       cancelled = true;
-      clearInterval(refreshInterval);
     };
   }, [isAuthenticated, currentUser?.id, token]);
 
@@ -165,11 +147,7 @@ const useFirebaseData = () => {
     doctors: (data.doctors && data.doctors.length > 0) ? data.doctors : filterUsersByRole(data.users, 'doctor'),
     patients: (data.patients && data.patients.length > 0) ? data.patients : filterUsersByRole(data.users, 'patient'),
     queues: data.queues || [],
-    appointments: (() => {
-      const appts = data.appointments || [];
-      console.log('📤 useFirebaseData return - appointments:', appts.length);
-      return appts;
-    })(),
+    appointments: data.appointments || [],
     departments: data.departments || [],
     rooms: data.rooms || [],
     prescriptions: data.prescriptions || [],

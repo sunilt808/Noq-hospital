@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from services import auth_service
 from pydantic import BaseModel
 from typing import Optional
-from firebase import db
+from database import db
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 router = APIRouter(prefix="/diseases", tags=["Diseases"])
@@ -27,23 +27,26 @@ class StandardResponse(BaseModel):
 @router.get("", response_model=StandardResponse)
 def get_diseases(hospital_id: Optional[str] = None, department_id: Optional[str] = None):
     """Get diseases/specialties - PUBLIC endpoint for patient booking."""
-    ref = db.collection("diseases")
-    
-    if hospital_id:
-        ref = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id))
-    if department_id:
-        ref = ref.where(filter=FieldFilter("department_id", "==", department_id))
-    
-    diseases = []
-    for doc in ref.stream():
-        diseases.append({"id": doc.id, **doc.to_dict()})
-    
-    diseases.sort(key=lambda x: x.get("name", ""))
-    return StandardResponse(
-        success=True,
-        message="Diseases fetched.",
-        data={"diseases": diseases, "count": len(diseases)},
-    )
+    try:
+        ref = db.collection("diseases")
+        if hospital_id:
+            ref = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id))
+        if department_id:
+            ref = ref.where(filter=FieldFilter("department_id", "==", department_id))
+        diseases = []
+        for doc in ref.stream():
+            diseases.append({"id": doc.id, **doc.to_dict()})
+        diseases.sort(key=lambda x: x.get("name", ""))
+        return StandardResponse(
+            success=True,
+            message="Diseases fetched.",
+            data={"diseases": diseases, "count": len(diseases)},
+        )
+    except Exception as e:
+        msg = str(e)
+        if "quota" in msg.lower() or "429" in msg.lower() or "RESOURCE_EXHAUSTED" in msg:
+            return StandardResponse(success=True, message="Diseases fetched (fallback).", data={"diseases": [], "count": 0})
+        raise HTTPException(status_code=503, detail=f"Unable to fetch diseases from server: {msg}")
 
 
 @router.post("", response_model=StandardResponse, status_code=201)

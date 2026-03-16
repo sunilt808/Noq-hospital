@@ -3,7 +3,7 @@ Prescription Service - Handle patient prescriptions
 """
 
 from datetime import datetime, timedelta
-from firebase import db
+from database import db
 
 
 def _now_iso() -> str:

@@ -3,6 +3,19 @@ import FirebaseAuthService from '../services/FirebaseAuthService.js';
 
 export const AuthContext = createContext();
 
+const normalizeUser = (user = {}) => {
+  const hospitalId = user.hospitalId || user.hospital_id || user.HID || '';
+  const hospitalName = user.hospitalName || user.hospital_name || '';
+  return {
+    ...user,
+    hospitalId,
+    hospital_id: hospitalId,
+    HID: hospitalId,
+    hospitalName,
+    hospital_name: hospitalName,
+  };
+};
+
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [token, setToken] = useState(null);
@@ -19,7 +32,11 @@ export const AuthProvider = ({ children }) => {
           const verification = await FirebaseAuthService.verifyUserStatus(session.user.id);
           const canUseSession = verification.valid || verification.reason === 'User not found';
           if (canUseSession) {
-            setCurrentUser(session.user);
+            const mergedUser = normalizeUser({
+              ...session.user,
+              ...(verification.user || {}),
+            });
+            setCurrentUser(mergedUser);
             setToken(session.token);
           } else {
             // User status is invalid, logout
@@ -50,11 +67,16 @@ export const AuthProvider = ({ children }) => {
         throw new Error(`Login failed: ${verification.reason}`);
       }
 
+      const mergedUser = normalizeUser({
+        ...userData,
+        ...(verification.user || {}),
+      });
+
       // Save session to Firestore and sessionStorage
-      const result = await FirebaseAuthService.saveSession(userData, authToken);
+      const result = await FirebaseAuthService.saveSession(mergedUser, authToken);
       
       if (result) {
-        setCurrentUser(userData);
+        setCurrentUser(mergedUser);
         setToken(authToken);
         return true;
       }
@@ -92,7 +114,7 @@ export const AuthProvider = ({ children }) => {
   }, [currentUser?.id]);
 
   const updateUser = useCallback((userData) => {
-    setCurrentUser((prev) => ({ ...prev, ...userData }));
+    setCurrentUser((prev) => normalizeUser({ ...prev, ...userData }));
   }, []);
 
   const value = {

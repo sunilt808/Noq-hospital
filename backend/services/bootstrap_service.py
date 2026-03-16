@@ -2,7 +2,7 @@ from datetime import datetime
 import hashlib
 import os
 
-from firebase import db
+from database import db
 from services import user_service
 
 

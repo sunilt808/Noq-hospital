@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 import uuid
 
-from firebase import db
+from database import db
 from google.cloud.firestore_v1.base_query import FieldFilter
 from services import user_service
 

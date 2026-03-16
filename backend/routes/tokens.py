@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from services import auth_service
 from pydantic import BaseModel
 from typing import Optional
-from firebase import db
+from database import db
 from google.cloud.firestore_v1.base_query import FieldFilter
 from datetime import datetime
 import uuid
