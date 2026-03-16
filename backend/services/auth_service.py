@@ -4,16 +4,14 @@ import os
 import logging
 from datetime import datetime, timedelta
 from uuid import uuid4
-from passlib.context import CryptContext
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
+import hashlib
+import secrets
 from database import User
 from audit import AuditLogger
 
 logger = logging.getLogger(__name__)
-
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # JWT configuration
 JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
@@ -26,13 +24,20 @@ class AuthService:
     
     @staticmethod
     def hash_password(password: str) -> str:
-        """Hash a password."""
-        return pwd_context.hash(password)
+        """Hash a password using PBKDF2."""
+        salt = secrets.token_hex(32)  # 64 character hex string
+        pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000)
+        return f"{salt}${pwd_hash.hex()}"
     
     @staticmethod
     def verify_password(password: str, password_hash: str) -> bool:
         """Verify a password against its hash."""
-        return pwd_context.verify(password, password_hash)
+        try:
+            salt, pwd_hash = password_hash.split('$', 1)
+            computed_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000)
+            return computed_hash.hex() == pwd_hash
+        except Exception:
+            return False
     
     @staticmethod
     def create_access_token(

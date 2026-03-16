@@ -3,27 +3,39 @@
 const BASE_URL =
   import.meta.env.VITE_API_URL ||
   import.meta.env.VITE_API_BASE_URL ||
-  'http://127.0.0.1:8000';
+  'http://127.0.0.1:8001';
 
 const REQUEST_TIMEOUT = 10000; // 10 seconds
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
 
 /**
- * Get auth token from Firebase auth session in sessionStorage
- * No localStorage used - pure Firebase session management
+ * Get JWT auth token from localStorage (SQLite + JWT implementation)
  */
 const getAuthToken = () => {
   try {
-    const session = sessionStorage.getItem('_firebase_auth_session');
-    if (session) {
-      const { token } = JSON.parse(session);
-      return token;
-    }
+    const token = localStorage.getItem('app_auth_token');
+    return token || null;
   } catch (err) {
-    console.warn('Failed to get auth token from session:', err);
+    console.warn('Failed to get auth token from localStorage:', err);
   }
   return null;
+};
+
+/**
+ * Set JWT auth token in localStorage
+ * Called after successful login/signup
+ */
+const setAuthToken = (token) => {
+  try {
+    if (token) {
+      localStorage.setItem('app_auth_token', token);
+    } else {
+      localStorage.removeItem('app_auth_token');
+    }
+  } catch (err) {
+    console.warn('Failed to set auth token in localStorage:', err);
+  }
 };
 
 const defaultHeaders = () => {
@@ -124,7 +136,12 @@ const fetchWithErrorHandling = async (url, options) => {
 
 const api = {
   /**
-   * GET request with auth token from Firebase session
+   * Set JWT auth token (called after successful login)
+   */
+  setAuthToken,
+
+  /**
+   * GET request with JWT token from localStorage
    */
   get: async (path) => {
     const url = `${BASE_URL}${path}`;
@@ -134,7 +151,7 @@ const api = {
   },
 
   /**
-   * POST request with auth token from Firebase session
+   * POST request with JWT token from localStorage
    */
   post: async (path, body) => {
     const url = `${BASE_URL}${path}`;
@@ -148,7 +165,7 @@ const api = {
   },
 
   /**
-   * POST with FormData (for file uploads) - uses Firebase auth token with retry
+   * POST with FormData (for file uploads) - uses JWT auth token with retry
    */
   postForm: async (path, formData) => {
     const token = getAuthToken();
@@ -165,7 +182,7 @@ const api = {
   },
 
   /**
-   * PUT request with auth token from Firebase session
+   * PUT request with JWT token from localStorage
    */
   put: async (path, body) => {
     const url = `${BASE_URL}${path}`;
@@ -179,7 +196,7 @@ const api = {
   },
 
   /**
-   * PATCH request with auth token from Firebase session
+   * PATCH request with JWT token from localStorage
    */
   patch: async (path, body) => {
     const url = `${BASE_URL}${path}`;
@@ -193,7 +210,7 @@ const api = {
   },
 
   /**
-   * DELETE request with auth token from Firebase session
+   * DELETE request with JWT token from localStorage
    */
   delete: async (path) => {
     const url = `${BASE_URL}${path}`;

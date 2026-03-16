@@ -1,4 +1,4 @@
-// pages/Login.jsx - MODIFIED: Terms & Conditions modal with accept button + OTP validation
+// pages/Login.jsx - JWT-based authentication with SQLite backend
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -23,14 +23,12 @@ import {
   faExternalLinkAlt,
   faPhone
 } from '@fortawesome/free-solid-svg-icons';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { firebaseAuth } from '../../firebase.js';
-import { authService } from '../services/authService.js';
-import { useAuth } from '../context/FirebaseAuthContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
+import api from '../services/api.js';
 
 const Login = () => {
   const navigate = useNavigate();
-  const { login: contextLogin } = useAuth();
+  const { login: authContextLogin } = useAuth();
   
   const [role, setRole] = useState('hm');
   const [formData, setFormData] = useState({
@@ -131,28 +129,10 @@ const Login = () => {
       newErrors.email = 'Please enter a valid email';
     }
     
-    if (role === 'patient') {
-      if (formData.mobileNumber && !validateMobileNumber(formData.mobileNumber)) {
-        newErrors.mobileNumber = 'Please enter a valid 10-15 digit mobile number';
-      }
-      
-      if (!formData.otp) {
-        newErrors.otp = 'OTP is required';
-      } else if (formData.otp.length !== 6) {
-        newErrors.otp = 'OTP must be 6 digits';
-      } else if (!/^\d+$/.test(formData.otp)) {
-        newErrors.otp = 'OTP must contain only numbers';
-      }
-      
-      if (!termsAccepted) {
-        newErrors.terms = 'You must accept Terms & Conditions';
-      }
-    } else {
-      if (!formData.password) {
-        newErrors.password = 'Password is required';
-      } else if (formData.password.length < 6) {
-        newErrors.password = 'Password must be at least 6 characters';
-      }
+    if (!formData.password) {
+      newErrors.password = 'Password is required';
+    } else if (formData.password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
     }
     
     if (role === 'doctor' && !formData.hospitalId.trim()) {
@@ -165,114 +145,64 @@ const Login = () => {
 
   const handleAdminLogin = async () => {
     try {
-      const result = await authService.login({
-        role: 'admin',
-        email: formData.email,
-        password: formData.password,
-      });
-      const ok = await contextLogin(result?.user, result?.token);
-      if (!ok) throw new Error('Session initialization failed. Please try again.');
-      return true;
+      const result = await authContextLogin(formData.email, formData.password, 'admin');
+      if (result.success) {
+        api.setAuthToken(result.token);
+        return true;
+      } else {
+        alert(result.error || 'Admin login failed');
+        return false;
+      }
     } catch (error) {
-      alert(error?.message || 'Admin login failed.');
+      alert(error?.message || 'Admin login failed');
       return false;
     }
   };
 
   const handleDoctorLogin = async () => {
     try {
-      const result = await authService.login({
-        role: 'doctor',
-        email: formData.email,
-        password: formData.password,
-        hospitalId: formData.hospitalId,
-      });
-      const ok = await contextLogin(result?.user, result?.token);
-      if (!ok) throw new Error('Session initialization failed. Please try again.');
-      sessionStorage.setItem('doctorLoginTime', new Date().toISOString());
-      return true;
-    } catch (primaryError) {
-      let firebaseIdToken = null;
-      try {
-        const firebaseUser = await signInWithEmailAndPassword(firebaseAuth, formData.email, formData.password);
-        firebaseIdToken = await firebaseUser.user.getIdToken();
-      } catch {
-        firebaseIdToken = null;
-      }
-
-      if (!firebaseIdToken) {
-        alert(primaryError?.message || 'Doctor login failed.');
-        return false;
-      }
-
-      try {
-        const result = await authService.login({
-          role: 'doctor',
-          email: formData.email,
-          password: formData.password,
-          hospitalId: formData.hospitalId,
-          firebaseIdToken,
-        });
-        const ok = await contextLogin(result?.user, result?.token);
-        if (!ok) throw new Error('Session initialization failed. Please try again.');
-        sessionStorage.setItem('doctorLoginTime', new Date().toISOString());
+      const result = await authContextLogin(formData.email, formData.password, 'doctor');
+      if (result.success) {
+        api.setAuthToken(result.token);
         return true;
-      } catch (firebaseError) {
-        alert(firebaseError?.message || primaryError?.message || 'Doctor login failed.');
+      } else {
+        alert(result.error || 'Doctor login failed');
         return false;
       }
+    } catch (error) {
+      alert(error?.message || 'Doctor login failed');
+      return false;
     }
   };
 
   const handleHmLogin = async () => {
     try {
-      const result = await authService.login({
-        role: 'hm',
-        email: formData.email,
-        password: formData.password,
-      });
-      const ok = await contextLogin(result?.user, result?.token);
-      if (!ok) throw new Error('Session initialization failed. Please try again.');
-      return true;
-    } catch (primaryError) {
-      let firebaseIdToken = null;
-      try {
-        const firebaseUser = await signInWithEmailAndPassword(firebaseAuth, formData.email, formData.password);
-        firebaseIdToken = await firebaseUser.user.getIdToken();
-      } catch {
-        firebaseIdToken = null;
-      }
-
-      if (!firebaseIdToken) {
-        alert(primaryError?.message || 'HM login failed.');
-        return false;
-      }
-
-      try {
-        const result = await authService.login({ role: 'hm', email: formData.email, password: formData.password, firebaseIdToken });
-        const ok = await contextLogin(result?.user, result?.token);
-        if (!ok) throw new Error('Session initialization failed. Please try again.');
+      const result = await authContextLogin(formData.email, formData.password, 'hm');
+      if (result.success) {
+        api.setAuthToken(result.token);
         return true;
-      } catch (firebaseError) {
-        alert(firebaseError?.message || primaryError?.message || 'HM login failed.');
+      } else {
+        alert(result.error || 'Hospital Manager login failed');
         return false;
       }
+    } catch (error) {
+      alert(error?.message || 'Hospital Manager login failed');
+      return false;
     }
   };
 
   const handlePatientLogin = async () => {
     try {
-      const result = await authService.login({
-        role: 'patient',
-        email: formData.email,
-        otp: formData.otp,
-        _generatedOtp: generatedOTP,
-      });
-      const ok = await contextLogin(result?.user, result?.token);
-      if (!ok) throw new Error('Session initialization failed. Please try again.');
-      return true;
+      const result = await authContextLogin(formData.email, formData.password, 'patient');
+      if (result.success) {
+        api.setAuthToken(result.token);
+        return true;
+      } else {
+        alert(result.error || 'Patient login failed');
+        return false;
+      }
     } catch (error) {
-      alert(error?.message || 'Patient login failed.');
+      alert(error?.message || 'Patient login failed');
       return false;
     }
   };
@@ -284,7 +214,7 @@ const Login = () => {
     
     setLoading(true);
     
-    setTimeout(async () => {
+    try {
       let loginSuccess = false;
       
       if (role === 'admin') {
@@ -292,37 +222,30 @@ const Login = () => {
         if (loginSuccess) {
           navigate('/admin/dashboard');
         }
-      } 
-      else if (role === 'doctor') {
+      } else if (role === 'doctor') {
         loginSuccess = await handleDoctorLogin();
         if (loginSuccess) {
           navigate('/doctor/dashboard');
         }
-      }
-      else if (role === 'hm') {
+      } else if (role === 'hm') {
         loginSuccess = await handleHmLogin();
         if (loginSuccess) {
           navigate('/hm/management');
         }
-      }
-      else if (role === 'patient') {
+      } else if (role === 'patient') {
         loginSuccess = await handlePatientLogin();
         if (loginSuccess) {
           navigate('/patient/dashboard');
         }
       }
-      
-      if (!loginSuccess) {
-        setLoading(false);
-        return;
-      }
-      
+    } catch (err) {
+      console.error('Login error:', err);
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   const showHospitalIdField = role === 'doctor';
-  const isPatient = role === 'patient';
 
   return (
     <>
@@ -372,7 +295,7 @@ const Login = () => {
             <div className="form-group">
               <label className="form-label" htmlFor="email">
                 <FontAwesomeIcon icon={faEnvelope} />
-                {role === 'admin' ? 'Admin Email' : 'Email Address'}
+                Email Address
               </label>
               <div className="input-container">
                 <input
@@ -381,7 +304,7 @@ const Login = () => {
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
-                  placeholder={role === 'admin' ? 'admin@sunigmail.com' : 'Enter your email address'}
+                  placeholder="Enter your email address"
                   className={`form-control ${errors.email ? 'error' : ''}`}
                   disabled={loading}
                   required
@@ -395,161 +318,39 @@ const Login = () => {
               )}
             </div>
 
-            {isPatient ? (
-              <>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="mobileNumber">
-                    <FontAwesomeIcon icon={faPhone} />
-                    Mobile Number (Optional but Recommended)
-                  </label>
-                  <div className="input-container">
-                    <input
-                      type="tel"
-                      id="mobileNumber"
-                      name="mobileNumber"
-                      value={formData.mobileNumber}
-                      onChange={handleChange}
-                      placeholder="Enter your mobile number (e.g., +1234567890)"
-                      className={`form-control ${errors.mobileNumber ? 'error' : ''}`}
-                      disabled={loading}
-                    />
-                  </div>
-                  {errors.mobileNumber && (
-                    <div className="error-message">
-                      <FontAwesomeIcon icon={faKey} />
-                      {errors.mobileNumber}
-                    </div>
-                  )}
-                  <div className="input-hint">
-                    <small>OTP will be sent to your email and mobile if provided</small>
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" htmlFor="otp">
-                    <FontAwesomeIcon icon={faMobileAlt} />
-                    OTP (One-Time Password)
-                  </label>
-                  <div className="input-with-button">
-                    <div className="input-container">
-                      <input
-                        type="text"
-                        id="otp"
-                        name="otp"
-                        value={formData.otp}
-                        onChange={handleChange}
-                        placeholder="Enter 6-digit OTP"
-                        maxLength="6"
-                        className={`form-control ${errors.otp ? 'error' : ''}`}
-                        disabled={loading}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={generateOTP}
-                      className="otp-generate-btn"
-                      disabled={loading || generatingOTP}
-                    >
-                      {generatingOTP ? (
-                        <>
-                          <FontAwesomeIcon icon={faSpinner} spin />
-                          Sending...
-                        </>
-                      ) : (
-                        <>
-                          <FontAwesomeIcon icon={faMobileAlt} />
-                          Send OTP
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  {errors.otp && (
-                    <div className="error-message">
-                      <FontAwesomeIcon icon={faKey} />
-                      {errors.otp}
-                    </div>
-                  )}
-                  <div className="otp-note">
-                    <small>Enter your email (and mobile if available) above, then click "Send OTP"</small>
-                  </div>
-                </div>
-
-                <div className="form-group terms-group">
-                  <div className={`terms-checkbox ${errors.terms ? 'error' : ''}`}>
-                    <input
-                      type="checkbox"
-                      id="terms"
-                      checked={termsAccepted}
-                      onChange={(e) => {
-                        if (!e.target.checked) {
-                          setTermsAccepted(false);
-                        } else {
-                          handleOpenTermsModal();
-                        }
-                      }}
-                      disabled={loading}
-                    />
-                    <label htmlFor="terms">
-                      <FontAwesomeIcon icon={faFileContract} />
-                      <span onClick={handleOpenTermsModal} style={{ cursor: 'pointer', textDecoration: 'underline' }}>
-                        I accept the Terms & Conditions and Privacy Policy
-                      </span>
-                      {termsAccepted && (
-                        <span className="terms-accepted-badge">
-                          <FontAwesomeIcon icon={faCheck} /> Accepted
-                        </span>
-                      )}
-                    </label>
-                  </div>
-                  <div className="terms-links">
-                    <small>
-                      <a onClick={handleOpenTermsModal} style={{ cursor: 'pointer', color: '#3b82f6' }}>
-                        <FontAwesomeIcon icon={faExternalLinkAlt} /> View Terms & Conditions
-                      </a>
-                    </small>
-                  </div>
-                  {errors.terms && (
-                    <div className="error-message">
-                      <FontAwesomeIcon icon={faKey} />
-                      {errors.terms}
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="form-group">
-                <label className="form-label" htmlFor="password">
-                  <FontAwesomeIcon icon={faLock} />
-                  {role === 'admin' ? 'Admin Password' : 'Password'}
-                </label>
-                <div className="input-container">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    id="password"
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    placeholder={role === 'admin' ? 'AdminSuni@484#' : 'Enter your password'}
-                    className={`form-control ${errors.password ? 'error' : ''}`}
-                    disabled={loading}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="password-toggle"
-                    disabled={loading}
-                  >
-                    <FontAwesomeIcon icon={showPassword ? faEyeSlash : faEye} />
-                  </button>
-                </div>
-                {errors.password && (
-                  <div className="error-message">
-                    <FontAwesomeIcon icon={faKey} />
-                    {errors.password}
-                  </div>
-                )}
+            <div className="form-group">
+              <label className="form-label" htmlFor="password">
+                <FontAwesomeIcon icon={faLock} />
+                Password
+              </label>
+              <div className="input-container">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  id="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  placeholder="Enter your password"
+                  className={`form-control ${errors.password ? 'error' : ''}`}
+                  disabled={loading}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="password-toggle"
+                  disabled={loading}
+                >
+                  <FontAwesomeIcon icon={showPassword ? faEyeSlash : faEye} />
+                </button>
               </div>
-            )}
+              {errors.password && (
+                <div className="error-message">
+                  <FontAwesomeIcon icon={faKey} />
+                  {errors.password}
+                </div>
+              )}
+            </div>
 
             {showHospitalIdField && (
               <div className="form-group">
@@ -587,18 +388,18 @@ const Login = () => {
 
             <button
               type="submit"
-              className={`auth-btn ${role === 'admin' ? 'admin-btn' : ''} ${isPatient ? 'patient-btn' : ''}`}
+              className={`auth-btn ${role === 'admin' ? 'admin-btn' : ''} ${role === 'patient' ? 'patient-btn' : ''}`}
               disabled={loading}
             >
               {loading ? (
                 <>
                   <FontAwesomeIcon icon={faSpinner} spin />
-                  {role === 'admin' ? 'Signing in...' : 'Logging in...'}
+                  Logging in...
                 </>
               ) : (
                 <>
-                  <FontAwesomeIcon icon={role === 'admin' ? faShieldAlt : (isPatient ? faMobileAlt : faSignInAlt)} />
-                  {role === 'admin' ? 'Sign In to Admin Portal' : `Login as ${roles.find(r => r.id === role)?.label}`}
+                  <FontAwesomeIcon icon={role === 'admin' ? faShieldAlt : faSignInAlt} />
+                  Login as {roles.find(r => r.id === role)?.label}
                 </>
               )}
             </button>
@@ -609,19 +410,17 @@ const Login = () => {
               <FontAwesomeIcon icon={faUserMd} />
               <div>
                 <strong>Doctor Login Note:</strong>
-                <p>Enter your registered email, password, and hospital ID.</p>
+                <p>Enter your registered email and password.</p>
               </div>
             </div>
           )}
 
-          {isPatient && (
+          {role === 'patient' && (
             <div className="patient-login-note">
               <FontAwesomeIcon icon={faCheckCircle} />
               <div>
                 <strong>Patient Login Note:</strong>
-                <p>• Enter your email (required) and mobile number (optional)</p>
-                <p>• Click "Send OTP" to receive OTP</p>
-                <p>• Click "View Terms & Conditions" to read and accept</p>
+                <p>Enter your registered email and password.</p>
               </div>
             </div>
           )}
