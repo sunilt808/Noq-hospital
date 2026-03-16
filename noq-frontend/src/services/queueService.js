@@ -1,52 +1,24 @@
-// src/services/queueService.js - Queue management (Firebase-only, NO localStorage)
+// src/services/queueService.js - Queue management with SQLite backend
 
 import api from './api.js';
-import firebaseDbService from './firebaseDbService.js';
 
 /* ─────────────────────────────────
-   FIREBASE HELPERS (NO localStorage)
-──────────────────────────────── */
-
-const getQueuesFromFirebase = async () => {
-  try {
-    return await firebaseDbService.getCollection('queues');
-  } catch (error) {
-    console.warn('Failed to fetch queues from Firebase:', error);
-    return [];
-  }
-};
-
-const getTokensFromFirebase = async () => {
-  try {
-    return await firebaseDbService.getCollection('tokens');
-  } catch (error) {
-    console.warn('Failed to fetch tokens from Firebase:', error);
-    return [];
-  }
-};
-
-/* ─────────────────────────────────
-   QUEUE SERVICE (Firebase-only)
+   QUEUE SERVICE (Backend API)
 ──────────────────────────────── */
 
 export const queueService = {
-  // Fetch all queues from Firebase
+  // Fetch all queues from API
   fetchAll: async () => {
     try {
       const data = await api.get('/queues');
       if (data?.success) {
-        const queues = data?.data?.queues || [];
-        // Store to Firebase for offline access
-        for (const queue of queues) {
-          await firebaseDbService.upsert('queues', queue.id, queue);
-        }
-        return queues;
+        return data?.data?.queues || [];
       }
+      return [];
     } catch (error) {
-      console.warn('API fetch failed, using Firebase:', error);
+      console.error('Failed to fetch queues:', error);
+      return [];
     }
-
-    return await getQueuesFromFirebase();
   },
 
   // Fetch single queue
@@ -54,49 +26,35 @@ export const queueService = {
     try {
       const data = await api.get(`/queues/${queueId}`);
       if (data?.success) return data?.data || null;
+      return null;
     } catch (error) {
-      console.warn('API fetch failed, using Firebase:', error);
+      console.error('Failed to fetch queue:', error);
+      return null;
     }
-
-    return await firebaseDbService.getDocument('queues', queueId);
   },
 
-  // Create a queue (Firebase-only)
+  // Create a queue
   create: async (payload) => {
     try {
       const data = await api.post('/queues/create', payload);
       if (data?.success) return data.data;
+      throw new Error(data?.message || 'Failed to create queue');
     } catch (error) {
-      console.warn('API create failed, using Firebase:', error);
+      console.error('Failed to create queue:', error);
+      throw error;
     }
-
-    const newQueue = {
-      id: `Q-${Date.now()}`,
-      ...payload,
-      status: 'active',
-      currentToken: null,
-      tokenCounter: 0,
-      createdAt: new Date().toISOString(),
-    };
-    await firebaseDbService.upsert('queues', newQueue.id, newQueue);
-    return newQueue;
   },
 
-  // Update queue (Firebase-only)
+  // Update queue
   update: async (queueId, payload) => {
     try {
       const data = await api.put(`/queues/${queueId}`, payload);
       if (data?.success) return data.data;
+      throw new Error(data?.message || 'Failed to update queue');
     } catch (error) {
-      console.warn('API update failed, using Firebase:', error);
+      console.error('Failed to update queue:', error);
+      throw error;
     }
-
-    const updatedQueue = {
-      ...payload,
-      updatedAt: new Date().toISOString(),
-    };
-    await firebaseDbService.upsert('queues', queueId, updatedQueue);
-    return await firebaseDbService.getDocument('queues', queueId);
   },
 
   // Call next patient in queue
@@ -104,34 +62,26 @@ export const queueService = {
     try {
       const data = await api.post(`/queues/${queueId}/next`, {});
       if (data?.success) return data.data;
+      throw new Error(data?.message || 'Failed to call next patient');
     } catch (error) {
-      console.warn('API callNext failed, using Firebase:', error);
+      console.error('Failed to call next patient:', error);
+      throw error;
     }
-
-    // Firebase fallback
-    const tokens = await getTokensFromFirebase();
-    const waiting = tokens.filter(
-      (t) => String(t.queueId) === String(queueId) && t.status === 'waiting'
-    );
-    if (waiting.length === 0) throw new Error('No patients waiting in queue.');
-    const next = waiting.sort((a, b) => a.tokenNumber - b.tokenNumber)[0];
-    return await tokenService.call(next.id);
   },
 
-  // Delete queue (Firebase-only)
+  // Delete queue
   delete: async (queueId) => {
     try {
       await api.delete(`/queues/${queueId}`);
     } catch (error) {
-      console.warn('API delete failed, using Firebase:', error);
+      console.error('Failed to delete queue:', error);
+      throw error;
     }
-
-    await firebaseDbService.remove('queues', queueId);
   },
 };
 
 /* ─────────────────────────────────
-   TOKEN SERVICE (Firebase-only)
+   TOKEN SERVICE (Backend API)
 ──────────────────────────────── */
 
 export const tokenService = {

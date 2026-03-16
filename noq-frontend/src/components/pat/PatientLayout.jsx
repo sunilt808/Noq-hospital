@@ -1,9 +1,8 @@
-// Firebase-only (no localStorage)
+// Patient Layout - JWT-based authentication with SQLite backend
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
+import { useAuth } from '../../context/AuthContext';
 import {
   faHospital,
   faUser,
@@ -54,24 +53,18 @@ const PatientLayout = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser, logout, loading: authLoading } = useAuth();
-  const { patients, loading } = useFirebaseData();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeMenu, setActiveMenu] = useState('');
 
-  // Get current patient from Firebase data
+  // Get current patient from authenticated user
   const patient = useMemo(() => {
-    const matchedPatient =
-      patients.find((p) => String(p.id || '') === String(currentUser?.id || '')) ||
-      patients.find((p) => String(p.email || '').toLowerCase() === String(currentUser?.email || '').toLowerCase());
-
-    // Always fall back to currentUser to avoid "Loading patient profile..." screen
-    return matchedPatient || (currentUser ? {
+    return currentUser ? {
       ...currentUser,
-      name: currentUser?.name || currentUser?.fullName || 'Patient',
+      name: currentUser?.full_name || currentUser?.fullName || 'Patient',
       status: currentUser?.status || 'active',
-    } : null);
-  }, [patients, currentUser]);
+    } : null;
+  }, [currentUser]);
   const blockStatus = patient ? {
     isBlocked: patient.status === 'blocked',
     blockLevel: patient.blockLevel || 0,
@@ -104,11 +97,10 @@ const PatientLayout = ({ children }) => {
     if (current) setActiveMenu(current.id);
   }, [location.pathname]);
 
-  // Show loading only if auth is still loading. Once currentUser is set, proceed with data loading in background
+  // Show loading only if auth is still loading. Once currentUser is set, proceed with layout rendering
   if (authLoading || !currentUser) return <div style={{ padding: '20px' }}>Loading...</div>;
   
-  // Once auth is done, render layout even while data is loading (it will populate once ready)
-  // Patient data may not exist in Firebase collection yet, use currentUser as fallback
+  // Once auth is done, render layout with authenticated patient data
 
   return (
     <div className={`patient-layout ${sidebarOpen ? 'open' : 'collapsed'}`}>

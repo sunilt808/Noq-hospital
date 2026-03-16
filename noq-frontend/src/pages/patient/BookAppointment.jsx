@@ -1,4 +1,4 @@
-// pages/patient/BookAppointment.jsx
+// pages/patient/BookAppointment.jsx - Appointment booking with SQLite backend
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -16,8 +16,8 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { queueService, tokenService } from '../../services/queueService';
 import { recordHistory } from '../../services/historyService';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import firebaseDbService from '../../services/firebaseDbService';
+import { useAuth } from '../../context/AuthContext';
+import api from '../../services/api.js';
 import hospitalQrImage from '../../assets/qr-hospital.png';
 import './patient.css';
 
@@ -79,25 +79,18 @@ const BookAppointment = () => {
 
   const loadBookingData = async () => {
     try {
-      const [hospitals, doctors, users, savedDoctorUsers, rooms, departments, diseases, patients] = await Promise.all([
-        firebaseDbService.getCollection('hospitals'),
-        firebaseDbService.getCollection('doctors'),
-        firebaseDbService.getCollection('users'),
-        firebaseDbService.getCollection('doctorUsers'),
-        firebaseDbService.getCollection('rooms'),
-        firebaseDbService.getCollection('departments'),
-        firebaseDbService.getCollection('diseases'),
-        firebaseDbService.getCollection('patients'),
+      // Fetch data from backend API
+      const [hospitalsRes, departmentsRes] = await Promise.all([
+        api.get('/hospitals'),
+        api.get('/departments'),
       ]);
 
-      const doctorUsers = (Array.isArray(users) ? users : []).filter((u) => normalizeText(u.role) === 'doctor');
-      const hmUsers = (Array.isArray(users) ? users : []).filter((u) => normalizeText(u.role) === 'hm');
+      const hospitals = hospitalsRes?.data || [];
+      const departments = departmentsRes?.data || [];
 
       console.log('📚 BOOKING DATA LOAD:', {
-        hospitalsCount: Array.isArray(hospitals) ? hospitals.length : 0,
-        doctorsCollectionCount: Array.isArray(doctors) ? doctors.length : 0,
-        usersCount: Array.isArray(users) ? users.length : 0,
-        doctorUsersFromUsers: doctorUsers.length,
+        hospitalsCount: hospitals.length,
+        departmentsCount: departments.length,
         savedDoctorUsersCount: Array.isArray(savedDoctorUsers) ? savedDoctorUsers.length : 0,
         roomsCount: Array.isArray(rooms) ? rooms.length : 0,
         departmentsCount: Array.isArray(departments) ? departments.length : 0,
@@ -809,52 +802,14 @@ const BookAppointment = () => {
         backendTokenId: backendToken?.id || null,
       };
 
-      // Save to Firebase
-      await firebaseDbService.upsert('appointments', confirmedAppointment.id, confirmedAppointment);
-      
-      // Also save to backend API so it's queryable by all users
+      // Save to backend API
       try {
-        const api = (await import('../../services/api.js')).default;
         await api.post('/appointments/create', confirmedAppointment);
-        console.log('✅ Appointment synced to backend API');
+        console.log('✅ Appointment saved to backend API');
       } catch (apiError) {
-        console.warn('⚠️ Could not sync appointment to backend API, will use Firebase:', apiError);
+        console.error('❌ Failed to save appointment:', apiError);
+        throw new Error('Failed to save appointment');
       }
-      
-      await firebaseDbService.upsert('tokens', token.id || token.tokenNumber || `TOK-${Date.now()}`, {
-        ...token,
-        appointmentId: confirmedAppointment.id,
-        patientId: confirmedAppointment.patientId,
-        doctorId: confirmedAppointment.doctorId,
-        hospitalId: confirmedAppointment.hospitalId,
-      });
-
-      const matchedPatient = patientsRaw.find((item) => String(item.id || '') === String(patient?.id || ''));
-      const updatedPatient = {
-        ...(matchedPatient || patient || {}),
-        id: matchedPatient?.id || patient?.id,
-        appointments: [
-          ...new Set([...(matchedPatient?.appointments || patient?.appointments || []), confirmedAppointment.id]),
-        ],
-      };
-
-      if (updatedPatient.id) {
-        await firebaseDbService.upsert('patients', updatedPatient.id, updatedPatient);
-      }
-
-      const paidBill = {
-        id: `BILL-${Date.now()}`,
-        billNumber: `INV-${String(Date.now()).slice(-8)}`,
-        appointmentId: confirmedAppointment.id,
-        patientId: confirmedAppointment.patientId,
-        patientName: confirmedAppointment.patientName,
-        hospitalId: confirmedAppointment.hospitalId,
-        hospital: confirmedAppointment.hospitalName,
-        hospitalName: confirmedAppointment.hospitalName,
-        doctorId: confirmedAppointment.doctorId,
-        doctorName: confirmedAppointment.doctorName,
-        category: confirmedAppointment.specialization || 'Consultation',
-        description: `${confirmedAppointment.specialization || 'Consultation'} appointment`,
         items: [
           { name: 'Consultation Fee', amount: consultationFee },
           { name: 'Registration Fee', amount: registrationFee },
@@ -871,12 +826,7 @@ const BookAppointment = () => {
         createdAt: now.toISOString(),
       };
 
-      await firebaseDbService.upsert('bills', paidBill.id, paidBill);
-      setPatientsRaw((prev) => {
-        const others = prev.filter((item) => String(item.id || '') !== String(updatedPatient.id || ''));
-        return updatedPatient.id ? [...others, updatedPatient] : prev;
-      });
-
+      // Bill will be persisted on backend via appointment creation
       recordHistory({
         module: 'booking',
         action: 'advanced-payment-success',
