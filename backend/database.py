@@ -2,13 +2,16 @@
 
 import os
 from datetime import datetime
+from pathlib import Path
 from sqlalchemy import create_engine, Column, String, Integer, DateTime, Boolean, Float, ForeignKey, Text, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.pool import StaticPool
 
 # Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./noq_hospital.db")
+BACKEND_DIR = Path(__file__).resolve().parent
+DEFAULT_SQLITE_PATH = (BACKEND_DIR / "noq_hospital.db").as_posix()
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_SQLITE_PATH}")
 ECHO_SQL = os.getenv("ECHO_SQL", "False").lower() == "true"
 
 # Create engine

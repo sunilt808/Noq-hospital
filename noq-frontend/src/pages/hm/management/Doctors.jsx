@@ -272,6 +272,53 @@ const Doctors = () => {
     return `DOC-${initials}-${randomNum}`;
   };
 
+  const generateSamplePassword = () => {
+    const prefixes = ['Abcd', 'Medx', 'Doca', 'Heal', 'Care'];
+    const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+    const digits = Math.floor(100 + Math.random() * 900);
+    return `${prefix}@${digits}`;
+  };
+
+  const fillSampleDoctorData = () => {
+    const firstNames = ['Arjun', 'Kiran', 'Rahul', 'Naveen', 'Vikram', 'Sanjay'];
+    const middleNames = ['Dev', 'Raj', 'Kumar', 'Sai', 'Prasad', 'Teja'];
+    const lastNames = ['Reddy', 'Sharma', 'Patel', 'Nair', 'Mehta', 'Verma'];
+    const specializations = ['Cardiology', 'Dermatology', 'Neurology', 'Orthopedics', 'Pediatrics', 'ENT'];
+    const qualificationsList = ['MBBS, MD', 'MBBS, MS', 'MBBS, DNB', 'MBBS, MD, DM'];
+    const licenses = ['MED', 'DOC', 'REG', 'LIC'];
+
+    const pick = (list) => list[Math.floor(Math.random() * list.length)];
+    const randomName = `${pick(firstNames)} ${pick(middleNames)} ${pick(middleNames)} ${pick(lastNames)}`;
+    const randomSpecialization = pick(specializations);
+    const randomDepartmentId = departments?.[0]?.id ? String(departments[0].id) : '';
+    const randomRoom = roomNumbers.find((roomNo) => !doctors.some((d) => String(d.roomNo || '') === String(roomNo))) || roomNumbers[0] || '1';
+    const randomFloor = floors.find((floor) => String(floor).toLowerCase() !== 'ground') || '1';
+    const randomPassword = generateSamplePassword();
+    const email = generateDoctorEmail(randomName).replace(/\s+/g, '').toLowerCase();
+
+    setFormData((prev) => ({
+      ...prev,
+      name: randomName,
+      specialization: randomSpecialization,
+      license: `${pick(licenses)}${Math.floor(100000 + Math.random() * 900000)}`,
+      departmentId: randomDepartmentId,
+      roomNo: String(randomRoom),
+      floor: String(randomFloor),
+      shift: 'morning',
+      advancedBookingCategory: 'general',
+      fee: String((Math.floor(Math.random() * 6) + 5) * 100),
+      phone: `9${Math.floor(100000000 + Math.random() * 900000000)}`,
+      email,
+      experience: String(Math.floor(Math.random() * 8) + 2),
+      qualifications: pick(qualificationsList),
+      category: 'general',
+      promotionLabel: '',
+      status: 'active',
+      generateLogin: true,
+      customPassword: randomPassword,
+    }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -1064,6 +1111,19 @@ Doctor should use these to login to the system.`;
             </div>
             
             <form onSubmit={handleSubmit} style={styles.form}>
+              {!editing && (
+                <div style={styles.sampleGeneratorRow}>
+                  <button
+                    type="button"
+                    onClick={fillSampleDoctorData}
+                    style={styles.sampleFillBtn}
+                  >
+                    Generate Sample Doctor
+                  </button>
+                  <small style={styles.helperText}>Auto-fills 4-word name, strong password format like Abcd@123, and required fields.</small>
+                </div>
+              )}
+
               <div style={styles.formSection}>
                 <h4 style={styles.sectionTitle}>
                   <FontAwesomeIcon icon={faUserMd} /> Basic Information
@@ -1478,6 +1538,8 @@ const styles = {
   checkboxLabel: { display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '500', color: '#0369a1', cursor: 'pointer' },
   checkbox: { width: '1.2rem', height: '1.2rem' },
   helperText: { display: 'block', marginTop: '0.5rem', color: '#64748b', fontSize: '0.875rem' },
+  sampleGeneratorRow: { marginBottom: '1rem', padding: '0.9rem', border: '1px solid #bfdbfe', borderRadius: '0.5rem', background: '#eff6ff' },
+  sampleFillBtn: { padding: '0.6rem 1rem', background: '#2563eb', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: '600' },
   formActions: { display: 'flex', gap: '1rem', marginTop: '2rem', paddingTop: '1.5rem' },
   cancelBtn: { flex: 1, padding: '0.75rem', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: '0.5rem', cursor: 'pointer', fontSize: '1rem' },
   submitBtn: { flex: 1, padding: '0.75rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontSize: '1rem' },

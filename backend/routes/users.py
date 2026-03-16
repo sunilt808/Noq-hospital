@@ -2,10 +2,12 @@
 
 import json
 import logging
+from datetime import datetime
+from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
-from database import get_db, User, AuditLog
+from database import get_db, User, AuditLog, Room
 from services.auth_service import UserService, AuthService
 from audit import AuditLogger
 
@@ -231,6 +233,53 @@ def create_user(
         profile_updates = {k: v for k, v in profile_updates.items() if v is not None}
         if profile_updates:
             user = UserService.update_user(db, user.id, **profile_updates)
+
+        if payload.role == "doctor" and payload.hospital_id and payload.room_no:
+            normalized_room_no = str(payload.room_no).strip()
+            normalized_floor = str(payload.floor or "1").strip()
+
+            room = db.query(Room).filter(
+                Room.hospital_id == payload.hospital_id,
+                Room.room_number == normalized_room_no,
+                Room.floor == normalized_floor,
+            ).first()
+
+            if room:
+                room.department_id = payload.department_id or room.department_id
+                room.department_name = payload.department_name or room.department_name
+                room.status = "occupied"
+                room.type = room.type or "doctor"
+                room.assigned_doctor_id = user.id
+                room.assigned_doctor_name = user.full_name
+                room.updated_at = datetime.utcnow()
+            else:
+                room = Room(
+                    id=str(uuid4()),
+                    hospital_id=payload.hospital_id,
+                    department_id=payload.department_id,
+                    department_name=payload.department_name,
+                    room_number=normalized_room_no,
+                    floor=normalized_floor,
+                    capacity=1,
+                    status="occupied",
+                    type="doctor",
+                    assigned_doctor_id=user.id,
+                    assigned_doctor_name=user.full_name,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                db.add(room)
+
+            db.commit()
+            db.refresh(room)
+
+            user = UserService.update_user(
+                db,
+                user.id,
+                room_id=room.id,
+                room_no=room.room_number,
+                floor=room.floor,
+            )
 
         client_ip = request.client.host if request and request.client else None
         AuditLogger.log(
