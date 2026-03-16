@@ -64,11 +64,27 @@ const handleResponse = async (res) => {
     
     // Check HTTP status
     if (!res.ok) {
-      const message =
-        json?.error ||
-        json?.detail ||
-        json?.message ||
-        `HTTP ${res.status}`;
+      let message = `HTTP ${res.status}`;
+      
+      // Handle 422 validation errors (Pydantic validation)
+      if (res.status === 422 && json?.detail) {
+        if (Array.isArray(json.detail)) {
+          // Pydantic validation error array
+          message = json.detail.map(err => {
+            const field = err?.loc?.join('.') || 'field';
+            return `${field}: ${err?.msg || 'invalid'}`;
+          }).join('; ');
+        } else {
+          message = json.detail;
+        }
+      } else {
+        // Other error types
+        message =
+          json?.error ||
+          json?.detail ||
+          json?.message ||
+          message;
+      }
       
       const error = new Error(message);
       error.status = res.status;

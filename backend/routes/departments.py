@@ -1,22 +1,24 @@
-# backend/routes/departments.py - Department management endpoints
+# backend/routes/departments.py - Department Management Routes
 
-from fastapi import APIRouter, HTTPException, Depends
-from services import auth_service
+import logging
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel
 from typing import Optional
-from database import db
-from google.cloud.firestore_v1.base_query import FieldFilter
 from datetime import datetime
-import uuid
+from uuid import uuid4
+from sqlalchemy.orm import Session
+from database import get_db, Department
+from audit import AuditLogger
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/departments", tags=["Departments"])
 
 
 class DepartmentCreate(BaseModel):
     name: str
-    hospital_id: Optional[str] = None
     description: Optional[str] = None
-    status: Optional[str] = "active"
+    hospital_id: str
 
 
 class DepartmentUpdate(BaseModel):
@@ -25,100 +27,200 @@ class DepartmentUpdate(BaseModel):
     status: Optional[str] = None
 
 
-class StandardResponse(BaseModel):
-    success: bool
-    message: str
-    data: dict = {}
-
-
-@router.get("", response_model=StandardResponse)
-def get_departments(hospital_id: Optional[str] = None):
-    """Get departments - PUBLIC endpoint for patient booking."""
-    from services import user_service
-    
-    try:
-        departments = user_service.get_all_departments(hospital_id)
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    
-    # Filter by status
-    departments = [d for d in departments if d.get("status", "active").lower() in ["active", "approved"]]
-    
-    return StandardResponse(
-        success=True,
-        message="Departments fetched.",
-        data={"departments": departments, "count": len(departments)}
-    )
-
-
-@router.get("/{hospital_id}", response_model=StandardResponse)
-def get_hospital_departments(hospital_id: str):
-    """Get departments for a specific hospital."""
-    from services import user_service
-    
-    try:
-        departments = user_service.get_all_departments(hospital_id)
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    
-    return StandardResponse(
-        success=True,
-        message="Departments fetched.",
-        data={"departments": departments, "count": len(departments)}
-    )
-
-
-@router.post("", response_model=StandardResponse, status_code=201)
-def create_department(dept: DepartmentCreate, payload: dict = Depends(auth_service.require_auth)):
-    """Create a department."""
-    department_id = f"DEPT-{uuid.uuid4().hex[:12].upper()}"
-    department_doc = {
-        "id": department_id,
+def _serialize_dept(dept: Department) -> dict:
+    return {
+        "id": dept.id,
+        "hospital_id": dept.hospital_id,
         "name": dept.name,
-        "hospital_id": dept.hospital_id or payload.get("hospital_id") or "",
-        "description": dept.description or "",
-        "status": (dept.status or "active").lower(),
-        "created_at": datetime.utcnow().isoformat() + "Z",
-        "updated_at": datetime.utcnow().isoformat() + "Z",
+        "description": dept.description,
+        "status": dept.status,
+        "created_at": dept.created_at.isoformat() if dept.created_at else None,
+        "updated_at": dept.updated_at.isoformat() if dept.updated_at else None,
     }
-    db.collection("departments").document(department_id).set(department_doc)
-    return StandardResponse(success=True, message="Department created.", data={"department": department_doc})
 
 
-@router.put("/{department_id}", response_model=StandardResponse)
-def update_department(department_id: str, updates: DepartmentUpdate, payload: dict = Depends(auth_service.require_auth)):
+@router.get("")
+def list_departments(
+    hospital_id: str = None,
+    db: Session = Depends(get_db)
+):
+    """List departments with optional hospital filter."""
+    try:
+        query = db.query(Department)
+        
+        if hospital_id:
+            query = query.filter(Department.hospital_id == hospital_id)
+        
+        departments = query.filter(Department.status == "active").all()
+        
+        return {
+            "success": True,
+            "data": {
+                "departments": [_serialize_dept(d) for d in departments]
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error listing departments: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+
+@router.post("")
+def create_department(
+    payload: DepartmentCreate,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Create a new department."""
+    try:
+        if not payload.name or not payload.hospital_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Name and hospital_id are required"
+            )
+        
+        dept = Department(
+            id=str(uuid4()),
+            hospital_id=payload.hospital_id,
+            name=payload.name.strip(),
+            description=(payload.description or "").strip() or None,
+            status="active",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        
+        db.add(dept)
+        db.commit()
+        db.refresh(dept)
+        
+        client_ip = request.client.host if request and request.client else None
+        AuditLogger.log_entity_create(
+            db,
+            entity_type="Department",
+            entity_id=dept.id,
+            data={"name": dept.name, "hospital_id": dept.hospital_id},
+            ip_address=client_ip,
+        )
+        
+        return {
+            "success": True,
+            "data": {"department": _serialize_dept(dept)}
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating department: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+
+@router.put("/{department_id}")
+def update_department(
+    department_id: str,
+    payload: DepartmentUpdate,
+    request: Request,
+    db: Session = Depends(get_db)
+):
     """Update a department."""
-    ref = db.collection("departments").document(department_id)
-    snapshot = ref.get()
-    if not snapshot.exists:
-        raise HTTPException(status_code=404, detail="Department not found.")
+    try:
+        dept = db.query(Department).filter(Department.id == department_id).first()
+        if not dept:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Department not found"
+            )
+        
+        updates = {}
+        if payload.name:
+            dept.name = payload.name.strip()
+            updates["name"] = dept.name
+        if payload.description is not None:
+            dept.description = payload.description.strip() if payload.description else None
+            updates["description"] = dept.description
+        if payload.status:
+            dept.status = payload.status.lower()
+            updates["status"] = dept.status
+        
+        dept.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(dept)
+        
+        client_ip = request.client.host if request and request.client else None
+        AuditLogger.log_entity_update(
+            db,
+            entity_type="Department",
+            entity_id=department_id,
+            old_values={},
+            new_values=updates,
+            ip_address=client_ip,
+        )
+        
+        return {
+            "success": True,
+            "data": {"department": _serialize_dept(dept)}
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating department: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
-    update_doc = {
-        "updated_at": datetime.utcnow().isoformat() + "Z",
-    }
-    if updates.name is not None:
-        update_doc["name"] = updates.name
-    if updates.description is not None:
-        update_doc["description"] = updates.description
-    if updates.status is not None:
-        update_doc["status"] = updates.status.lower()
 
-    ref.update(update_doc)
-    fresh = ref.get().to_dict() or {}
-    return StandardResponse(success=True, message="Department updated.", data={"department": {"id": department_id, **fresh}})
+@router.patch("/{department_id}")
+def patch_department(
+    department_id: str,
+    payload: DepartmentUpdate,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Patch a department."""
+    return update_department(department_id, payload, request, db)
 
 
-@router.patch("/{department_id}", response_model=StandardResponse)
-def patch_department(department_id: str, updates: DepartmentUpdate, payload: dict = Depends(auth_service.require_auth)):
-    """Patch a department (alias for update)."""
-    return update_department(department_id, updates, payload)
-
-
-@router.delete("/{department_id}", response_model=StandardResponse)
-def delete_department(department_id: str, payload: dict = Depends(auth_service.require_auth)):
-    """Delete a department."""
-    ref = db.collection("departments").document(department_id)
-    if not ref.get().exists:
-        raise HTTPException(status_code=404, detail="Department not found.")
-    ref.delete()
-    return StandardResponse(success=True, message="Department deleted.", data={"id": department_id})
+@router.delete("/{department_id}")
+def delete_department(
+    department_id: str,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Soft-delete a department."""
+    try:
+        dept = db.query(Department).filter(Department.id == department_id).first()
+        if not dept:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Department not found"
+            )
+        
+        dept.status = "inactive"
+        dept.updated_at = datetime.utcnow()
+        db.commit()
+        
+        client_ip = request.client.host if request and request.client else None
+        AuditLogger.log_entity_delete(
+            db,
+            entity_type="Department",
+            entity_id=department_id,
+            data={"name": dept.name},
+            ip_address=client_ip,
+        )
+        
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting department: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )

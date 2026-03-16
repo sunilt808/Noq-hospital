@@ -16,6 +16,23 @@ const normalizeUser = (user = {}) => ({
   hospital_id: user.hospital_id || user.hospitalId || '',
 });
 
+const parseAuthResponseData = (responseData = {}) => {
+  const token = responseData?.token || responseData?.access_token || null;
+  const user = responseData?.user
+    ? responseData.user
+    : {
+        id: responseData?.id,
+        email: responseData?.email,
+        full_name: responseData?.full_name,
+        name: responseData?.name || responseData?.full_name,
+        phone: responseData?.phone,
+        role: responseData?.role,
+        hospital_id: responseData?.hospital_id,
+      };
+
+  return { user, token };
+};
+
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [token, setToken] = useState(null);
@@ -65,7 +82,11 @@ export const AuthProvider = ({ children }) => {
         throw new Error(response.message || 'Login failed');
       }
 
-      const { user, token: newToken } = response.data;
+      const { user, token: newToken } = parseAuthResponseData(response.data);
+
+      if (!user?.email || !newToken) {
+        throw new Error('Invalid login response from server');
+      }
 
       // Store in localStorage
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
@@ -105,7 +126,11 @@ export const AuthProvider = ({ children }) => {
         throw new Error(response.message || 'Signup failed');
       }
 
-      const { user, token: newToken } = response.data;
+      const { user, token: newToken } = parseAuthResponseData(response.data);
+
+      if (!user?.email || !newToken) {
+        throw new Error('Invalid signup response from server');
+      }
 
       // Store in localStorage
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));

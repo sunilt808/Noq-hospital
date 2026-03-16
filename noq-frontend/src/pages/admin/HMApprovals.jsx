@@ -20,6 +20,7 @@ const HMApprovals = () => {
     if (value.includes('warn')) return 'warned';
     if (value.includes('reject') || value.includes('block')) return 'rejected';
     if (value.includes('suspend')) return 'suspended';
+    if (value === 'inactive' || value === 'deleted') return 'rejected';
     return 'pending';
   };
 
@@ -29,12 +30,14 @@ const HMApprovals = () => {
 
     try {
       const [hospitalsRes, hmUsersRes] = await Promise.all([
-        api.get('/hospitals'),
+        api.get('/hospitals?status_filter=all'),
         api.get('/users?role=hm'),
       ]);
 
-      const hospitals = hospitalsRes?.data?.hospitals || [];
-      const hmUsers = hmUsersRes?.data?.users || [];
+      const hospitals = Array.isArray(hospitalsRes)
+        ? hospitalsRes
+        : (hospitalsRes?.data?.hospitals || hospitalsRes?.hospitals || []);
+      const hmUsers = hmUsersRes?.data?.users || hmUsersRes?.users || [];
 
       const merged = hospitals.map((hospital) => {
         const hospitalId = String(hospital?.id || hospital?.HID || '');
@@ -45,17 +48,41 @@ const HMApprovals = () => {
 
         return {
           id: hospitalId,
-          name: hmUser?.name || hospital?.hm_name || hospital?.hmName || 'N/A',
+          name: hmUser?.full_name || hmUser?.name || hospital?.hm_name || hospital?.hmName || 'N/A',
           email: hospital?.email || hmUser?.email || '',
           phone: hospital?.phone || hmUser?.phone || '',
-          hospital: hospital?.hospital_name || hospital?.hospitalName || 'N/A',
+          hospital: hospital?.hospital_name || hospital?.hospitalName || hospital?.name || 'N/A',
           status: normalizeStatus(hospital?.status || hmUser?.status),
           date: String(hospital?.created_at || hmUser?.created_at || new Date().toISOString()).slice(0, 10),
           adminMessage: hospital?.admin_message || hospital?.adminMessage || '',
         };
       });
 
-      setHmRequests(merged);
+      const mergedById = new Map(merged.map((entry) => [String(entry.id), entry]));
+      hmUsers.forEach((hmUser) => {
+        const hmRawStatus = String(hmUser?.status || '').toLowerCase();
+        if (hmRawStatus === 'inactive' || hmRawStatus === 'deleted') return;
+
+        const hmHospitalId = String(hmUser?.hospital_id || hmUser?.hospitalId || '');
+        if (!hmHospitalId || mergedById.has(hmHospitalId)) return;
+
+        mergedById.set(hmHospitalId, {
+          id: hmHospitalId,
+          name: hmUser?.full_name || hmUser?.name || 'N/A',
+          email: hmUser?.email || '',
+          phone: hmUser?.phone || '',
+          hospital: hmHospitalId,
+          status: normalizeStatus(hmUser?.status),
+          date: String(hmUser?.created_at || new Date().toISOString()).slice(0, 10),
+          adminMessage: '',
+        });
+      });
+
+      const sorted = Array.from(mergedById.values()).sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+
+      setHmRequests(sorted);
     } catch (err) {
       setHmRequests([]);
       setError(err?.message || 'Unable to load HM approvals.');
@@ -76,7 +103,15 @@ const HMApprovals = () => {
 
   const handleAction = async (id, action) => {
     if (action === 'deleted') {
-      alert('Delete is not enabled in backend for HM approvals. Use reject or suspend.');
+      const confirmed = window.confirm('Delete this hospital manager request? This action will remove it from approvals.');
+      if (!confirmed) return;
+
+      try {
+        await api.delete(`/hospitals/${id}`);
+        await fetchHmApprovals();
+      } catch (err) {
+        alert(err?.message || 'Unable to delete HM request.');
+      }
       return;
     }
 

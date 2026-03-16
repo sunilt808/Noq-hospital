@@ -55,7 +55,9 @@ const HmSignup = () => {
   const genders = ['Male', 'Female', 'Other'];
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    const nextValue = name === 'phone' ? value.replace(/\D/g, '').slice(0, 10) : value;
+    setFormData({ ...formData, [name]: nextValue });
   };
 
   const refreshCaptcha = () => {
@@ -399,6 +401,8 @@ const HmSignup = () => {
                 value={formData.phone}
                 onChange={handleChange}
                 maxLength="10"
+                inputMode="numeric"
+                pattern="[0-9]{10}"
                 placeholder="Enter 10-digit phone number"
                 className={`form-control ${errors.phone ? 'error' : ''}`}
                 disabled={loading}

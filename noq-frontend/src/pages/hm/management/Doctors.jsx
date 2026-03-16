@@ -3,8 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { recordHistory } from '../../../services/historyService';
 import api from '../../../services/api';
-import { useAuth } from '../../../context/FirebaseAuthContext';
-import firebaseDbService from '../../../services/firebaseDbService';
+import { useAuth } from '../../../context/AuthContext';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faUserMd, faSearch, faPlus, faEdit, faTrash, faToggleOn, faToggleOff, faEye, 
@@ -85,49 +84,99 @@ const Doctors = () => {
     let active = true;
 
     const loadDoctorData = async () => {
-      const [doctorRows, backendDoctorRes, departmentRows, roomRes, hospitalRows] = await Promise.all([
-        firebaseDbService.getCollection('doctors'),
-        api.get('/users?role=doctor').catch(() => ({ data: { users: [] } })),
-        firebaseDbService.getCollection('departments'),
+      const [backendDoctorRes, departmentRes, roomRes, hospitalRes] = await Promise.all([
+        api.get(`/users?role=doctor${currentHospitalId ? `&hospital_id=${encodeURIComponent(currentHospitalId)}` : ''}`).catch(() => ({ data: { data: { users: [] } } })),
+        api.get(`/departments${currentHospitalId ? `?hospital_id=${encodeURIComponent(currentHospitalId)}` : ''}`).catch(() => ({ data: { departments: [] } })),
         api.get('/rooms').catch(() => ({ data: { rooms: [] } })),
-        firebaseDbService.getCollection('hospitals'),
+        api.get('/hospitals').catch(() => ({ data: { data: { hospitals: [] } } })),
       ]);
   const roomRows = Array.isArray(roomRes?.data?.rooms) ? roomRes.data.rooms : [];
 
 
       if (!active) return;
 
-      const backendDoctors = Array.isArray(backendDoctorRes?.data?.users) ? backendDoctorRes.data.users : [];
+      const backendDoctors = Array.isArray(backendDoctorRes?.data?.data?.users)
+        ? backendDoctorRes.data.data.users
+        : Array.isArray(backendDoctorRes?.data?.users)
+          ? backendDoctorRes.data.users
+          : [];
       const mergedById = new Map();
-      [...backendDoctors, ...(Array.isArray(doctorRows) ? doctorRows : [])].forEach((doctor) => {
+      [...backendDoctors].forEach((doctor) => {
         const doctorId = String(doctor?.id || doctor?.DID || '').trim();
         if (!doctorId) return;
         const existing = mergedById.get(doctorId) || {};
         mergedById.set(doctorId, { ...existing, ...doctor });
       });
 
+      const normalizedRooms = (Array.isArray(roomRows) ? roomRows : []).map((room) => ({
+        ...room,
+        id: room.id,
+        hospitalId: String(room.hospitalId || room.hospital_id || room.HID || ''),
+        deptId: String(room.deptId || room.departmentId || room.department_id || ''),
+        number: String(room.number || room.room_number || room.roomNo || ''),
+        floor: String(room.floor || '1'),
+        status: room.status || 'available',
+      }));
+
       const normalizedDoctors = Array.from(mergedById.values())
-        .map((doctor) => ({
-          ...doctor,
-          hospitalId: doctor.hospitalId || doctor.hospital_id || doctor.HID || '',
-          hospitalName: doctor.hospitalName || doctor.hospital_name || '',
-          departmentId: String(doctor.departmentId || doctor.department_id || doctor.deptId || ''),
-          departmentName: doctor.departmentName || doctor.department_name || '',
-          roomNo: String(doctor.roomNo || doctor.room_no || doctor.roomNumber || ''),
-          roomNumber: String(doctor.roomNumber || doctor.room_no || doctor.roomNo || ''),
-          roomId: doctor.roomId || doctor.room_id || null,
-          advancedBookingCategory: doctor.advancedBookingCategory || doctor.advanced_booking_category || 'general',
-          promotionLabel: doctor.promotionLabel || doctor.promotion_label || '',
-        }))
+        .map((doctor) => {
+          const doctorHospitalId = String(doctor.hospitalId || doctor.hospital_id || doctor.HID || '');
+          const doctorRoomId = doctor.roomId || doctor.room_id || null;
+          const doctorRoomNo = String(doctor.roomNo || doctor.room_no || doctor.roomNumber || '');
+          const doctorFloor = String(doctor.floor || '1');
+
+          const roomById = doctorRoomId
+            ? normalizedRooms.find((room) => String(room.id) === String(doctorRoomId))
+            : null;
+          const roomByNumber = !roomById && doctorRoomNo
+            ? normalizedRooms.find(
+                (room) =>
+                  String(room.number) === doctorRoomNo &&
+                  String(room.floor || '1') === doctorFloor &&
+                  (!room.hospitalId || !doctorHospitalId || String(room.hospitalId) === doctorHospitalId)
+              )
+            : null;
+          const matchedRoom = roomById || roomByNumber;
+          const resolvedRoomNo = doctorRoomNo || String(matchedRoom?.number || '');
+          const resolvedFloor = doctorFloor || String(matchedRoom?.floor || '1');
+
+          return {
+            ...doctor,
+            hospitalId: doctorHospitalId,
+            hospitalName: doctor.hospitalName || doctor.hospital_name || '',
+            departmentId: String(doctor.departmentId || doctor.department_id || doctor.deptId || ''),
+            departmentName: doctor.departmentName || doctor.department_name || '',
+            roomNo: resolvedRoomNo,
+            roomNumber: resolvedRoomNo,
+            roomId: doctorRoomId || matchedRoom?.id || null,
+            roomInfo: resolvedRoomNo ? `Room ${resolvedRoomNo} - Floor ${resolvedFloor}` : 'Room not assigned',
+            floor: resolvedFloor,
+            license: doctor.license || doctor.license_number || '',
+            shift: doctor.shift || 'morning',
+            fee: Number(doctor.fee ?? doctor.consultation_fee ?? 0),
+            advancedBookingCategory: doctor.advancedBookingCategory || doctor.advanced_booking_category || 'general',
+            promotionLabel: doctor.promotionLabel || doctor.promotion_label || '',
+          };
+        })
         .filter((doctor) => {
           const hospitalId = String(doctor.hospitalId || '');
-          return !currentHospitalId || !hospitalId || hospitalId === currentHospitalId;
+          const isActive = !doctor.status || doctor.status === 'active';
+          return isActive && (!currentHospitalId || !hospitalId || hospitalId === currentHospitalId);
         });
 
       setDoctors(normalizedDoctors);
+      const departmentRows = Array.isArray(departmentRes?.data?.departments)
+        ? departmentRes.data.departments
+        : [];
+      const hospitalRows = Array.isArray(hospitalRes?.data?.data?.hospitals)
+        ? hospitalRes.data.data.hospitals
+        : Array.isArray(hospitalRes?.data?.hospitals)
+          ? hospitalRes.data.hospitals
+          : [];
+
       setDepartments((Array.isArray(departmentRows) ? departmentRows : []).filter(d => d.status === 'active'));
       setRooms(
-        (Array.isArray(roomRows) ? roomRows : []).filter((room) => {
+        normalizedRooms.filter((room) => {
           const hospitalId = String(room.hospitalId || room.hospital_id || room.HID || '');
           return !currentHospitalId || !hospitalId || hospitalId === currentHospitalId;
         })
@@ -176,6 +225,24 @@ const Doctors = () => {
     const room = rooms.find(r => r.id === roomId);
     return room ? `Room ${room.number} - Floor ${room.floor}` : 'Not assigned';
   };
+
+  const isPersistentRoomId = (roomId) => {
+    const value = String(roomId || '');
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+    return isUuid || value.startsWith('ROOM-');
+  };
+
+  const buildRoomPayload = (room, fallbackHospitalId = '', fallbackDepartmentId = '') => ({
+    hospital_id: String(room.hospitalId || room.hospital_id || fallbackHospitalId || ''),
+    department_id: String(room.deptId || room.departmentId || room.department_id || fallbackDepartmentId || ''),
+    department_name: room.deptName || room.departmentName || room.department_name || null,
+    room_number: String(room.number || room.room_number || room.roomNo || ''),
+    floor: String(room.floor || '1'),
+    status: room.status || 'available',
+    type: room.type || 'doctor',
+    assigned_doctor_id: room.assignedDoctorId || room.assigned_doctor_id || null,
+    assigned_doctor_name: room.assignedDoctorName || room.assigned_doctor_name || null,
+  });
 
   const generateDoctorEmail = (name) => {
     const cleanName = name.toLowerCase()
@@ -243,6 +310,17 @@ const Doctors = () => {
       return;
     }
 
+    const proposedEmail = String(formData.email || generateDoctorEmail(formData.name)).trim().toLowerCase();
+    if (!editing && formData.generateLogin) {
+      const duplicateEmailDoctor = doctors.find(
+        (doctor) => String(doctor.email || '').trim().toLowerCase() === proposedEmail
+      );
+      if (duplicateEmailDoctor) {
+        alert(`Doctor email already exists: ${proposedEmail}. Please use a different email.`);
+        return;
+      }
+    }
+
     // Check if room is already occupied
     const isRoomOccupied = doctors.some(doc => 
       doc.roomNo === formData.roomNo && doc.floor === formData.floor && doc.id !== editing?.id
@@ -304,8 +382,8 @@ const Doctors = () => {
       setDoctors(updated);
       const updatedDoctor = updated.find((doctor) => doctor.id === editing.id);
       if (updatedDoctor) {
-        await firebaseDbService.upsert('doctors', updatedDoctor.id, updatedDoctor);
         await api.patch(`/users/${updatedDoctor.id}`, {
+          name: updatedDoctor.name || null,
           specialization: updatedDoctor.specialization || null,
           hospital_name: updatedDoctor.hospitalName || null,
           department_id: String(updatedDoctor.departmentId || ''),
@@ -380,29 +458,63 @@ const Doctors = () => {
         });
       }
 
-      setRooms(updatedRooms);
-      await Promise.all(
-        updatedRooms.map((room) =>
-          api.put(`/rooms/${room.id}`, {
-            number: room.number,
-            floor: room.floor,
-            deptId: room.deptId,
-            deptName: room.deptName,
-            status: room.status,
-            hospitalId: room.hospitalId,
-            assignedDoctorId: room.assignedDoctorId,
-            assignedDoctorName: room.assignedDoctorName,
-            type: room.type,
-          }).catch(() => {})
-        )
+      const syncedRooms = await Promise.all(
+        updatedRooms.map(async (room) => {
+          const roomPayload = buildRoomPayload(room, resolvedHospitalId, String(formData.departmentId || ''));
+
+          const roomId = String(room.id || '');
+
+          if (!isPersistentRoomId(roomId)) {
+            const created = await api.post('/rooms', roomPayload).catch(() => null);
+            const createdRoom = created?.data?.room || created?.room || null;
+            return createdRoom ? { ...room, ...createdRoom, id: createdRoom.id } : room;
+          }
+
+          const updatedRoomResponse = await api.put(`/rooms/${roomId}`, roomPayload).catch((error) => {
+            if (error?.status === 404) {
+              return api.post('/rooms', roomPayload).catch(() => null);
+            }
+            return null;
+          });
+          const updatedRoom = updatedRoomResponse?.data?.room || updatedRoomResponse?.room || null;
+          return updatedRoom ? { ...room, ...updatedRoom, id: updatedRoom.id || room.id } : room;
+        })
       );
+      setRooms(syncedRooms);
+
+      const syncedTargetRoom = syncedRooms.find(
+        (room) =>
+          String(room.number || room.room_number || '') === newRoomNo &&
+          String(room.floor || '1') === newFloor &&
+          (!room.hospitalId || String(room.hospitalId) === resolvedHospitalId)
+      );
+
+      const doctorsAfterRoomSync = updated.map((doctor) =>
+        doctor.id === editing.id
+          ? {
+              ...doctor,
+              roomId: syncedTargetRoom?.id || doctor.roomId || null,
+              roomNo: newRoomNo,
+              floor: newFloor,
+              roomInfo: `Room ${newRoomNo} - Floor ${newFloor}`,
+            }
+          : doctor
+      );
+      setDoctors(doctorsAfterRoomSync);
+
+      const syncedEditedDoctor = doctorsAfterRoomSync.find((doctor) => doctor.id === editing.id);
+      if (syncedEditedDoctor) {
+        await api.patch(`/users/${syncedEditedDoctor.id}`, {
+          room_no: String(syncedEditedDoctor.roomNo || ''),
+          floor: String(syncedEditedDoctor.floor || '1'),
+        }).catch(() => {});
+      }
     } else {
       let backendDoctorId = null;
-      let finalDoctorRecord = null;
 
       if (credentials) {
         try {
-          const response = await api.post('/users/create', {
+          const payload = {
             name: formData.name,
             email: credentials.email,
             role: 'doctor',
@@ -411,12 +523,12 @@ const Doctors = () => {
             hospital_id: resolvedHospitalId,
             hospital_name: resolvedHospitalName,
             specialization: formData.specialization || null,
-            department_id: String(formData.departmentId || ''),
-            department_name: deptName,
-            room_no: String(formData.roomNo || ''),
-            floor: String(formData.floor || '1'),
-            room_id: null,
+            department_id: String(formData.departmentId || '').trim() || null,
+            department_name: deptName || null,
+            room_no: String(formData.roomNo || '').trim() || null,
+            floor: String(formData.floor || '').trim() || null,
             license: formData.license || null,
+            shift: formData.shift || 'morning',
             advanced_booking_category: formData.advancedBookingCategory || 'general',
             fee: parseFloat(formData.fee) || 0,
             experience: parseInt(formData.experience) || 0,
@@ -424,11 +536,21 @@ const Doctors = () => {
             category: formData.category || 'general',
             promotion_label: formData.promotionLabel || null,
             status: formData.status || 'active',
-          });
-          backendDoctorId = response?.data?.id || null;
-        } catch (_) {
-          backendDoctorId = null;
+          };
+          // Filter out null values to prevent Pydantic validation errors
+          const filteredPayload = Object.fromEntries(Object.entries(payload).filter(([_, v]) => v !== null));
+          const response = await api.post('/users/create', filteredPayload);
+          backendDoctorId = response?.data?.id || response?.id || null;
+        } catch (error) {
+          const errMsg = error?.response?.detail || error?.message || 'Doctor creation failed';
+          alert(`Error: ${errMsg}`);
+          return;
         }
+      }
+
+      if (!backendDoctorId) {
+        alert('Doctor account was not created in backend. Please enable login creation and retry.');
+        return;
       }
 
       const newDoctor = {
@@ -448,132 +570,114 @@ const Doctors = () => {
         password: credentials?.password || '',
         experience: parseInt(formData.experience) || 0,
         createdAt: new Date().toISOString(),
-        roomId: Date.now() + 1000 // Temporary room ID
       };
-      
-      const updated = [...doctors, newDoctor];
-      setDoctors(updated);
-      await firebaseDbService.upsert('doctors', newDoctor.id, newDoctor);
-      
-      // Create/update room entry
-      const existingRoom = rooms.find(r =>
-        String(r.number) === String(formData.roomNo) &&
-        String(r.floor || '1') === String(formData.floor || '1') &&
-        (!r.hospitalId || String(r.hospitalId) === resolvedHospitalId)
-      );
-      let updatedRooms = [...rooms];
-      
-      if (existingRoom) {
-        updatedRooms = updatedRooms.map(room => 
-          room.id === existingRoom.id ? { 
-            ...room, 
-            status: 'occupied', 
-            deptId: String(formData.departmentId),
-            deptName: deptName,
-            hospitalId: resolvedHospitalId,
-            assignedDoctorId: String(newDoctor.id || ''),
-            assignedDoctorName: newDoctor.name || ''
-          } : room
-        );
 
-        const updatedDoctorsWithRoom = updated.map((doctor) =>
-          doctor.id === newDoctor.id
-            ? { ...doctor, roomId: existingRoom.id }
-            : doctor
-        );
-        setDoctors(updatedDoctorsWithRoom);
-        const roomDoctor = updatedDoctorsWithRoom.find((doctor) => doctor.id === newDoctor.id);
-        finalDoctorRecord = roomDoctor || null;
-        if (roomDoctor) {
-          await firebaseDbService.upsert('doctors', roomDoctor.id, roomDoctor);
-        }
+      const existingRoom = rooms.find((room) =>
+        String(room.number || room.room_number || '') === String(formData.roomNo || '') &&
+        String(room.floor || '1') === String(formData.floor || '1') &&
+        (!room.hospitalId || String(room.hospitalId) === resolvedHospitalId)
+      );
+
+      const roomDraft = {
+        ...(existingRoom || {}),
+        number: String(formData.roomNo || ''),
+        floor: String(formData.floor || '1'),
+        deptId: String(formData.departmentId || ''),
+        deptName,
+        hospitalId: resolvedHospitalId,
+        status: 'occupied',
+        assignedDoctorId: String(backendDoctorId || ''),
+        assignedDoctorName: formData.name || '',
+        type: 'doctor',
+      };
+
+      const roomPayload = buildRoomPayload(roomDraft, resolvedHospitalId, String(formData.departmentId || ''));
+      let syncedDoctorRoom = null;
+
+      if (existingRoom && isPersistentRoomId(String(existingRoom.id || ''))) {
+        const roomId = String(existingRoom.id || '');
+        const roomUpdateResponse = await api.put(`/rooms/${roomId}`, roomPayload).catch((error) => {
+          if (error?.status === 404) {
+            return api.post('/rooms', roomPayload).catch(() => null);
+          }
+          return null;
+        });
+        syncedDoctorRoom = roomUpdateResponse?.data?.room || roomUpdateResponse?.room || null;
       } else {
-        const newRoom = {
-          id: Date.now(),
-          number: formData.roomNo,
-          floor: formData.floor,
-          deptId: String(formData.departmentId),
-          deptName: deptName,
-          hospitalId: resolvedHospitalId,
-          status: 'occupied',
-          assignedDoctorId: String(newDoctor.id || ''),
-          assignedDoctorName: newDoctor.name || '',
-          type: 'doctor',
-          createdAt: new Date().toISOString()
-        };
-        updatedRooms.push(newRoom);
-
-        const updatedDoctorsWithRoom = updated.map((doctor) =>
-          doctor.id === newDoctor.id
-            ? { ...doctor, roomId: newRoom.id }
-            : doctor
-        );
-        setDoctors(updatedDoctorsWithRoom);
-        const roomDoctor = updatedDoctorsWithRoom.find((doctor) => doctor.id === newDoctor.id);
-        finalDoctorRecord = roomDoctor || null;
-        if (roomDoctor) {
-          await firebaseDbService.upsert('doctors', roomDoctor.id, roomDoctor);
-        }
+        const roomCreateResponse = await api.post('/rooms', roomPayload).catch(() => null);
+        syncedDoctorRoom = roomCreateResponse?.data?.room || roomCreateResponse?.room || null;
       }
-      
-      setRooms(updatedRooms);
-      await Promise.all(
-        updatedRooms.map((room) =>
-          api.put(`/rooms/${room.id}`, {
-            number: room.number,
-            floor: room.floor,
-            deptId: room.deptId,
-            deptName: room.deptName,
-            status: room.status,
-            hospitalId: room.hospitalId,
-            assignedDoctorId: room.assignedDoctorId,
-            assignedDoctorName: room.assignedDoctorName,
-            type: room.type,
-          }).catch(() => {})
-        )
+
+      const userPatchPayload = {
+        specialization: newDoctor.specialization || null,
+        hospital_name: newDoctor.hospitalName || null,
+        department_id: String(newDoctor.departmentId || ''),
+        department_name: newDoctor.departmentName || null,
+        room_id: syncedDoctorRoom?.id ? String(syncedDoctorRoom.id) : null,
+        room_no: syncedDoctorRoom
+          ? String(syncedDoctorRoom.room_number || syncedDoctorRoom.number || formData.roomNo || '')
+          : null,
+        floor: syncedDoctorRoom
+          ? String(syncedDoctorRoom.floor || formData.floor || '1')
+          : null,
+        license: newDoctor.license || null,
+        advanced_booking_category: newDoctor.advancedBookingCategory || 'general',
+        fee: Number(newDoctor.fee || 0),
+        experience: Number(newDoctor.experience || 0),
+        qualifications: newDoctor.qualifications || null,
+        category: newDoctor.category || null,
+        promotion_label: newDoctor.promotionLabel || null,
+        status: newDoctor.status || 'active',
+      };
+      const filteredUserPatchPayload = Object.fromEntries(
+        Object.entries(userPatchPayload).filter(([, value]) => value !== null)
       );
+      await api.patch(`/users/${backendDoctorId}`, filteredUserPatchPayload).catch(() => {});
 
-      if (backendDoctorId) {
-        const doctorForBackend = finalDoctorRecord || newDoctor;
-        await api.patch(`/users/${backendDoctorId}`, {
-          specialization: doctorForBackend.specialization || null,
-          hospital_name: doctorForBackend.hospitalName || null,
-          department_id: String(doctorForBackend.departmentId || ''),
-          department_name: doctorForBackend.departmentName || null,
-          room_id: doctorForBackend.roomId ? String(doctorForBackend.roomId) : null,
-          room_no: String(doctorForBackend.roomNo || ''),
-          floor: String(doctorForBackend.floor || '1'),
-          license: doctorForBackend.license || null,
-          advanced_booking_category: doctorForBackend.advancedBookingCategory || 'general',
-          fee: Number(doctorForBackend.fee || 0),
-          experience: Number(doctorForBackend.experience || 0),
-          qualifications: doctorForBackend.qualifications || null,
-          category: doctorForBackend.category || null,
-          promotion_label: doctorForBackend.promotionLabel || null,
-          status: doctorForBackend.status || 'active',
-        }).catch(() => {});
+      if (!syncedDoctorRoom) {
+        alert('Doctor created, but room sync failed. Refresh page and assign room from Rooms page.');
       }
 
-      // Save doctor credentials for login
-      if (credentials) {
-        const doctorUser = {
-          id: newDoctor.id,
-          doctorId: doctorId,
-          name: formData.name,
-          email: credentials.email,
-          password: credentials.password,
-          specialization: formData.specialization,
-          advancedBookingCategory: formData.advancedBookingCategory || 'general',
-          hospitalId: resolvedHospitalId,
-          hospitalName: resolvedHospitalName,
-          departmentId: String(formData.departmentId),
-          departmentName: deptName,
-          status: 'active',
-          createdAt: new Date().toISOString()
+      const finalDoctor = {
+        ...newDoctor,
+        roomId: syncedDoctorRoom?.id || null,
+        roomNo: syncedDoctorRoom
+          ? String(syncedDoctorRoom.room_number || syncedDoctorRoom.number || formData.roomNo || '')
+          : '',
+        floor: syncedDoctorRoom ? String(syncedDoctorRoom.floor || formData.floor || '1') : '1',
+        roomInfo: syncedDoctorRoom
+          ? `Room ${String(syncedDoctorRoom.room_number || syncedDoctorRoom.number || formData.roomNo || '')} - Floor ${String(syncedDoctorRoom.floor || formData.floor || '1')}`
+          : 'Room not assigned',
+      };
+
+      setDoctors([...doctors, finalDoctor]);
+      if (syncedDoctorRoom) {
+        const normalizedSyncedRoom = {
+          ...syncedDoctorRoom,
+          id: syncedDoctorRoom.id,
+          number: String(syncedDoctorRoom.number || syncedDoctorRoom.room_number || formData.roomNo || ''),
+          floor: String(syncedDoctorRoom.floor || formData.floor || '1'),
+          deptId: String(syncedDoctorRoom.deptId || syncedDoctorRoom.departmentId || syncedDoctorRoom.department_id || formData.departmentId || ''),
+          deptName: syncedDoctorRoom.deptName || syncedDoctorRoom.departmentName || syncedDoctorRoom.department_name || deptName,
+          hospitalId: String(syncedDoctorRoom.hospitalId || syncedDoctorRoom.hospital_id || resolvedHospitalId),
+          assignedDoctorId: String(syncedDoctorRoom.assignedDoctorId || syncedDoctorRoom.assigned_doctor_id || backendDoctorId || ''),
+          assignedDoctorName: syncedDoctorRoom.assignedDoctorName || syncedDoctorRoom.assigned_doctor_name || formData.name || '',
+          status: syncedDoctorRoom.status || 'occupied',
+          type: syncedDoctorRoom.type || 'doctor',
         };
-
-        await firebaseDbService.upsert('doctorUsers', doctorUser.id, doctorUser);
+        setRooms((prevRooms) => {
+          const exists = prevRooms.some((room) => String(room.id || '') === String(normalizedSyncedRoom.id || ''));
+          if (exists) {
+            return prevRooms.map((room) =>
+              String(room.id || '') === String(normalizedSyncedRoom.id || '')
+                ? { ...room, ...normalizedSyncedRoom }
+                : room
+            );
+          }
+          return [...prevRooms, normalizedSyncedRoom];
+        });
       }
+
     }
     
     if (!formData.generateLogin || editing) {
@@ -618,7 +722,6 @@ const Doctors = () => {
     setDoctors(updated);
     const updatedDoctor = updated.find((doctor) => doctor.id === id);
     if (updatedDoctor) {
-      await firebaseDbService.upsert('doctors', updatedDoctor.id, updatedDoctor);
       await api.patch(`/users/${updatedDoctor.id}`, { status: newStatus }).catch(() => {});
     }
     recordHistory({
@@ -631,80 +734,71 @@ const Doctors = () => {
       meta: { name: doctor.name, specialization: doctor.specialization, newStatus },
     });
 
-    const doctorUsers = await firebaseDbService.getCollection('doctorUsers');
-    const updatedUsers = doctorUsers.map(user => 
-      user.id === id ? { ...user, status: newStatus } : user
-    );
-    const updatedUser = updatedUsers.find((user) => user.id === id);
-    if (updatedUser) {
-      await firebaseDbService.upsert('doctorUsers', updatedUser.id, updatedUser);
-    }
   };
 
   const deleteDoctor = async (id) => {
     const doctor = doctors.find(d => d.id === id);
-    if (!doctor) return;
+    if (!doctor) {
+      alert('Doctor not found');
+      return;
+    }
     
     if (!window.confirm(`Delete ${doctor.name} permanently?`)) return;
     
-    const updated = doctors.filter(d => d.id !== id);
-    setDoctors(updated);
-    await api.delete(`/users/${id}`).catch(() => {});
-    await firebaseDbService.remove('doctors', id);
-    
-    // Free up the room
-    const updatedRooms = rooms.map(room => 
-      room.number === doctor.roomNo && room.floor === doctor.floor
-        ? { ...room, status: 'available', assignedDoctorId: null, assignedDoctorName: '' }
-        : room
-    );
-    setRooms(updatedRooms);
-    await Promise.all(
-      updatedRooms.map((room) =>
-        api.put(`/rooms/${room.id}`, {
-          number: room.number,
-          floor: room.floor,
-          deptId: room.deptId,
-          deptName: room.deptName,
-          status: room.status,
-          hospitalId: room.hospitalId,
-          assignedDoctorId: room.assignedDoctorId,
-          assignedDoctorName: room.assignedDoctorName,
-          type: room.type,
-        }).catch(() => {})
-      )
-    );
-    recordHistory({
-      action: 'doctor_deleted',
-      module: 'doctors',
-      message: `Permanently deleted doctor ${doctor.name} (${doctor.specialization})`,
-      actorRole: 'hm',
-      hospitalId: String(doctor.hospitalId || currentUser.hospitalId || ''),
-      doctorId: String(id),
-      meta: { name: doctor.name, specialization: doctor.specialization, license: doctor.license },
-    });
-
-    await firebaseDbService.remove('doctorUsers', id);
+    try {
+      // Soft delete via PATCH first
+      await api.patch(`/users/${id}`, { status: 'inactive' }).catch(async (err) => {
+        console.warn('PATCH /users failed, trying DELETE', err);
+        // Fallback to hard delete if PATCH fails
+        await api.delete(`/users/${id}`);
+      });
+      
+      // Remove from local state after successful API call
+      const updated = doctors.filter(d => d.id !== id);
+      setDoctors(updated);
+      
+      // Record history (don't let errors here break the delete)
+      try {
+        recordHistory({
+          action: 'doctor_deleted',
+          module: 'doctors',
+          message: `Permanently deleted doctor ${doctor.name} (${doctor.specialization})`,
+          actorRole: 'hm',
+          hospitalId: String(doctor.hospitalId || currentUser.hospitalId || ''),
+          doctorId: String(id),
+          meta: { name: doctor.name, specialization: doctor.specialization, license: doctor.license },
+        });
+      } catch (historyErr) {
+        console.warn('History recording failed:', historyErr);
+      }
+      
+      alert(`Doctor ${doctor.name} deleted successfully`);
+    } catch (error) {
+      alert(`Failed to delete doctor: ${error?.message || 'Unknown error'}`);
+      // Restore to list on failure
+      const updated = doctors.filter(d => d.id !== id);
+      setDoctors(updated.length > doctors.length - 1 ? doctors : updated);
+    }
   };
 
   const editDoctor = (doctor) => {
     setFormData({
-      name: doctor.name,
-      specialization: doctor.specialization,
-      license: doctor.license,
-      departmentId: String(doctor.departmentId || ''),
-      roomNo: doctor.roomNo || '',
-      floor: doctor.floor || '1',
-      shift: doctor.shift,
+      name: doctor.name || '',
+      specialization: doctor.specialization || '',
+      license: doctor.license || '',
+      departmentId: String(doctor.departmentId || doctor.department_id || ''),
+      roomNo: String(doctor.roomNo || doctor.room_no || ''),
+      floor: String(doctor.floor || '1'),
+      shift: doctor.shift || 'morning',
       advancedBookingCategory: doctor.advancedBookingCategory || doctor.advanced_booking_category || 'general',
-      fee: doctor.fee.toString(),
+      fee: String(doctor.fee || '0'),
       phone: doctor.phone || '',
       email: doctor.email || '',
-      experience: doctor.experience?.toString() || '',
+      experience: String(doctor.experience || '0'),
       qualifications: doctor.qualifications || '',
       category: doctor.category || 'general',
-      promotionLabel: doctor.promotionLabel || '',
-      status: doctor.status,
+      promotionLabel: doctor.promotionLabel || doctor.promotion_label || '',
+      status: doctor.status || 'active',
       generateLogin: false,
       customPassword: ''
     });

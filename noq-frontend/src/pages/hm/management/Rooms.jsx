@@ -7,8 +7,7 @@ import {
   faTrash, faArrowLeft, faUserMd, faCheckCircle,
   faWrench, faBroom, faBed, faExclamationTriangle
 } from '@fortawesome/free-solid-svg-icons';
-import { useAuth } from '../../../context/FirebaseAuthContext';
-import firebaseDbService from '../../../services/firebaseDbService';
+import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
 
 const Rooms = () => {
@@ -439,20 +438,23 @@ const Rooms = () => {
     let active = true;
 
     const loadRoomData = async () => {
-      const [roomRes, departmentRows, doctorRows, backendDoctorRes] = await Promise.all([
+      const [roomRes, departmentRes, backendDoctorRes] = await Promise.all([
         api.get('/rooms').catch(() => ({ data: { rooms: [] } })),
-        firebaseDbService.getCollection('departments'),
-        firebaseDbService.getCollection('doctors'),
-        api.get('/users?role=doctor').catch(() => ({ data: { users: [] } })),
+        api.get(`/departments${currentHospitalId ? `?hospital_id=${encodeURIComponent(currentHospitalId)}` : ''}`).catch(() => ({ data: { departments: [] } })),
+        api.get(`/users?role=doctor${currentHospitalId ? `&hospital_id=${encodeURIComponent(currentHospitalId)}` : ''}`).catch(() => ({ data: { data: { users: [] } } })),
       ]);
 
       const roomRows = Array.isArray(roomRes?.data?.rooms) ? roomRes.data.rooms : [];
 
       if (!active) return;
 
-      const backendDoctors = Array.isArray(backendDoctorRes?.data?.users) ? backendDoctorRes.data.users : [];
+      const backendDoctors = Array.isArray(backendDoctorRes?.data?.data?.users)
+        ? backendDoctorRes.data.data.users
+        : Array.isArray(backendDoctorRes?.data?.users)
+          ? backendDoctorRes.data.users
+          : [];
       const mergedById = new Map();
-      [...backendDoctors, ...(Array.isArray(doctorRows) ? doctorRows : [])].forEach((doctor) => {
+      [...backendDoctors].forEach((doctor) => {
         const doctorId = String(doctor?.id || doctor?.DID || '').trim();
         if (!doctorId) return;
         const existing = mergedById.get(doctorId) || {};
@@ -480,6 +482,7 @@ const Rooms = () => {
           return !currentHospitalId || !roomHospitalId || roomHospitalId === currentHospitalId;
         })
       );
+      const departmentRows = Array.isArray(departmentRes?.data?.departments) ? departmentRes.data.departments : [];
       setDepartments(Array.isArray(departmentRows) ? departmentRows : []);
       setDoctors(normalizedDoctors);
     };
@@ -496,22 +499,32 @@ const Rooms = () => {
     const room = rooms.find((item) => item.id === roomId);
     if (!room) return null;
 
-    if (room.assignedDoctorId || room.assignedDoctorName) {
-      const matched = doctors.find((doctor) => String(doctor.id || '') === String(room.assignedDoctorId || ''));
+    const assignedId = room.assignedDoctorId || room.assigned_doctor_id;
+    const assignedName = room.assignedDoctorName || room.assigned_doctor_name;
+
+    if (assignedId || assignedName) {
+      const matched = assignedId
+        ? doctors.find((doctor) => String(doctor.id || '') === String(assignedId))
+        : null;
       if (matched) return matched;
       return {
-        id: room.assignedDoctorId || `assigned-${room.id}`,
-        name: room.assignedDoctorName || 'Assigned Doctor',
-        specialization: room.deptName || room.departmentName || 'Doctor',
+        id: assignedId || `assigned-${room.id}`,
+        name: assignedName || 'Assigned Doctor',
+        specialization: room.deptName || room.departmentName || room.department_name || 'Doctor',
       };
     }
 
+    const roomNum = String(room.number || room.room_number || '');
+    const roomHospId = String(room.hospitalId || room.hospital_id || '');
     return (
       doctors.find((doctor) => String(doctor.roomId || doctor.room_id || '') === String(roomId)) ||
       doctors.find(
         (doctor) =>
-          String(doctor.roomNo || doctor.roomNumber || '') === String(room.number || '') &&
-          String(doctor.floor || '1') === String(room.floor || '1')
+          String(doctor.roomNo || doctor.roomNumber || '') === roomNum &&
+          String(doctor.hospitalId || doctor.hospital_id || '') === roomHospId
+      ) ||
+      doctors.find(
+        (doctor) => String(doctor.roomNo || doctor.roomNumber || '') === roomNum && roomNum !== ''
       ) ||
       null
     );
@@ -555,14 +568,14 @@ const Rooms = () => {
       const updatedRoom = updated.find((room) => room.id === editing.id);
       if (updatedRoom) {
         await api.put(`/rooms/${updatedRoom.id}`, {
-          number: updatedRoom.number,
+          room_number: updatedRoom.number || updatedRoom.room_number,
           floor: updatedRoom.floor,
-          deptId: updatedRoom.deptId,
-          deptName: updatedRoom.deptName,
+          department_id: String(updatedRoom.deptId || updatedRoom.departmentId || updatedRoom.department_id || ''),
+          department_name: updatedRoom.deptName || updatedRoom.departmentName || updatedRoom.department_name,
           status: updatedRoom.status,
-          hospitalId: updatedRoom.hospitalId,
-          assignedDoctorId: updatedRoom.assignedDoctorId,
-          assignedDoctorName: updatedRoom.assignedDoctorName,
+          hospital_id: updatedRoom.hospitalId || updatedRoom.hospital_id,
+          assigned_doctor_id: updatedRoom.assignedDoctorId || updatedRoom.assigned_doctor_id || null,
+          assigned_doctor_name: updatedRoom.assignedDoctorName || updatedRoom.assigned_doctor_name || null,
           type: updatedRoom.type,
         }).catch(() => {});
       }
@@ -581,8 +594,8 @@ const Rooms = () => {
         setDoctors(updatedDoctors);
         const updatedDoctor = updatedDoctors.find((doc) => doc.id === doctor.id);
         if (updatedDoctor) {
-          await firebaseDbService.upsert('doctors', updatedDoctor.id, updatedDoctor);
           await api.patch(`/users/${updatedDoctor.id}`, {
+            name: updatedDoctor.name || null,
             room_id: editing.id,
             room_no: formData.number,
             floor: String(formData.floor || '1'),
@@ -604,15 +617,13 @@ const Rooms = () => {
       const updated = [...rooms, newRoom];
       setRooms(updated);
       await api.post('/rooms', {
-        number: newRoom.number,
-        floor: newRoom.floor,
-        deptId: newRoom.deptId,
-        deptName: newRoom.deptName,
+        room_number: newRoom.number,
+        floor: newRoom.floor || '1',
+        department_id: String(newRoom.deptId || ''),
+        department_name: newRoom.deptName,
         status: newRoom.status,
-        hospitalId: newRoom.hospitalId,
-        assignedDoctorId: newRoom.assignedDoctorId,
-        assignedDoctorName: newRoom.assignedDoctorName,
-        type: newRoom.type,
+        hospital_id: newRoom.hospitalId || currentHospitalId,
+        type: newRoom.type || 'general',
       }).catch(() => {});
     }
     
@@ -621,16 +632,27 @@ const Rooms = () => {
 
   const deleteRoom = async (id) => {
     const room = rooms.find(r => r.id === id);
-    if (!room) return;
+    if (!room) {
+      alert('Room not found');
+      return;
+    }
     
     const doctor = getRoomDoctor(id);
     if (doctor) return alert(`Cannot delete room with assigned doctor: ${doctor.name}`);
     
     if (!window.confirm(`Delete room ${room.number}?`)) return;
     
-    const updated = rooms.filter(r => r.id !== id);
-    setRooms(updated);
-    await api.delete(`/rooms/${id}`).catch(() => {});
+    try {
+      await api.delete(`/rooms/${id}`);
+      
+      // Remove from local state after successful API call
+      const updated = rooms.filter(r => r.id !== id);
+      setRooms(updated);
+      
+      alert(`Room ${room.number} deleted successfully`);
+    } catch (error) {
+      alert(`Failed to delete room: ${error?.message || 'Unknown error'}`);
+    }
   };
 
   const changeStatus = async (id, newStatus) => {
@@ -647,14 +669,14 @@ const Rooms = () => {
     const updatedRoom = updated.find((roomItem) => roomItem.id === id);
     if (updatedRoom) {
       await api.put(`/rooms/${updatedRoom.id}`, {
-        number: updatedRoom.number,
+        room_number: updatedRoom.number || updatedRoom.room_number,
         floor: updatedRoom.floor,
-        deptId: updatedRoom.deptId,
-        deptName: updatedRoom.deptName,
+        department_id: String(updatedRoom.deptId || updatedRoom.departmentId || updatedRoom.department_id || ''),
+        department_name: updatedRoom.deptName || updatedRoom.departmentName || updatedRoom.department_name,
         status: updatedRoom.status,
-        hospitalId: updatedRoom.hospitalId,
-        assignedDoctorId: updatedRoom.assignedDoctorId,
-        assignedDoctorName: updatedRoom.assignedDoctorName,
+        hospital_id: updatedRoom.hospitalId || updatedRoom.hospital_id,
+        assigned_doctor_id: updatedRoom.assignedDoctorId || updatedRoom.assigned_doctor_id || null,
+        assigned_doctor_name: updatedRoom.assignedDoctorName || updatedRoom.assigned_doctor_name || null,
         type: updatedRoom.type,
       }).catch(() => {});
     }
@@ -682,8 +704,8 @@ const Rooms = () => {
     setDoctors(updatedDoctors);
     const updatedDoctor = updatedDoctors.find((doc) => doc.id === doctor.id);
     if (updatedDoctor) {
-      await firebaseDbService.upsert('doctors', updatedDoctor.id, updatedDoctor);
       await api.patch(`/users/${updatedDoctor.id}`, {
+        name: updatedDoctor.name || null,
         room_id: null,
         room_no: '',
         floor: '',
@@ -692,25 +714,24 @@ const Rooms = () => {
 
     const clearedRooms = rooms.map((room) =>
       String(room.id) === String(roomId)
-        ? { ...room, status: 'available', assignedDoctorId: null, assignedDoctorName: '' }
+        ? { ...room, status: 'available', assignedDoctorId: null, assigned_doctor_id: null, assignedDoctorName: null, assigned_doctor_name: null }
         : room
     );
     setRooms(clearedRooms);
-    await Promise.all(
-      clearedRooms.map((room) =>
-        api.put(`/rooms/${room.id}`, {
-          number: room.number,
-          floor: room.floor,
-          deptId: room.deptId,
-          deptName: room.deptName,
-          status: room.status,
-          hospitalId: room.hospitalId,
-          assignedDoctorId: room.assignedDoctorId,
-          assignedDoctorName: room.assignedDoctorName,
-          type: room.type,
-        }).catch(() => {})
-      )
-    );
+    const targetRoom = clearedRooms.find((room) => String(room.id) === String(roomId));
+    if (targetRoom) {
+      await api.put(`/rooms/${targetRoom.id}`, {
+        room_number: targetRoom.number || targetRoom.room_number,
+        floor: targetRoom.floor,
+        department_id: String(targetRoom.deptId || targetRoom.departmentId || targetRoom.department_id || ''),
+        department_name: targetRoom.deptName || targetRoom.departmentName || targetRoom.department_name,
+        status: 'available',
+        hospital_id: targetRoom.hospitalId || targetRoom.hospital_id,
+        assigned_doctor_id: null,
+        assigned_doctor_name: null,
+        type: targetRoom.type,
+      }).catch(() => {});
+    }
   };
 
   const resetForm = () => {
@@ -827,6 +848,11 @@ const Rooms = () => {
                       <div style={styles.roomAvailable}>
                         <FontAwesomeIcon icon={faCheckCircle} />
                         <span>Available for assignment</span>
+                      </div>
+                    ) : room.status === 'occupied' ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#f59e0b' }}>
+                        <FontAwesomeIcon icon={faUserMd} />
+                        <span>Occupied — no doctor linked</span>
                       </div>
                     ) : (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: status?.color }}>

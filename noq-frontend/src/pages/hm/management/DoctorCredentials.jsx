@@ -9,8 +9,7 @@ import {
   faClipboardCheck, faHistory, faUserCheck, faBan,
   faStethoscope
 } from '@fortawesome/free-solid-svg-icons';
-import { useAuth } from '../../../context/FirebaseAuthContext';
-import firebaseDbService from '../../../services/firebaseDbService';
+import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
 
 // Password generation utility function
@@ -74,54 +73,34 @@ const DoctorCredentials = () => {
   }, [currentHospitalId]);
 
   const loadDoctorUsers = async () => {
-    const [backendDoctorsRes, users, doctors] = await Promise.all([
-      api.get('/users?role=doctor').catch(() => ({ data: { users: [] } })),
-      firebaseDbService.getCollection('doctorUsers'),
-      firebaseDbService.getCollection('doctors'),
-    ]);
+    const backendDoctorsRes = await api
+      .get(`/users?role=doctor${currentHospitalId ? `&hospital_id=${encodeURIComponent(currentHospitalId)}` : ''}`)
+      .catch(() => ({ data: { users: [] } }));
 
-    const backendDoctors = Array.isArray(backendDoctorsRes?.data?.users) ? backendDoctorsRes.data.users : [];
+    const backendDoctors = Array.isArray(backendDoctorsRes?.data?.data?.users)
+      ? backendDoctorsRes.data.data.users
+      : Array.isArray(backendDoctorsRes?.data?.users)
+        ? backendDoctorsRes.data.users
+        : [];
 
-    const scopedUsers = (Array.isArray(users) ? users : []).filter((user) => {
-      const hospitalId = String(user.hospitalId || user.hospital_id || user.HID || '');
-      return !currentHospitalId || !hospitalId || hospitalId === currentHospitalId;
-    });
-    const scopedDoctors = (Array.isArray(doctors) ? doctors : []).filter((doctor) => {
-      const hospitalId = String(doctor.hospitalId || doctor.hospital_id || doctor.HID || '');
-      return !currentHospitalId || !hospitalId || hospitalId === currentHospitalId;
-    });
-    
-    const mergedById = new Map();
+    const normalizedUsers = backendDoctors.map((user) => ({
+      ...user,
+      name: user.full_name || user.name || '',
+      doctorId: user.doctorId || user.id,
+      hospitalId: user.hospitalId || user.hospital_id || '',
+      hospitalName: user.hospitalName || user.hospital_name || '',
+      specialization: user.specialization || '',
+      departmentName: user.departmentName || user.department_name || '',
+      roomInfo: user.roomInfo || 'Not assigned',
+      status: user.status || 'active',
+      password: 'Set at creation / reset only',
+    }));
 
-    [...backendDoctors, ...scopedUsers].forEach((user) => {
-      const userId = String(user?.id || '').trim();
-      if (!userId) return;
-      const existing = mergedById.get(userId) || {};
-      mergedById.set(userId, {
-        ...existing,
-        ...user,
-        doctorId: user.doctorId || user.id,
-        hospitalId: user.hospitalId || user.hospital_id || user.HID || '',
-      });
-    });
-
-    const mergedUsers = Array.from(mergedById.values()).map(user => {
-      const doctor = scopedDoctors.find(d => String(d.id) === String(user.id));
-      return {
-        ...user,
-        specialization: doctor?.specialization || user.specialization || '',
-        departmentName: doctor?.departmentName || user.departmentName || user.department_name || '',
-        roomInfo: doctor?.roomInfo || 'Not assigned',
-        status: doctor?.status || user.status || 'active',
-        password: user.password || 'Set at creation / reset only',
-      };
-    });
-    
-    setDoctorUsers(mergedUsers);
+    setDoctorUsers(normalizedUsers);
     
     // Initialize password sequence
     const seq = {};
-    mergedUsers.forEach(user => {
+    normalizedUsers.forEach(user => {
       seq[user.id] = 1; // Start sequence at 1 for each user
     });
     setPasswordSequence(seq);
@@ -174,10 +153,14 @@ const DoctorCredentials = () => {
     }));
   };
 
-  const resetPassword = () => {
+  const resetPassword = async () => {
     if (!newPassword.trim() || !selectedUser) return;
-    
-    const updatedUsers = doctorUsers.map(user => 
+
+    await api.patch(`/users/${selectedUser.id}/credentials`, {
+      password: newPassword,
+    });
+
+    const updatedUsers = doctorUsers.map(user =>
       user.id === selectedUser.id 
         ? { 
             ...user, 
@@ -188,22 +171,9 @@ const DoctorCredentials = () => {
           } 
         : user
     );
-    
+
     setDoctorUsers(updatedUsers);
-    const updatedUser = updatedUsers.find((user) => user.id === selectedUser.id);
-    if (updatedUser) {
-      firebaseDbService.upsert('doctorUsers', updatedUser.id, updatedUser);
-    }
-    
-    firebaseDbService.upsert('audit_logs', `AUD-${Date.now()}`, {
-      user: currentUser?.name || 'Hospital Manager',
-      action: 'Reset doctor password',
-      target: `${selectedUser.name} (${selectedUser.doctorId})`,
-      time: new Date().toISOString(),
-      details: 'Password reset with structured format',
-      hospitalId: currentHospitalId,
-    });
-    
+
     setEditingPassword(null);
     setNewPassword('');
     setSelectedUser(null);
@@ -217,10 +187,10 @@ const DoctorCredentials = () => {
     if (!user) return;
     
     if (!window.confirm(`Delete login credentials for ${user.name}? Doctor won't be able to login.`)) return;
-    
+
+    await api.delete(`/users/${id}`);
     const updatedUsers = doctorUsers.filter(u => u.id !== id);
     setDoctorUsers(updatedUsers);
-    await firebaseDbService.remove('doctorUsers', id);
     
     alert(`Credentials deleted for ${user.name}`);
   };
@@ -234,24 +204,13 @@ const DoctorCredentials = () => {
     
     if (!window.confirm(`Are you sure you want to ${action} login access for ${user.name}?`)) return;
     
-    const updatedUsers = doctorUsers.map(u => 
+    await api.patch(`/users/${id}`, { status: newStatus });
+
+    const updatedUsers = doctorUsers.map(u =>
       u.id === id ? { ...u, status: newStatus } : u
     );
-    
+
     setDoctorUsers(updatedUsers);
-    const updatedUser = updatedUsers.find((userItem) => userItem.id === id);
-    if (updatedUser) {
-      await firebaseDbService.upsert('doctorUsers', updatedUser.id, updatedUser);
-    }
-    
-    const doctors = await firebaseDbService.getCollection('doctors');
-    const updatedDoctors = doctors.map(d => 
-      d.id === id ? { ...d, status: newStatus } : d
-    );
-    const updatedDoctor = updatedDoctors.find((doctorItem) => doctorItem.id === id);
-    if (updatedDoctor) {
-      await firebaseDbService.upsert('doctors', updatedDoctor.id, updatedDoctor);
-    }
   };
 
   const copyCredentials = (user) => {
@@ -374,27 +333,14 @@ Password Type: ${user.passwordStructure || 'Standard'}`;
     
     if (!window.confirm(`Disable login access for ${selectedUsers.length} selected doctors?`)) return;
     
-    const updatedUsers = doctorUsers.map(user => 
+    await Promise.all(selectedUsers.map((id) => api.patch(`/users/${id}`, { status: 'disabled' })));
+
+    const updatedUsers = doctorUsers.map(user =>
       selectedUsers.includes(user.id) ? { ...user, status: 'disabled' } : user
     );
-    
+
     setDoctorUsers(updatedUsers);
-    await Promise.all(
-      updatedUsers
-        .filter((user) => selectedUsers.includes(user.id))
-        .map((user) => firebaseDbService.upsert('doctorUsers', user.id, user))
-    );
-    
-    const doctors = await firebaseDbService.getCollection('doctors');
-    const updatedDoctors = doctors.map(doctor => 
-      selectedUsers.includes(doctor.id) ? { ...doctor, status: 'disabled' } : doctor
-    );
-    await Promise.all(
-      updatedDoctors
-        .filter((doctor) => selectedUsers.includes(doctor.id))
-        .map((doctor) => firebaseDbService.upsert('doctors', doctor.id, doctor))
-    );
-    
+
     setSelectedUsers([]);
     alert(`Disabled ${selectedUsers.length} doctor accounts`);
   };
@@ -404,9 +350,9 @@ Password Type: ${user.passwordStructure || 'Standard'}`;
     
     if (!window.confirm(`Delete credentials for ${selectedUsers.length} selected doctors? This cannot be undone.`)) return;
     
+    await Promise.all(selectedUsers.map((id) => api.delete(`/users/${id}`)));
     const updatedUsers = doctorUsers.filter(user => !selectedUsers.includes(user.id));
     setDoctorUsers(updatedUsers);
-    await Promise.all(selectedUsers.map((id) => firebaseDbService.remove('doctorUsers', id)));
     
     setSelectedUsers([]);
     alert(`Deleted ${selectedUsers.length} doctor credentials`);

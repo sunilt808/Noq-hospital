@@ -810,23 +810,7 @@ const BookAppointment = () => {
         console.error('❌ Failed to save appointment:', apiError);
         throw new Error('Failed to save appointment');
       }
-        items: [
-          { name: 'Consultation Fee', amount: consultationFee },
-          { name: 'Registration Fee', amount: registrationFee },
-        ],
-        amount: amountTotal,
-        tax: 0,
-        discount: 0,
-        total: amountTotal,
-        status: 'paid',
-        date: now.toISOString().split('T')[0],
-        dueDate: now.toISOString().split('T')[0],
-        paidDate: now.toISOString().split('T')[0],
-        paymentMethod: 'online',
-        createdAt: now.toISOString(),
-      };
 
-      // Bill will be persisted on backend via appointment creation
       recordHistory({
         module: 'booking',
         action: 'advanced-payment-success',

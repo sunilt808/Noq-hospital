@@ -30,7 +30,7 @@ const Login = () => {
   const navigate = useNavigate();
   const { login: authContextLogin } = useAuth();
   
-  const [role, setRole] = useState('hm');
+  const [role, setRole] = useState('admin');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -48,10 +48,10 @@ const Login = () => {
   const [generatingOTP, setGeneratingOTP] = useState(false);
 
   const roles = [
+    { id: 'admin', icon: faShieldAlt, label: 'Admin', color: '#dc2626' },
     { id: 'hm', icon: faUserTie, label: 'Hospital Manager', color: '#4f46e5' },
     { id: 'doctor', icon: faUserMd, label: 'Doctor', color: '#3b82f6' },
-    { id: 'patient', icon: faUser, label: 'Patient', color: '#10b981' },
-    { id: 'admin', icon: faShieldAlt, label: 'Admin', color: '#dc2626' }
+    { id: 'patient', icon: faUser, label: 'Patient', color: '#10b981' }
   ];
 
 
@@ -131,8 +131,6 @@ const Login = () => {
     
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
     }
     
     if (role === 'doctor' && !formData.hospitalId.trim()) {

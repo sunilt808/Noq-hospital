@@ -2,7 +2,7 @@
 
 import os
 from datetime import datetime
-from sqlalchemy import create_engine, Column, String, Integer, DateTime, Boolean, Float, ForeignKey, Text
+from sqlalchemy import create_engine, Column, String, Integer, DateTime, Boolean, Float, ForeignKey, Text, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.pool import StaticPool
@@ -41,7 +41,22 @@ class User(Base):
     phone = Column(String)
     role = Column(String, nullable=False)  # patient, doctor, hm, admin
     hospital_id = Column(String, ForeignKey("hospitals.id"))
+    hospital_name = Column(String)
     status = Column(String, default="active")  # active, inactive, suspended
+    specialization = Column(String)
+    department_id = Column(String)
+    department_name = Column(String)
+    room_id = Column(String)
+    room_no = Column(String)
+    floor = Column(String)
+    license = Column(String)
+    shift = Column(String)
+    advanced_booking_category = Column(String)
+    fee = Column(Float, default=0)
+    experience = Column(Integer, default=0)
+    qualifications = Column(String)
+    category = Column(String)
+    promotion_label = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -119,10 +134,15 @@ class Room(Base):
 
     id = Column(String, primary_key=True, index=True)
     hospital_id = Column(String, ForeignKey("hospitals.id"), nullable=False)
+    department_id = Column(String, ForeignKey("departments.id"))
+    department_name = Column(String)
     room_number = Column(String, nullable=False)
-    floor = Column(Integer)
+    floor = Column(String)
     capacity = Column(Integer, default=1)
     status = Column(String, default="available")  # available, occupied, maintenance
+    type = Column(String, default="doctor")
+    assigned_doctor_id = Column(String)
+    assigned_doctor_name = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -191,6 +211,58 @@ def create_tables():
     Base.metadata.create_all(bind=engine)
 
 
+def _sqlite_column_exists(connection, table_name: str, column_name: str) -> bool:
+    rows = connection.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+    existing_columns = {row[1] for row in rows}
+    return column_name in existing_columns
+
+
+def _ensure_rooms_schema():
+    """Ensure rooms table has fields used by API routes in existing SQLite DBs."""
+    if "sqlite" not in DATABASE_URL:
+        return
+
+    with engine.begin() as connection:
+        if not _sqlite_column_exists(connection, "rooms", "department_id"):
+            connection.execute(text("ALTER TABLE rooms ADD COLUMN department_id TEXT"))
+        if not _sqlite_column_exists(connection, "rooms", "department_name"):
+            connection.execute(text("ALTER TABLE rooms ADD COLUMN department_name TEXT"))
+        if not _sqlite_column_exists(connection, "rooms", "type"):
+            connection.execute(text("ALTER TABLE rooms ADD COLUMN type TEXT DEFAULT 'doctor'"))
+        if not _sqlite_column_exists(connection, "rooms", "assigned_doctor_id"):
+            connection.execute(text("ALTER TABLE rooms ADD COLUMN assigned_doctor_id TEXT"))
+        if not _sqlite_column_exists(connection, "rooms", "assigned_doctor_name"):
+            connection.execute(text("ALTER TABLE rooms ADD COLUMN assigned_doctor_name TEXT"))
+
+
+def _ensure_users_schema():
+    """Ensure users table has doctor profile fields used by HM doctor CRUD."""
+    if "sqlite" not in DATABASE_URL:
+        return
+
+    with engine.begin() as connection:
+        user_columns = {
+            "hospital_name": "TEXT",
+            "specialization": "TEXT",
+            "department_id": "TEXT",
+            "department_name": "TEXT",
+            "room_id": "TEXT",
+            "room_no": "TEXT",
+            "floor": "TEXT",
+            "license": "TEXT",
+            "shift": "TEXT",
+            "advanced_booking_category": "TEXT",
+            "fee": "FLOAT DEFAULT 0",
+            "experience": "INTEGER DEFAULT 0",
+            "qualifications": "TEXT",
+            "category": "TEXT",
+            "promotion_label": "TEXT",
+        }
+        for column_name, column_sql in user_columns.items():
+            if not _sqlite_column_exists(connection, "users", column_name):
+                connection.execute(text(f"ALTER TABLE users ADD COLUMN {column_name} {column_sql}"))
+
+
 def get_db():
     """Get database session - used as dependency in FastAPI."""
     db = SessionLocal()
@@ -203,3 +275,5 @@ def get_db():
 def init_db():
     """Initialize database with tables."""
     create_tables()
+    _ensure_rooms_schema()
+    _ensure_users_schema()

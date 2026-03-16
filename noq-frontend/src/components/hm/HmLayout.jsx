@@ -1,4 +1,4 @@
-// components/hm/HmLayout.jsx - Firebase-only (no localStorage)
+// components/hm/HmLayout.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -31,7 +31,12 @@ const HmLayout = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser, logout } = useAuth();
-  const { doctors, departments, rooms, users, hospitals, loading } = useFirebaseData();
+  const doctors = [];
+  const departments = [];
+  const rooms = [];
+  const users = [];
+  const hospitals = [];
+  const loading = false;
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
   
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);

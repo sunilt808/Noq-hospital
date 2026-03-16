@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
-from routes import auth, users, hospitals, appointments
+from routes import auth, users, hospitals, appointments, departments, rooms
 from database import init_db
 
 # Configure logging
@@ -109,4 +109,6 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(hospitals.router)
 app.include_router(appointments.router)
+app.include_router(departments.router)
+app.include_router(rooms.router)
 

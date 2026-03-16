@@ -58,7 +58,8 @@ const Signup = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const nextValue = name === 'phone' ? value.replace(/\D/g, '').slice(0, 10) : value;
+    setFormData(prev => ({ ...prev, [name]: nextValue }));
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
@@ -301,6 +302,8 @@ const Signup = () => {
                 onChange={handleChange}
                 placeholder="10-digit mobile number"
                 maxLength="10"
+                inputMode="numeric"
+                pattern="[0-9]{10}"
                 className={`form-control ${errors.phone ? 'error' : ''}`}
                 disabled={loading}
               />

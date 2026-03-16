@@ -18,8 +18,10 @@ const Hospitals = () => {
       setError('');
 
       try {
-        const res = await api.get('/hospitals');
-        const apiHospitals = res?.data?.hospitals || [];
+        const res = await api.get('/hospitals?status_filter=all');
+        const apiHospitals = Array.isArray(res)
+          ? res
+          : (res?.data?.hospitals || res?.hospitals || []);
         setHospitals(apiHospitals);
       } catch (err) {
         setHospitals([]);
@@ -53,19 +55,17 @@ const Hospitals = () => {
 
   const toggleStatus = async (hospital) => {
     const status = String(hospital.status || '').toLowerCase();
-    const nextStatus = status === 'suspended' ? 'approved' : 'suspended';
+    const nextStatus = status === 'suspended' ? 'active' : 'suspended';
 
     try {
       const hospitalId = getHospitalId(hospital);
-      const payloadStatus = nextStatus === 'suspended' ? 'SUSPENDED' : 'APPROVED';
+      const payloadStatus = nextStatus === 'suspended' ? 'SUSPENDED' : 'ACTIVE';
       const res = await api.patch(`/hospitals/${hospitalId}/status`, { status: payloadStatus, message: '' });
       const updatedFromApi = res?.data || {};
-      updateHospital(hospitalId, (item) => ({ ...item, ...updatedFromApi }));
-      await firebaseDbService.upsert('hospitals', hospitalId, {
-        ...hospital,
-        ...updatedFromApi,
-        status: updatedFromApi.status || payloadStatus.toLowerCase(),
-      });
+      updateHospital(hospitalId, (item) => ({
+        ...item,
+        status: String(updatedFromApi?.status || payloadStatus).toLowerCase(),
+      }));
     } catch (err) {
       setError(err?.message || 'Unable to update hospital status.');
       return;
@@ -97,8 +97,6 @@ const Hospitals = () => {
       ...updatedHospital,
     }));
 
-    await firebaseDbService.upsert('hospitals', getHospitalId(hospital), updatedHospital);
-
     recordHistory({
       module: 'admin-hospital-access',
       action: 'hospital-access-updated',
@@ -106,6 +104,30 @@ const Hospitals = () => {
       hospitalId: getHospitalId(hospital),
       meta: { accessKey: key, enabled: nextValue },
     });
+  };
+
+  const deleteHospital = async (hospital) => {
+    const hospitalId = getHospitalId(hospital);
+    if (!hospitalId) return;
+
+    const confirmed = window.confirm(
+      `Delete ${hospital.hospital_name || hospital.hospitalName || hospital.name || 'this hospital'}?`
+    );
+    if (!confirmed) return;
+
+    try {
+      await api.delete(`/hospitals/${hospitalId}`);
+      setHospitals((prev) => prev.filter((item) => getHospitalId(item) !== hospitalId));
+
+      recordHistory({
+        module: 'admin-hospital-access',
+        action: 'hospital-deleted',
+        message: `${hospital.hospital_name || hospital.hospitalName || hospital.name || 'Hospital'} deleted`,
+        hospitalId,
+      });
+    } catch (err) {
+      setError(err?.message || 'Unable to delete hospital.');
+    }
   };
 
   const filteredHospitals = useMemo(() => {
@@ -219,7 +241,10 @@ const Hospitals = () => {
   const stats = {
     total: filteredHospitals.length,
     totalBeds: filteredHospitals.reduce((sum, h) => sum + Number(h.totalBeds || h.beds || 0), 0),
-    approved: filteredHospitals.filter(h => String(h.status || '').toLowerCase().includes('approve')).length,
+    approved: filteredHospitals.filter(h => {
+      const s = String(h.status || '').toLowerCase();
+      return s === 'active' || s.includes('approve');
+    }).length,
     pending: filteredHospitals.filter(h => String(h.status || '').toLowerCase().includes('pending')).length,
   };
 
@@ -314,17 +339,30 @@ const Hospitals = () => {
               <div style={styles.controls}>
                 <div style={styles.row}>
                   <strong style={{ color: '#334155', fontSize: 13 }}>Access Controls</strong>
-                  <button
-                    type="button"
-                    onClick={() => toggleStatus(hospital)}
-                    style={{
-                      ...styles.actionBtn,
-                      background: statusText === 'suspended' ? '#dcfce7' : '#fee2e2',
-                      color: statusText === 'suspended' ? '#166534' : '#991b1b',
-                    }}
-                  >
-                    {statusText === 'suspended' ? 'Activate Hospital' : 'Suspend Hospital'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => toggleStatus(hospital)}
+                      style={{
+                        ...styles.actionBtn,
+                        background: statusText === 'suspended' ? '#dcfce7' : '#fee2e2',
+                        color: statusText === 'suspended' ? '#166534' : '#991b1b',
+                      }}
+                    >
+                      {statusText === 'suspended' ? 'Activate Hospital' : 'Suspend Hospital'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteHospital(hospital)}
+                      style={{
+                        ...styles.actionBtn,
+                        background: '#991b1b',
+                        color: 'white',
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
 
                 <div style={styles.row}>

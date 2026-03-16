@@ -3,9 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBuilding, faSearch, faPlus, faEdit, faTrash, faToggleOn, faToggleOff, faArrowLeft, faUsers, faDoorOpen, faStethoscope, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
-import firebaseDbService from '../../../services/firebaseDbService';
 import api from '../../../services/api';
-import { useAuth } from '../../../context/FirebaseAuthContext';
+import { useAuth } from '../../../context/AuthContext';
 
 const DEPARTMENT_OPTIONS = [
   'Cardiology', 'Neurology', 'Orthopedics', 'Dermatology', 'Pediatrics', 'Oncology',
@@ -42,7 +41,12 @@ const Departments = () => {
       }
 
       try {
-        const hospitals = await firebaseDbService.getCollection('hospitals');
+        const response = await api.get('/hospitals').catch(() => ({ data: { data: { hospitals: [] } } }));
+        const hospitals = Array.isArray(response?.data?.data?.hospitals)
+          ? response.data.data.hospitals
+          : Array.isArray(response?.data?.hospitals)
+            ? response.data.hospitals
+            : [];
         if (!active) return;
         const matchedHospital = (hospitals || []).find((item) =>
           String(item?.email || '').toLowerCase() === String(currentUser?.email || '').toLowerCase() ||
@@ -71,11 +75,17 @@ const Departments = () => {
     try {
       const [deptRes, docList, roomList] = await Promise.all([
         api.get(`/departments${resolvedHospitalId ? `?hospital_id=${encodeURIComponent(resolvedHospitalId)}` : ''}`),
-        firebaseDbService.getCollection('doctors'),
-        firebaseDbService.getCollection('rooms'),
+        api.get(`/users?role=doctor${resolvedHospitalId ? `&hospital_id=${encodeURIComponent(resolvedHospitalId)}` : ''}`).catch(() => ({ data: { data: { users: [] } } })),
+        api.get('/rooms').catch(() => ({ data: { rooms: [] } })),
       ]);
 
       const deptList = Array.isArray(deptRes?.data?.departments) ? deptRes.data.departments : [];
+      const doctorList = Array.isArray(docList?.data?.data?.users)
+        ? docList.data.data.users
+        : Array.isArray(docList?.data?.users)
+          ? docList.data.users
+          : [];
+      const roomRows = Array.isArray(roomList?.data?.rooms) ? roomList.data.rooms : [];
 
       const byHospital = (item) => {
         if (!resolvedHospitalId) return true;
@@ -83,8 +93,8 @@ const Departments = () => {
       };
 
       setDepartments(deptList.filter(byHospital));
-      setDoctors(docList.filter(byHospital));
-      setRooms(roomList.filter(byHospital));
+      setDoctors(doctorList.filter(byHospital));
+      setRooms(roomRows.filter(byHospital));
     } catch (error) {
       console.error('Failed to load departments data:', error);
       alert('Failed to load departments. Please refresh and try again.');
@@ -154,22 +164,16 @@ const Departments = () => {
         rooms
           .filter((room) => String(room.deptId || room.departmentId || '') === String(editing.id))
           .map((room) =>
-            firebaseDbService.upsert('rooms', room.id, {
-              ...room,
+            api.put(`/rooms/${room.id}`, {
+              number: room.number,
+              floor: room.floor,
+              deptId: room.deptId || room.departmentId || editing.id,
               deptName: selectedName,
-              hospital_id: room.hospital_id || room.hospitalId || resolvedHospitalId,
-            })
-          )
-      );
-
-      await Promise.all(
-        doctors
-          .filter((doc) => String(doc.departmentId || '') === String(editing.id))
-          .map((doc) =>
-            firebaseDbService.upsert('doctors', doc.id, {
-              ...doc,
-              departmentName: selectedName,
-              hospital_id: doc.hospital_id || doc.hospitalId || resolvedHospitalId,
+              status: room.status,
+              hospitalId: room.hospital_id || room.hospitalId || resolvedHospitalId,
+              assignedDoctorId: room.assignedDoctorId || null,
+              assignedDoctorName: room.assignedDoctorName || '',
+              type: room.type || 'doctor',
             })
           )
       );

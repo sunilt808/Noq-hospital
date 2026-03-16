@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft, faCalendarAlt, faDownload, faHistory, faSearch, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { clearHistoryByIds, getRoleScopedHistory, pruneHistory } from '../../../services/historyService';
-import { useAuth } from '../../../context/FirebaseAuthContext';
+import { useAuth } from '../../../context/AuthContext';
+import api from '../../../services/api';
 
 const Audit = () => {
   const navigate = useNavigate();
@@ -11,6 +12,8 @@ const Audit = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [search, setSearch] = useState('');
   const [moduleFilter, setModuleFilter] = useState('all');
+  const [backendLogs, setBackendLogs] = useState([]);
+  const currentHospitalId = String(currentUser?.hospitalId || currentUser?.hospital_id || currentUser?.HID || '');
 
   useEffect(() => {
     pruneHistory();
@@ -23,10 +26,43 @@ const Audit = () => {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const loadBackendLogs = async () => {
+      const response = await api
+        .get(`/users/audit/credentials${currentHospitalId ? `?hospital_id=${encodeURIComponent(currentHospitalId)}` : ''}`)
+        .catch(() => ({ data: { data: { logs: [] } } }));
+
+      if (!active) return;
+
+      const logs = Array.isArray(response?.data?.data?.logs) ? response.data.data.logs : [];
+      setBackendLogs(logs);
+    };
+
+    loadBackendLogs();
+    return () => {
+      active = false;
+    };
+  }, [refreshKey, currentHospitalId]);
+
   const logs = useMemo(() => {
-    const scoped = getRoleScopedHistory(currentUser);
-    return scoped.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
-  }, [refreshKey, currentUser]);
+    const scoped = getRoleScopedHistory(currentUser).map((item) => ({
+      ...item,
+      id: `local-${item.id}`,
+    }));
+
+    const backendMapped = backendLogs.map((item) => ({
+      id: `backend-${item.id}`,
+      action: item.action || 'credential_event',
+      message: `${String(item.action || 'Credential event').replaceAll('_', ' ')} for user ${item.entity_id || '-'}`,
+      actorRole: 'hm',
+      actorName: 'Backend Audit',
+      module: 'credentials',
+      timestamp: item.timestamp,
+    }));
+
+    return [...backendMapped, ...scoped].sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+  }, [refreshKey, currentUser, backendLogs]);
 
   const modules = useMemo(() => ['all', ...new Set(logs.map((item) => item.module || 'general'))], [logs]);
 

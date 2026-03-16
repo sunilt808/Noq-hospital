@@ -1,150 +1,284 @@
-# backend/routes/rooms.py - Room management endpoints
+# backend/routes/rooms.py - Room Management Routes
 
-from fastapi import APIRouter, HTTPException, Depends
-from services import auth_service
+import logging
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-import uuid
-from database import db
-from google.cloud.firestore_v1.base_query import FieldFilter
+from uuid import uuid4
+from sqlalchemy.orm import Session
+from database import get_db, Room
+from audit import AuditLogger
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms", tags=["Rooms"])
 
 
 class RoomCreate(BaseModel):
-    hospital_id: Optional[str] = None
-    hospitalId: Optional[str] = None
-    department_id: Optional[str] = None
-    deptId: Optional[str] = None
-    room_number: Optional[str] = None
-    number: Optional[str] = None
+    hospital_id: str
+    department_id: str
+    department_name: Optional[str] = None
+    room_number: str
     floor: Optional[str] = "1"
     capacity: Optional[int] = 2
     status: Optional[str] = "available"
-    deptName: Optional[str] = None
-    assignedDoctorId: Optional[str] = None
-    assignedDoctorName: Optional[str] = None
-    type: Optional[str] = None
+    type: Optional[str] = "doctor"
+    assigned_doctor_id: Optional[str] = None
+    assigned_doctor_name: Optional[str] = None
 
 
 class RoomUpdate(BaseModel):
     hospital_id: Optional[str] = None
-    hospitalId: Optional[str] = None
     department_id: Optional[str] = None
-    deptId: Optional[str] = None
+    department_name: Optional[str] = None
     room_number: Optional[str] = None
-    number: Optional[str] = None
     floor: Optional[str] = None
     capacity: Optional[int] = None
     status: Optional[str] = None
-    deptName: Optional[str] = None
-    assignedDoctorId: Optional[str] = None
-    assignedDoctorName: Optional[str] = None
     type: Optional[str] = None
+    assigned_doctor_id: Optional[str] = None
+    assigned_doctor_name: Optional[str] = None
 
 
-class StandardResponse(BaseModel):
-    success: bool
-    message: str
-    data: dict = {}
+def _serialize_room(room: Room) -> dict:
+    return {
+        "id": room.id,
+        "hospital_id": room.hospital_id,
+        "hospitalId": room.hospital_id,
+        "department_id": room.department_id,
+        "departmentId": room.department_id,
+        "department_name": room.department_name,
+        "deptName": room.department_name,
+        "room_number": room.room_number,
+        "number": room.room_number,
+        "floor": room.floor,
+        "capacity": room.capacity,
+        "status": room.status,
+        "type": room.type,
+        "assigned_doctor_id": room.assigned_doctor_id,
+        "assignedDoctorId": room.assigned_doctor_id,
+        "assigned_doctor_name": room.assigned_doctor_name,
+        "assignedDoctorName": room.assigned_doctor_name,
+        "created_at": room.created_at.isoformat() if room.created_at else None,
+        "updated_at": room.updated_at.isoformat() if room.updated_at else None,
+    }
 
 
-@router.get("", response_model=StandardResponse)
-def get_rooms(hospital_id: Optional[str] = None, payload: dict = Depends(auth_service.require_auth)):
-    """Get rooms."""
+@router.get("")
+def list_rooms(
+    hospital_id: str = None,
+    department_id: str = None,
+    db: Session = Depends(get_db)
+):
+    """List rooms with optional filters."""
     try:
-        ref = db.collection("rooms")
+        query = db.query(Room)
+        
         if hospital_id:
-            ref = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id))
-        rooms = []
-        for doc in ref.stream():
-            rooms.append({"id": doc.id, **doc.to_dict()})
-        return StandardResponse(success=True, message="Rooms fetched.", data={"rooms": rooms, "count": len(rooms)})
+            query = query.filter(Room.hospital_id == hospital_id)
+        if department_id:
+            query = query.filter(Room.department_id == department_id)
+        
+        rooms = query.filter(Room.status != "inactive").all()
+        
+        return {
+            "success": True,
+            "data": {
+                "rooms": [_serialize_room(r) for r in rooms],
+                "count": len(rooms)
+            }
+        }
     except Exception as e:
-        msg = str(e)
-        if "quota" in msg.lower() or "429" in msg.lower() or "RESOURCE_EXHAUSTED" in msg:
-            return StandardResponse(success=True, message="Rooms fetched (fallback).", data={"rooms": [], "count": 0})
-        raise HTTPException(status_code=503, detail=f"Unable to fetch rooms from server: {msg}")
+        logger.error(f"Error listing rooms: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.post("", response_model=StandardResponse, status_code=201)
-def create_room(room: RoomCreate, payload: dict = Depends(auth_service.require_auth)):
-    """Create a room."""
-    room_id = f"ROOM-{uuid.uuid4().hex[:12].upper()}"
-    room_doc = {
-        "id": room_id,
-        "hospital_id": room.hospital_id or room.hospitalId or payload.get("hospital_id") or "",
-        "department_id": room.department_id or room.deptId or "",
-        "deptId": room.department_id or room.deptId or "",
-        "room_number": room.room_number or room.number or "",
-        "number": room.room_number or room.number or "",
-        "floor": str(room.floor or "1"),
-        "capacity": int(room.capacity or 2),
-        "status": (room.status or "available").lower(),
-        "deptName": room.deptName or "",
-        "assignedDoctorId": room.assignedDoctorId,
-        "assignedDoctorName": room.assignedDoctorName,
-        "type": room.type or "doctor",
-        "created_at": datetime.utcnow().isoformat() + "Z",
-        "updated_at": datetime.utcnow().isoformat() + "Z",
-    }
-    db.collection("rooms").document(room_id).set(room_doc)
-    return StandardResponse(success=True, message="Room created.", data={"room": room_doc})
+@router.post("")
+def create_room(
+    payload: RoomCreate,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Create a new room."""
+    try:
+        if not payload.hospital_id or not payload.department_id or not payload.room_number:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="hospital_id, department_id, and room_number are required"
+            )
+        
+        room = Room(
+            id=str(uuid4()),
+            hospital_id=payload.hospital_id,
+            department_id=payload.department_id,
+            department_name=payload.department_name,
+            room_number=payload.room_number.strip(),
+            floor=payload.floor or "1",
+            capacity=int(payload.capacity) if payload.capacity else 2,
+            status=(payload.status or "available").lower(),
+            type=(payload.type or "doctor").lower(),
+            assigned_doctor_id=payload.assigned_doctor_id,
+            assigned_doctor_name=payload.assigned_doctor_name,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        
+        db.add(room)
+        db.commit()
+        db.refresh(room)
+        
+        client_ip = request.client.host if request and request.client else None
+        AuditLogger.log_entity_create(
+            db,
+            entity_type="Room",
+            entity_id=room.id,
+            data={"room_number": room.room_number, "department_id": room.department_id},
+            ip_address=client_ip,
+        )
+        
+        return {
+            "success": True,
+            "data": {"room": _serialize_room(room)}
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating room: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.put("/{room_id}", response_model=StandardResponse)
-def update_room(room_id: str, updates: RoomUpdate, payload: dict = Depends(auth_service.require_auth)):
+@router.put("/{room_id}")
+def update_room(
+    room_id: str,
+    payload: RoomUpdate,
+    request: Request,
+    db: Session = Depends(get_db)
+):
     """Update a room."""
-    ref = db.collection("rooms").document(room_id)
-    snapshot = ref.get()
-    if not snapshot.exists:
-        raise HTTPException(status_code=404, detail="Room not found.")
+    try:
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Room not found"
+            )
+        
+        updates = {}
+        if payload.hospital_id:
+            room.hospital_id = payload.hospital_id
+            updates["hospital_id"] = room.hospital_id
+        if payload.department_id:
+            room.department_id = payload.department_id
+            updates["department_id"] = room.department_id
+        if payload.department_name is not None:
+            room.department_name = payload.department_name
+            updates["department_name"] = room.department_name
+        if payload.room_number:
+            room.room_number = payload.room_number.strip()
+            updates["room_number"] = room.room_number
+        if payload.floor:
+            room.floor = payload.floor
+            updates["floor"] = room.floor
+        if payload.capacity is not None:
+            room.capacity = int(payload.capacity)
+            updates["capacity"] = room.capacity
+        if payload.status:
+            room.status = payload.status.lower()
+            updates["status"] = room.status
+        if payload.type:
+            room.type = payload.type.lower()
+            updates["type"] = room.type
+        if payload.assigned_doctor_id is not None:
+            room.assigned_doctor_id = payload.assigned_doctor_id
+            updates["assigned_doctor_id"] = room.assigned_doctor_id
+        if payload.assigned_doctor_name is not None:
+            room.assigned_doctor_name = payload.assigned_doctor_name
+            updates["assigned_doctor_name"] = room.assigned_doctor_name
+        
+        room.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(room)
+        
+        client_ip = request.client.host if request and request.client else None
+        AuditLogger.log_entity_update(
+            db,
+            entity_type="Room",
+            entity_id=room_id,
+            old_values={},
+            new_values=updates,
+            ip_address=client_ip,
+        )
+        
+        return {
+            "success": True,
+            "data": {"room": _serialize_room(room)}
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating room: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
-    update_doc = {
-        "updated_at": datetime.utcnow().isoformat() + "Z",
-    }
-    if updates.hospital_id is not None or updates.hospitalId is not None:
-        update_doc["hospital_id"] = updates.hospital_id or updates.hospitalId
-    if updates.department_id is not None or updates.deptId is not None:
-        did = updates.department_id or updates.deptId
-        update_doc["department_id"] = did
-        update_doc["deptId"] = did
-    if updates.room_number is not None or updates.number is not None:
-        rnum = updates.room_number or updates.number
-        update_doc["room_number"] = rnum
-        update_doc["number"] = rnum
-    if updates.floor is not None:
-        update_doc["floor"] = str(updates.floor)
-    if updates.capacity is not None:
-        update_doc["capacity"] = int(updates.capacity)
-    if updates.status is not None:
-        update_doc["status"] = updates.status.lower()
-    if updates.deptName is not None:
-        update_doc["deptName"] = updates.deptName
-    if updates.assignedDoctorId is not None:
-        update_doc["assignedDoctorId"] = updates.assignedDoctorId
-    if updates.assignedDoctorName is not None:
-        update_doc["assignedDoctorName"] = updates.assignedDoctorName
-    if updates.type is not None:
-        update_doc["type"] = updates.type
 
-    ref.update(update_doc)
-    fresh = ref.get().to_dict() or {}
-    return StandardResponse(success=True, message="Room updated.", data={"room": {"id": room_id, **fresh}})
+@router.patch("/{room_id}")
+def patch_room(
+    room_id: str,
+    payload: RoomUpdate,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Patch a room."""
+    return update_room(room_id, payload, request, db)
 
 
-@router.patch("/{room_id}", response_model=StandardResponse)
-def patch_room(room_id: str, updates: RoomUpdate, payload: dict = Depends(auth_service.require_auth)):
-    """Patch a room (alias for update)."""
-    return update_room(room_id, updates, payload)
-
-
-@router.delete("/{room_id}", response_model=StandardResponse)
-def delete_room(room_id: str, payload: dict = Depends(auth_service.require_auth)):
-    """Delete a room."""
-    ref = db.collection("rooms").document(room_id)
-    if not ref.get().exists:
-        raise HTTPException(status_code=404, detail="Room not found.")
-    ref.delete()
-    return StandardResponse(success=True, message="Room deleted.", data={"id": room_id})
+@router.delete("/{room_id}")
+def delete_room(
+    room_id: str,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Hard-delete a room."""
+    try:
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Room not found"
+            )
+        
+        client_ip = request.client.host if request and request.client else None
+        
+        # Hard delete room
+        db.delete(room)
+        db.commit()
+        
+        AuditLogger.log_entity_delete(
+            db,
+            entity_type="Room",
+            entity_id=room_id,
+            data={"room_number": room.room_number},
+            ip_address=client_ip,
+        )
+        
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting room: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )

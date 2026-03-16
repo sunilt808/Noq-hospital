@@ -8,8 +8,8 @@ import {
   faHistory, faComments, faCog, faCalendarAlt,
   faExclamationTriangle, faArrowRight
 } from '@fortawesome/free-solid-svg-icons';
-import firebaseDbService from '../../../services/firebaseDbService.js';
-import { useAuth } from '../../../context/FirebaseAuthContext';
+import api from '../../../services/api.js';
+import { useAuth } from '../../../context/AuthContext';
 
 const Management = () => {
   const navigate = useNavigate();
@@ -41,74 +41,50 @@ const Management = () => {
   useEffect(() => {
     const loadDashboard = async () => {
       try {
-        const [hospitals, users, doctors, departments, rooms, queues, bills, auditLogs] = await Promise.all([
-          firebaseDbService.getCollection('hospitals'),
-          firebaseDbService.getCollection('users'),
-          firebaseDbService.getCollection('doctors'),
-          firebaseDbService.getCollection('departments'),
-          firebaseDbService.getCollection('rooms'),
-          firebaseDbService.getCollection('queues'),
-          firebaseDbService.getCollection('bills'),
-          firebaseDbService.getCollection('audit_logs'),
+        const [hospitalsRes, hmUsersRes, doctorUsersRes] = await Promise.all([
+          api.get('/hospitals?status_filter=all').catch(() => []),
+          api.get('/users?role=hm').catch(() => ({ data: { users: [] } })),
+          api.get('/users?role=doctor').catch(() => ({ data: { users: [] } })),
         ]);
+
+        const hospitals = Array.isArray(hospitalsRes)
+          ? hospitalsRes
+          : (hospitalsRes?.data?.hospitals || hospitalsRes?.hospitals || []);
+        const hmUsers = hmUsersRes?.data?.users || hmUsersRes?.users || [];
+        const doctorUsers = doctorUsersRes?.data?.users || doctorUsersRes?.users || [];
 
         const matchedHospital = hospitals.find(
           (item) => String(item.id || item.HID || '') === currentHospitalId
         );
 
         if (matchedHospital) {
+          const matchedHm = hmUsers.find(
+            (item) => String(item?.hospital_id || item?.hospitalId || '') === String(matchedHospital?.id || '')
+          );
           setHospital({
             HID: String(matchedHospital.id || matchedHospital.HID || currentHospitalId),
             name: matchedHospital.hospital_name || matchedHospital.hospitalName || matchedHospital.name || 'Hospital',
             category: matchedHospital.category || matchedHospital.type || 'Hospital',
             status: String(matchedHospital.status || currentUser?.status || 'active').toLowerCase(),
             address: matchedHospital.address || '',
-            emergencyContact: matchedHospital.emergency_contact || matchedHospital.emergencyContact || '',
+            emergencyContact: matchedHospital.emergency_contact || matchedHospital.emergencyContact || matchedHm?.phone || '',
           });
         }
 
-        const usersDoctorCount = users.filter(
-          (item) => String(item.role || '').toLowerCase() === 'doctor' &&
-            String(item.hospitalId || item.hospital_id || item.HID || '') === currentHospitalId
-        ).length;
-        const doctorsCollectionCount = doctors.filter(
+        const doctorCount = doctorUsers.filter(
           (item) => String(item.hospitalId || item.hospital_id || item.HID || '') === currentHospitalId
         ).length;
-        const doctorCount = Math.max(usersDoctorCount, doctorsCollectionCount);
-        const departmentCount = departments.filter(
-          (item) => String(item.hospital_id || item.hospitalId || item.HID || '') === currentHospitalId
-        ).length;
-        const roomCount = rooms.filter(
-          (item) => String(item.hospital_id || item.hospitalId || item.HID || '') === currentHospitalId
-        ).length;
-        const activeQueueCount = queues.filter(
-          (item) => String(item.hospitalId || item.hospital_id || '') === currentHospitalId &&
-            String(item.status || '').toLowerCase() === 'active'
-        ).length;
-        const revenueToday = bills
-          .filter((item) => String(item.hospitalId || item.hospital_id || item.HID || '') === currentHospitalId)
-          .reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0);
 
         setStats({
           doctors: doctorCount,
-          departments: departmentCount,
-          rooms: roomCount,
+          departments: 0,
+          rooms: 0,
           todayPatients: 0,
-          activeQueues: activeQueueCount,
-          revenueToday,
+          activeQueues: 0,
+          revenueToday: 0,
         });
 
-        setActivity(
-          (auditLogs || [])
-            .filter((item) => String(item.hospital_id || item.hospitalId || '') === currentHospitalId)
-            .slice(0, 4)
-            .map((item, index) => ({
-              id: item.id || index,
-              action: item.event || item.message || 'Activity updated',
-              time: item.created_at || item.createdAt || 'recently',
-              icon: faHistory,
-            }))
-        );
+        setActivity([]);
       } catch (error) {
         console.error('Failed to load HM dashboard:', error);
       }
