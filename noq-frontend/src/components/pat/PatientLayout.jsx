@@ -1,0 +1,214 @@
+// Firebase-only (no localStorage)
+import React, { useState, useEffect, useMemo } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { useAuth } from '../../context/FirebaseAuthContext';
+import useFirebaseData from '../../hooks/useFirebaseData';
+import {
+  faHospital,
+  faUser,
+  faCalendarCheck,
+  faFileMedical,
+  faPrescriptionBottle,
+  faStar,
+  faCreditCard,
+  faChartLine,
+  faCog,
+  faRightFromBracket,
+  faHome,
+  faCalendarPlus,
+  faShieldHeart,
+  faChevronRight,
+  faChevronLeft,
+  faTriangleExclamation,
+  faBell,
+  faSignOutAlt,
+} from '@fortawesome/free-solid-svg-icons';
+import './p.css';
+
+/* ======================================================
+   QUICK ACTIONS COMPONENT  ✅ (FIXED)
+====================================================== */
+const QuickActions = ({ actions }) => {
+  return (
+    <div className="quick-actions">
+      {actions.map((item, index) => (
+        <button
+          key={index}
+          className="quick-action-btn"
+          style={{ backgroundColor: item.color }}
+          onClick={item.action}
+        >
+          <FontAwesomeIcon icon={item.icon} />
+          <span>{item.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+};
+
+/* ======================================================
+   MAIN LAYOUT
+====================================================== */
+const PatientLayout = ({ children }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { currentUser, logout, loading: authLoading } = useAuth();
+  const { patients, loading } = useFirebaseData();
+
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [activeMenu, setActiveMenu] = useState('');
+
+  // Get current patient from Firebase data
+  const patient = useMemo(() => {
+    const matchedPatient =
+      patients.find((p) => String(p.id || '') === String(currentUser?.id || '')) ||
+      patients.find((p) => String(p.email || '').toLowerCase() === String(currentUser?.email || '').toLowerCase());
+
+    // Always fall back to currentUser to avoid "Loading patient profile..." screen
+    return matchedPatient || (currentUser ? {
+      ...currentUser,
+      name: currentUser?.name || currentUser?.fullName || 'Patient',
+      status: currentUser?.status || 'active',
+    } : null);
+  }, [patients, currentUser]);
+  const blockStatus = patient ? {
+    isBlocked: patient.status === 'blocked',
+    blockLevel: patient.blockLevel || 0,
+    fines: patient.fines || 0,
+  } : null;
+
+  const menuItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: faHome, path: '/patient/dashboard' },
+    { id: 'book', label: 'Book Appointment', icon: faCalendarPlus, path: '/patient/book-appointment' },
+    { id: 'advanced-booking', label: 'Advanced Booking', icon: faShieldHeart, path: '/patient/advanced-booking' },
+    { id: 'appointments', label: 'My Appointments', icon: faCalendarCheck, path: '/patient/my-appointments' },
+    { id: 'records', label: 'Medical Records', icon: faFileMedical, path: '/patient/medical-records' },
+    { id: 'prescriptions', label: 'Prescriptions', icon: faPrescriptionBottle, path: '/patient/prescriptions' },
+    { id: 'billing', label: 'Billing', icon: faCreditCard, path: '/patient/billing' },
+    { id: 'reviews', label: 'Reviews', icon: faStar, path: '/patient/reviews' },
+    { id: 'notifications', label: 'Notifications', icon: faChartLine, path: '/patient/notifications' },
+    { id: 'profile', label: 'Profile & Settings', icon: faCog, path: '/patient/profile' },
+  ];
+
+  // Verify user is a patient - only redirect if auth is complete and user is definitively not a patient
+  useEffect(() => {
+    if (!authLoading && currentUser && String(currentUser?.role || '').toLowerCase() !== 'patient') {
+      navigate('/login', { replace: true });
+    }
+  }, [authLoading, currentUser, navigate]);
+
+  // Update active menu based on location
+  useEffect(() => {
+    const current = menuItems.find(i => location.pathname.startsWith(i.path));
+    if (current) setActiveMenu(current.id);
+  }, [location.pathname]);
+
+  // Show loading only if auth is still loading. Once currentUser is set, proceed with data loading in background
+  if (authLoading || !currentUser) return <div style={{ padding: '20px' }}>Loading...</div>;
+  
+  // Once auth is done, render layout even while data is loading (it will populate once ready)
+  // Patient data may not exist in Firebase collection yet, use currentUser as fallback
+
+  return (
+    <div className={`patient-layout ${sidebarOpen ? 'open' : 'collapsed'}`}>
+
+      {/* SIDEBAR */}
+      <aside className="patient-sidebar">
+
+        {/* HEADER */}
+        <div className="sidebar-header">
+          <FontAwesomeIcon icon={faHospital} />
+          <span>NOQ Hospital</span>
+          <button onClick={() => setSidebarOpen(!sidebarOpen)}>
+            <FontAwesomeIcon icon={sidebarOpen ? faChevronLeft : faChevronRight} />
+          </button>
+        </div>
+
+        {/* PROFILE */}
+        <div className="sidebar-profile">
+          <FontAwesomeIcon icon={faUser} className="profile-icon" />
+          <div>
+            <h4>{patient.name}</h4>
+            <p>{patient.email}</p>
+            <span className={`status ${patient.status}`}>{patient.status}</span>
+          </div>
+        </div>
+
+        {/* QUICK ACTIONS ✅ */}
+        <QuickActions
+          actions={[
+            {
+              icon: faCalendarPlus,
+              label: 'Book Now',
+              action: () => navigate('/patient/book-appointment'),
+              color: '#10b981',
+            },
+            {
+              icon: faFileMedical,
+              label: 'Records',
+              action: () => navigate('/patient/medical-records'),
+              color: '#3b82f6',
+            },
+            {
+              icon: faShieldHeart,
+              label: 'Advanced',
+              action: () => navigate('/patient/advanced-booking'),
+              color: '#0ea5e9',
+            },
+            {
+              icon: faPrescriptionBottle,
+              label: 'Prescriptions',
+              action: () => navigate('/patient/prescriptions'),
+              color: '#8b5cf6',
+            },
+          ]}
+        />
+
+        {/* NAVIGATION */}
+        <nav className="sidebar-nav">
+          {menuItems.map(item => (
+            <Link
+              key={item.id}
+              to={item.path}
+              className={activeMenu === item.id ? 'active' : ''}
+              onClick={() => setActiveMenu(item.id)}
+            >
+              <FontAwesomeIcon icon={item.icon} />
+              <span>{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+
+        {/* BLOCK WARNING */}
+        {blockStatus?.blockLevel > 0 && (
+          <div className="block-warning">
+            <FontAwesomeIcon icon={faTriangleExclamation} />
+            <p>Block Level {blockStatus.blockLevel}/3</p>
+          </div>
+        )}
+
+        {/* LOGOUT */}
+        <button
+          className="logout-btn"
+          onClick={async () => {
+            await logout();
+            navigate('/login', { replace: true });
+          }}
+        >
+          <FontAwesomeIcon icon={faRightFromBracket} />
+          Logout
+        </button>
+
+      </aside>
+
+      {/* MAIN CONTENT */}
+      <main className="patient-main">
+        {children}
+      </main>
+
+    </div>
+  );
+};
+
+export default PatientLayout;

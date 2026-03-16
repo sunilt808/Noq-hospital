@@ -1,0 +1,26 @@
+src/
+├── pages/
+│   └── hm/
+│       ├── Management.jsx              # ✅ COMPLETED - Dashboard
+│       ├── management/                  # Management Pages
+│       │   ├── Doctors.jsx             # 1. Doctor Management
+│       │   ├── Departments.jsx         # 2. Department Management
+│       │   ├── Rooms.jsx              # 3. Room Management
+│       │   ├── Diseases.jsx           # 4. Disease Management
+│       │   ├── Queues.jsx             # 5. Queue Management
+│       │   ├── Revenue.jsx            # 6. Revenue Management
+│       │   ├── Feedback.jsx           # 7. Feedback Management
+│       │   ├── Notifications.jsx      # 8. Notifications
+│       │   └── Audit.jsx              # 9. Audit Logs
+│       │
+│       ├── doctors/                    # Doctor Specific
+│       │   ├── Create.jsx             # Create Doctor
+│       │   ├── Edit.jsx               # Edit Doctor
+│       │   └── [id]/                  # Doctor Profile
+│       │       └── Profile.jsx
+│       │
+│       └── hospital/                  # Hospital Setup
+│           ├── Profile.jsx            # Hospital Profile
+│           └── Structure.jsx          # Dept & Rooms
+│
+└── App.css                           # ✅ ALL CSS HERE

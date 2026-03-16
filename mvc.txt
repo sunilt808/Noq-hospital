@@ -1,0 +1,195 @@
+# NOQPRO - COMPLETE MVC OVERVIEW (BACKEND + FRONTEND)
+# Root: NOQPRO
+# Purpose: One-file architecture guide so any developer can understand the project quickly.
+
+============================================================
+# 1) HIGH-LEVEL MVC SUMMARY
+============================================================
+
+# Traditional MVC naming in this project:
+# - Model: Data schemas / domain objects / persisted records (Firebase + backend models)
+# - View: React UI pages/components (frontend screens)
+# - Controller: API route handlers + frontend event handlers/orchestration
+# - Service layer: Business logic used by controllers (very important in this codebase)
+
+# Architecture style used:
+# - Backend: FastAPI + route modules + service modules + model classes
+# - Frontend: React pages/components + context/hooks + service adapters
+# - Data store: Firebase collections (plus some compatibility localStorage in service layer)
+
+============================================================
+# 2) BACKEND MVC MAP (backend/)
+============================================================
+
+# BACKEND ENTRY
+# backend/main.py
+# - App bootstrap
+# - Registers routes
+# - Exposes API endpoints consumed by frontend
+
+# M = MODEL (backend/models/)
+# backend/models/user.py
+# backend/models/hospital.py
+# backend/models/queue.py
+# backend/models/advanced_booking.py
+# - Defines core domain structures and validation-friendly entities
+# - Represents persistent business records
+
+# C = CONTROLLER (backend/routes/)
+# backend/routes/auth.py                -> login/auth related endpoints
+# backend/routes/users.py               -> user CRUD and user workflows
+# backend/routes/hospitals.py           -> hospital registration/management
+# backend/routes/queues.py              -> queue operations
+# backend/routes/tokens.py              -> token flow
+# backend/routes/reviews.py             -> review operations
+# backend/routes/advanced_bookings.py   -> advanced booking operations
+# - Accept HTTP requests, validate inputs, call services, return API response
+
+# SERVICE / BUSINESS LAYER (backend/services/)
+# backend/services/auth_service.py
+# backend/services/user_service.py
+# backend/services/queue_service.py
+# backend/services/advanced_booking_service.py
+# backend/services/review_service.py
+# backend/services/bootstrap_service.py
+# - Core business rules live here
+# - Controllers should stay thin and delegate logic to this layer
+
+# INFRA / DATA ACCESS
+# backend/firebase.py
+# - Firebase setup/connection helpers
+# backend/data/audit_logs.json
+# - Current audit log data file (project-specific runtime/support data)
+
+# BACKEND FLOW (request lifecycle)
+# Request -> main.py app -> routes/* (Controller) -> services/* (Business Logic)
+# -> models/* shaped records -> Firebase/Data persistence -> JSON response
+
+============================================================
+# 3) FRONTEND MVC MAP (noq-frontend/)
+============================================================
+
+# FRONTEND ENTRY
+# noq-frontend/src/main.jsx
+# - React app mount
+# - Context providers setup
+
+# V = VIEW (React UI)
+# Layouts:
+# - src/components/AdminLayout.jsx
+# - src/components/hm/HmLayout.jsx
+# - src/components/doctor/DoctorLayout.jsx
+# - src/components/pat/PatientLayout.jsx
+#
+# Pages by role:
+# - src/pages/admin/*
+# - src/pages/hm/* and src/pages/hm/management/*
+# - src/pages/doctor/*
+# - src/pages/patient/*
+# - src/pages/Login.jsx, Signup.jsx
+#
+# These files render UI, forms, tables, cards, and trigger actions.
+
+# C = CONTROLLER (frontend orchestration)
+# In React, controller behavior is mostly inside:
+# - page components (event handlers / submit handlers / navigation)
+# - context providers (auth/session control)
+# - hooks (data loading / scoped filtering)
+#
+# Key controller-like modules:
+# - src/context/FirebaseAuthContext.jsx
+# - src/hooks/useFirebaseData.js
+# - page handlers in each role page
+
+# M = MODEL (frontend data representation)
+# Frontend models are implicit JS objects for:
+# - users, hospitals, doctors, patients, appointments, queues, tokens, bills, reviews
+#
+# Model source and normalization live mostly in services:
+# - src/services/firebaseDbService.js
+# - src/services/FirebaseAuthService.js
+# - src/services/*Service.js
+
+# SERVICE / ADAPTER LAYER (frontend)
+# src/services/api.js                    -> HTTP client to backend
+# src/services/firebaseDbService.js      -> Firebase CRUD wrapper
+# src/services/FirebaseAuthService.js    -> auth session abstraction
+# src/services/authService.js            -> auth compatibility/service logic
+# src/services/queueService.js           -> queue+token workflows
+# src/services/advancedBookingService.js -> advanced booking workflow
+# src/services/reviewService.js, userService.js, notificationService.js, etc.
+# - This layer is the bridge between UI and backend/Firebase
+
+# FRONTEND FLOW (user action lifecycle)
+# View (page/component) -> handler/controller logic -> service call
+# -> backend API or Firebase -> state update -> View re-render
+
+============================================================
+# 4) PROJECT-WIDE DOMAIN MODEL (SHARED CONCEPTS)
+============================================================
+
+# Core entities used across FE + BE:
+# - User (admin / hm / doctor / patient roles)
+# - Hospital
+# - Department
+# - Room
+# - Doctor profile/credentials
+# - Patient profile
+# - Appointment
+# - Queue
+# - Token
+# - Bill / Revenue record
+# - Review / Rating
+# - Advanced booking
+# - Notification
+# - Audit history
+
+# Role behavior summary:
+# - Admin: system oversight, HM approvals, hospital settings/revenue/reports
+# - HM: hospital operations (doctors, rooms, departments, audits, feedback)
+# - Doctor: queue handling, consultation, prescriptions, patient handling
+# - Patient: booking, bills, records, notifications, reviews
+
+============================================================
+# 5) HOW TO EXPLAIN THIS PROJECT TO NEW TEAM MEMBERS
+============================================================
+
+# 30-second explanation:
+# "NOQPRO is a role-based healthcare queue and appointment platform.
+# Backend provides route controllers and service-based business logic.
+# Frontend is React with role dashboards and service adapters.
+# Firebase is used for data/session persistence, with some compatibility services still present."
+
+# 2-minute explanation (recommended sequence):
+# 1) Open backend/main.py -> understand API entry
+# 2) Open backend/routes/* -> see controller endpoints by feature
+# 3) Open backend/services/* -> see real business rules
+# 4) Open frontend/src/context/FirebaseAuthContext.jsx -> auth control
+# 5) Open frontend/src/pages/<role>/* -> role-specific views/workflows
+# 6) Open frontend/src/services/* -> data access + orchestration
+
+============================================================
+# 6) CURRENT PRACTICAL NOTES
+============================================================
+
+# - Page-level localStorage usage has been migrated away in frontend pages.
+# - Some localStorage compatibility still exists in service/helper layers.
+# - This means MVC boundaries are clearer now at page level, but full data layer cleanup is ongoing.
+
+============================================================
+# 7) QUICK FILE-TO-MVC INDEX
+============================================================
+
+# BACKEND
+# Model      -> backend/models/*
+# Controller -> backend/routes/*
+# Service    -> backend/services/*
+# Infra      -> backend/firebase.py
+
+# FRONTEND
+# View       -> noq-frontend/src/pages/* + noq-frontend/src/components/*
+# Controller -> page handlers + context/hooks
+# Model      -> object schemas in services + firebaseDbService data records
+# Service    -> noq-frontend/src/services/*
+
+# End of MVC guide

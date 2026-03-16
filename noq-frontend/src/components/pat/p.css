@@ -1,0 +1,290 @@
+/* =========================
+   BASE LAYOUT
+========================= */
+.patient-layout {
+  display: flex;
+  min-height: 100vh;
+  background: #f8fafc; /* white/light page */
+  color: #0f172a;
+  font-family: 'Inter', sans-serif;
+}
+
+/* =========================
+   SIDEBAR (BLUE)
+========================= */
+.patient-sidebar {
+  width: 280px;
+  background: linear-gradient(180deg, #1e3a8a, #1d4ed8);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s ease;
+  overflow-y: auto;
+}
+
+/* Collapsed sidebar */
+.patient-layout.collapsed .patient-sidebar {
+  width: 80px;
+}
+
+/* Hide text when collapsed */
+.patient-layout.collapsed .sidebar-header span,
+.patient-layout.collapsed .sidebar-profile div,
+.patient-layout.collapsed .quick-action-btn span,
+.patient-layout.collapsed .sidebar-nav a span,
+.patient-layout.collapsed .block-warning p,
+.patient-layout.collapsed .logout-btn span {
+  display: none;
+}
+
+/* =========================
+   SIDEBAR HEADER
+========================= */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.sidebar-header svg {
+  font-size: 24px;
+  color: white;
+}
+
+.sidebar-header span {
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+  margin-left: 8px;
+}
+
+.sidebar-header button {
+  background: transparent;
+  border: none;
+  color: #e0e7ff;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-header button:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+/* =========================
+   PROFILE CARD
+========================= */
+.sidebar-profile {
+  margin: 12px 14px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.profile-icon {
+  font-size: 32px;
+  color: #e0e7ff;
+}
+
+.sidebar-profile h4 {
+  font-size: 14px;
+  margin: 0;
+  color: white;
+}
+
+.sidebar-profile p {
+  font-size: 11px;
+  margin: 2px 0;
+  color: #dbeafe;
+}
+
+.status {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.25);
+  text-transform: capitalize;
+}
+
+.status.active {
+  color: #22c55e;
+}
+
+.status.blocked {
+  color: #fecaca;
+}
+
+/* =========================
+   QUICK ACTIONS
+========================= */
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 0 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.quick-action-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 10px 6px;
+  color: white;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.25);
+  transition: transform 0.2s ease, box-shadow 0.2s;
+}
+
+.quick-action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.25);
+}
+
+.quick-action-btn svg {
+  font-size: 16px;
+}
+
+/* Collapsed quick actions */
+.patient-layout.collapsed .quick-actions {
+  grid-template-columns: 1fr;
+}
+
+/* =========================
+   NAVIGATION
+========================= */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  flex: 1;
+}
+
+.sidebar-nav a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #e0e7ff;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.sidebar-nav a svg {
+  font-size: 16px;
+  color: #c7d2fe;
+}
+
+.sidebar-nav a:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.sidebar-nav a.active {
+  background: white;
+  color: #1e3a8a;
+}
+
+.sidebar-nav a.active svg {
+  color: #1e3a8a;
+}
+
+/* =========================
+   BLOCK WARNING
+========================= */
+.block-warning {
+  margin: 10px 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.25);
+  color: #fee2e2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+/* =========================
+   LOGOUT BUTTON
+========================= */
+.logout-btn {
+  margin: 14px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: #fee2e2;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.logout-btn:hover {
+  background: rgba(239, 68, 68, 0.35);
+}
+
+/* =========================
+   MAIN CONTENT (WHITE)
+========================= */
+.patient-main {
+  flex: 1;
+  padding: 24px;
+  background: #ffffff;
+  color: #0f172a;
+  overflow-y: auto;
+  margin-left: 280px;
+  transition: margin-left 0.3s ease;
+}
+
+.patient-layout.collapsed .patient-main {
+  margin-left: 80px;
+}
+
+/* =========================
+   MOBILE RESPONSIVE
+========================= */
+@media (max-width: 768px) {
+  .patient-sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100%;
+    transform: translateX(-100%);
+    z-index: 100;
+    transition: transform 0.3s ease;
+  }
+
+  .patient-layout.open .patient-sidebar {
+    transform: translateX(0);
+  }
+
+  .patient-main {
+    margin-left: 0 !important;
+    padding: 16px;
+  }
+
+  .patient-layout.open::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 90;
+  }
+}

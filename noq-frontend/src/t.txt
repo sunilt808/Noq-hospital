@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Token</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        /* Certificate Border Token */
+        .token-certificate {
+            width: 100%;
+            max-width: 500px;
+            background: white;
+            padding: 30px;
+            border: 20px solid;
+            border-image: 
+                repeating-linear-gradient(
+                    45deg,
+                    #2563eb 0px,
+                    #2563eb 10px,
+                    #3b82f6 10px,
+                    #3b82f6 20px,
+                    #60a5fa 20px,
+                    #60a5fa 30px,
+                    #93c5fd 30px,
+                    #93c5fd 40px
+                ) 20 stretch;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Hospital Header */
+        .hospital-header {
+            text-align: center;
+            margin-bottom: 30px;
+            position: relative;
+        }
+
+        .hospital-name {
+            color: #1e40af;
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .hospital-tagline {
+            color: #4b5563;
+            font-size: 14px;
+            font-weight: 500;
+            border-bottom: 2px solid #dbeafe;
+            padding-bottom: 15px;
+        }
+
+        /* Profile Icon */
+        .profile-container {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0 30px;
+        }
+
+        .profile-icon {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 5px solid #bfdbfe;
+            box-shadow: 0 5px 15px rgba(59, 130, 246, 0.3);
+        }
+
+        .profile-icon i {
+            font-size: 48px;
+            color: white;
+        }
+
+        /* Token Details Grid */
+        .token-details {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .token-row {
+            display: flex;
+            flex-direction: column;
+            padding: 12px 15px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border-left: 4px solid #3b82f6;
+            transition: all 0.3s ease;
+        }
+
+        .token-row:hover {
+            background: #e0f2fe;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 10px rgba(59, 130, 246, 0.1);
+        }
+
+        .token-label {
+            font-size: 12px;
+            color: #6b7280;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .token-value {
+            font-size: 16px;
+            color: #1f2937;
+            font-weight: 600;
+        }
+
+        /* Gap Section */
+        .prescription-gap {
+            background: #f0f9ff;
+            border: 2px dashed #93c5fd;
+            border-radius: 10px;
+            padding: 25px;
+            text-align: center;
+            margin-top: 25px;
+            position: relative;
+        }
+
+        .gap-label {
+            color: #1e40af;
+            font-weight: 700;
+            font-size: 18px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 15px 0;
+        }
+
+        .prescription-line {
+            height: 2px;
+            background: repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 10px,
+                #3b82f6 10px,
+                #3b82f6 20px
+            );
+            margin: 15px 0;
+        }
+
+        .gap-subtext {
+            color: #4b5563;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        /* Action Buttons */
+        .token-actions {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .action-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .print-btn {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .print-btn:hover {
+            background: #2563eb;
+            transform: scale(1.05);
+        }
+
+        .emergency-btn {
+            background: #dc2626;
+            color: white;
+        }
+
+        .emergency-btn:hover {
+            background: #b91c1c;
+            transform: scale(1.05);
+        }
+
+        /* Token ID Badge */
+        .token-id {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #1e40af;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 14px;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 8px rgba(30, 64, 175, 0.3);
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .token-certificate {
+                padding: 20px;
+                border-width: 15px;
+            }
+            
+            .hospital-name {
+                font-size: 22px;
+            }
+            
+            .token-details {
+                grid-template-columns: 1fr;
+            }
+            
+            .token-actions {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="token-certificate">
+        <!-- Token ID Badge -->
+        <div class="token-id">TOKEN: #MED2024</div>
+        
+        <!-- Hospital Header -->
+        <div class="hospital-header">
+            <h1 class="hospital-name">Sunrise Medical Center</h1>
+            <p class="hospital-tagline">Quality Care • Advanced Treatment • Patient First</p>
+        </div>
+        
+        <!-- Profile Icon -->
+        <div class="profile-container">
+            <div class="profile-icon">
+                <i class="fas fa-user-md"></i>
+            </div>
+        </div>
+        
+        <!-- Token Details -->
+        <div class="token-details">
+            <div class="token-row">
+                <span class="token-label">Patient Name</span>
+                <span class="token-value">Robert Johnson</span>
+            </div>
+            <div class="token-row">
+                <span class="token-label">Token Number</span>
+                <span class="token-value">TK-7842</span>
+            </div>
+            <div class="token-row">
+                <span class="token-label">Diagnosis</span>
+                <span class="token-value">Hypertension Stage 2</span>
+            </div>
+            <div class="token-row">
+                <span class="token-label">Assigned Doctor</span>
+                <span class="token-value">Dr. Sarah Williams</span>
+            </div>
+            <div class="token-row">
+                <span class="token-label">Room Number</span>
+                <span class="token-value">Cardiology - 304</span>
+            </div>
+            <div class="token-row">
+                <span class="token-label">Appointment Time</span>
+                <span class="token-value">10:30 AM</span>
+            </div>
+            <div class="token-row">
+                <span class="token-label">Date</span>
+                <span class="token-value">15 March 2024</span>
+            </div>
+            <div class="token-row">
+                <span class="token-label">Priority</span>
+                <span class="token-value">Advance Booking (Older)</span>
+            </div>
+        </div>
+        
+        <!-- Prescription Gap -->
+        <div class="prescription-gap">
+            <div class="prescription-line"></div>
+            <p class="gap-label">Prescription & Medical Notes</p>
+            <div class="prescription-line"></div>
+            <p class="gap-subtext">This area reserved for doctor's prescription, treatment notes, and follow-up instructions</p>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div class="token-actions">
+            <button class="action-btn print-btn" onclick="printToken()">
+                <i class="fas fa-print"></i> Print Token
+            </button>
+            <button class="action-btn emergency-btn" onclick="emergencyCall()">
+                <i class="fas fa-phone-alt"></i> Emergency (108)
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Print Token Function
+        function printToken() {
+            const token = document.querySelector('.token-certificate');
+            const originalContent = document.body.innerHTML;
+            
+            document.body.innerHTML = token.outerHTML;
+            window.print();
+            document.body.innerHTML = originalContent;
+            location.reload();
+        }
+        
+        // Emergency Call Function
+        function emergencyCall() {
+            if (confirm('🚨 Are you in a critical emergency? Click OK to call 108')) {
+                window.location.href = 'tel:108';
+            }
+        }
+        
+        // Dynamic Date/Time Update
+        function updateDateTime() {
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            const timeStr = now.toLocaleTimeString('en-US', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            
+            // Update token generation time
+            document.querySelectorAll('.token-row')[5].querySelector('.token-value').textContent = timeStr;
+            document.querySelectorAll('.token-row')[6].querySelector('.token-value').textContent = dateStr;
+        }
+        
+        // Update time every minute
+        updateDateTime();
+        setInterval(updateDateTime, 60000);
+        
+        // Add hover effects
+        document.querySelectorAll('.token-row').forEach(row => {
+            row.addEventListener('mouseenter', function() {
+                this.style.transform = 'translateY(-3px)';
+            });
+            
+            row.addEventListener('mouseleave', function() {
+                this.style.transform = 'translateY(0)';
+            });
+        });
+        
+        // Add click to copy token number
+        document.querySelectorAll('.token-row')[1].addEventListener('click', function() {
+            const tokenNum = this.querySelector('.token-value').textContent;
+            navigator.clipboard.writeText(tokenNum).then(() => {
+                alert(`Token number ${tokenNum} copied to clipboard!`);
+            });
+        });
+    </script>
+</body>
+</html>
