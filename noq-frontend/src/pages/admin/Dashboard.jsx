@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import * as Icons from '@fortawesome/free-solid-svg-icons';
-import firebaseDbService from '../../services/firebaseDbService';
 import notificationService from '../../services/notificationService';
 
 const Dashboard = () => {

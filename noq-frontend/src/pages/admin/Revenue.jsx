@@ -2,7 +2,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import * as Icons from '@fortawesome/free-solid-svg-icons';
-import firebaseDbService from '../../services/firebaseDbService';
 
 const Revenue = () => {
   const [timeRange, setTimeRange] = useState('monthly');

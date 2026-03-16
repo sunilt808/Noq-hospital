@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import authService from '../../services/authService.js';
-import { useAuth } from '../../context/FirebaseAuthContext.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { 
   faShieldAlt,
   faEnvelope,

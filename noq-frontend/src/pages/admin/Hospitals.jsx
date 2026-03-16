@@ -4,7 +4,6 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import * as Icons from '@fortawesome/free-solid-svg-icons';
 import { recordHistory } from '../../services/historyService';
 import api from '../../services/api';
-import firebaseDbService from '../../services/firebaseDbService';
 
 const Hospitals = () => {
   const [hospitals, setHospitals] = useState([]);
