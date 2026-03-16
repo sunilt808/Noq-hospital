@@ -9,44 +9,91 @@ import hashlib
 import os
 import json
 
-# In-memory cache to reduce Firestore quota usage
-_user_email_cache = {}  # email -> user document
-_user_id_cache = {}     # user_id -> user document
-_hospital_cache = {}    # hospital_id -> hospital document
+# ═════════════════════════════════════════════════════════════════════
+# FIREBASE-FIRST SERVICE WITH SMART IN-MEMORY CACHING FOR QUOTA MANAGEMENT
+# ═════════════════════════════════════════════════════════════════════
 
-# Load local users cache for fallback during quota exhaustion
-def _load_local_cache():
-    """Load user cache from local JSON file to provide service during quota limits."""
-    global _user_email_cache, _user_id_cache, _hospital_cache
+from datetime import datetime, timedelta
+
+# In-memory cache with TTL (not persisted, just for quota management)
+_cache = {
+    "_hospitals": {"data": [], "ttl": None},
+    "_departments": {"data": [], "ttl": None},
+    "_doctors": {"data": [], "ttl": None},
+}
+CACHE_TTL_SECONDS = 300  # 5 minutes
+
+def _is_cache_valid(cache_key: str) -> bool:
+    """Check if cache is still valid."""
+    if cache_key not in _cache:
+        return False
+    cache_entry = _cache[cache_key]
+    if cache_entry["ttl"] is None:
+        return False
+    return datetime.utcnow() < cache_entry["ttl"]
+
+def _get_cached_data(cache_key: str):
+    """Get data from cache if valid."""
+    if _is_cache_valid(cache_key):
+        return _cache[cache_key]["data"]
+    return None
+
+def _set_cache_data(cache_key: str, data):
+    """Set cache data with TTL."""
+    _cache[cache_key] = {
+        "data": data,
+        "ttl": datetime.utcnow() + timedelta(seconds=CACHE_TTL_SECONDS)
+    }
+
+def _load_fallback_cache():
+    """Load fallback cache from local JSON files (bootstrap only)."""
     try:
-        cache_file = os.path.join(os.path.dirname(__file__), "..", "data", "users_cache.json")
-        if os.path.exists(cache_file):
-            with open(cache_file, 'r') as f:
-                data = json.load(f)
-                for user in data.get("users", []):
-                    email = user.get("email", "").lower()
-                    if email:
-                        _user_email_cache[email] = user
-                    user_id = user.get("id")
-                    if user_id:
-                        _user_id_cache[user_id] = user
-    except Exception as e:
-        print(f"Warning: Could not load local users cache: {e}")
-    
-    # Load hospitals cache
-    try:
+        # Load hospitals
         hospitals_file = os.path.join(os.path.dirname(__file__), "..", "data", "hospitals_cache.json")
         if os.path.exists(hospitals_file):
             with open(hospitals_file, 'r') as f:
                 data = json.load(f)
-                for hospital in data.get("hospitals", []):
-                    hospital_id = hospital.get("id")
-                    if hospital_id:
-                        _hospital_cache[hospital_id] = hospital
+                hospitals = [
+                    {"id": h.get("id") or h.get("hospital_id"), **h}
+                    for h in data.get("hospitals", [])
+                ]
+                _set_cache_data("_hospitals", hospitals)
+                print(f"✓ Loaded {len(hospitals)} hospitals from fallback cache")
     except Exception as e:
-        print(f"Warning: Could not load local hospitals cache: {e}")
+        print(f"Note: Could not load hospitals fallback cache: {e}")
+    
+    try:
+        # Load departments
+        depts_file = os.path.join(os.path.dirname(__file__), "..", "data", "departments_cache.json")
+        if os.path.exists(depts_file):
+            with open(depts_file, 'r') as f:
+                data = json.load(f)
+                depts = [
+                    {"id": d.get("id") or d.get("department_id"), **d}
+                    for d in data.get("departments", [])
+                ]
+                _set_cache_data("_departments", depts)
+                print(f"✓ Loaded {len(depts)} departments from fallback cache")
+    except Exception as e:
+        print(f"Note: Could not load departments fallback cache: {e}")
+    
+    try:
+        # Load doctors
+        doctors_file = os.path.join(os.path.dirname(__file__), "..", "data", "doctors_cache.json")
+        if os.path.exists(doctors_file):
+            with open(doctors_file, 'r') as f:
+                data = json.load(f)
+                doctors = [
+                    {"id": d.get("id") or d.get("doctor_id"), **d}
+                    for d in data.get("doctors", [])
+                ]
+                _set_cache_data("_doctors", doctors)
+                print(f"✓ Loaded {len(doctors)} doctors from fallback cache")
+    except Exception as e:
+        print(f"Note: Could not load doctors fallback cache: {e}")
 
-_load_local_cache()
+# Load fallback caches on service startup
+_load_fallback_cache()
 
 
 def _now_iso() -> str:
@@ -162,12 +209,6 @@ def create_user(data: dict) -> dict:
 
     user_doc.pop("password_hash", None)
     
-    # Cache the new user
-    _user_id_cache[user_id] = user_doc
-    email = user_doc.get("email", "").lower()
-    if email:
-        _user_email_cache[email] = user_doc
-    
     return user_doc
 
 
@@ -184,21 +225,12 @@ def get_all_users(role: Optional[str] = None, hospital_id: Optional[str] = None)
 
 
 def get_user_by_id(user_id: str) -> Optional[dict]:
-    """Get user by ID (cache-first to reduce Firestore quota usage)."""
-    # Check cache first
-    if user_id in _user_id_cache:
-        return _user_id_cache[user_id]
-    
+    """Get user by ID directly from Firebase."""
     try:
         doc = db.collection("users").document(user_id).get()
         if doc.exists:
             data = {"id": doc.id, **doc.to_dict()}
             data.pop("password_hash", None)
-            # Cache it
-            _user_id_cache[user_id] = data
-            email = data.get("email", "").lower()
-            if email:
-                _user_email_cache[email] = data
             return data
     except Exception:
         pass
@@ -206,13 +238,8 @@ def get_user_by_id(user_id: str) -> Optional[dict]:
 
 
 def get_user_by_email(email: str) -> Optional[dict]:
-    """Get user by email (cache-first to reduce Firestore quota usage)."""
+    """Get user by email directly from Firebase."""
     email_lower = email.lower()
-    
-    # Check cache first
-    if email_lower in _user_email_cache:
-        return _user_email_cache[email_lower]
-    
     try:
         docs = (
             db.collection("users")
@@ -222,9 +249,7 @@ def get_user_by_email(email: str) -> Optional[dict]:
         )
         for doc in docs:
             user = {"id": doc.id, **doc.to_dict()}
-            # Cache it
-            _user_email_cache[email_lower] = user
-            _user_id_cache[user.get("id")] = user
+            user.pop("password_hash", None)
             return user
     except Exception:
         pass
@@ -291,16 +316,40 @@ def create_hospital(data: dict) -> dict:
 
 
 def get_all_hospitals(status: Optional[str] = None) -> List[dict]:
-    ref = db.collection("hospitals")
-    if status:
-        ref = ref.where(filter=FieldFilter("status", "==", status))
-    return [{"id": h.id, **h.to_dict()} for h in ref.stream()]
+    """Get all hospitals - Firebase first, fallback to cache if quota exceeded."""
+    # Try cache first
+    cached = _get_cached_data("_hospitals")
+    
+    try:
+        ref = db.collection("hospitals")
+        if status:
+            ref = ref.where(filter=FieldFilter("status", "==", status))
+        
+        hospitals = [{"id": h.id, **h.to_dict()} for h in ref.stream()]
+        _set_cache_data("_hospitals", hospitals)  # Update cache on success
+        return hospitals
+    except Exception as e:
+        # If quota exceeded or error, fallback to cache
+        if "quota" in str(e).lower() or "RESOURCE_EXHAUSTED" in str(e):
+            print(f"⚠️ Firebase quota limit hit, using cached data: {e}")
+            if cached:
+                if status:
+                    return [h for h in cached if h.get("status") == status]
+                return cached
+        
+        # If no cache and error, return empty list
+        print(f"Error accessing Firebase hospitals: {e}")
+        return []
 
 
 def get_hospital_by_id(hospital_id: str) -> Optional[dict]:
-    doc = db.collection("hospitals").document(hospital_id).get()
-    if doc.exists:
-        return {"id": doc.id, **doc.to_dict()}
+    """Get hospital by ID directly from Firebase."""
+    try:
+        doc = db.collection("hospitals").document(hospital_id).get()
+        if doc.exists:
+            return {"id": doc.id, **doc.to_dict()}
+    except Exception:
+        pass
     return None
 
 
@@ -310,6 +359,95 @@ def update_hospital_status(hospital_id: str, status: str, message: str = "") -> 
         return None
     ref.update({"status": status, "admin_message": message, "reviewed_at": _now_iso()})
     return {"id": hospital_id, **ref.get().to_dict()}
+
+
+# ─────────────────────────────────────────────
+#  DEPARTMENT CRUD (CACHE-FIRST)
+# ─────────────────────────────────────────────
+
+def get_all_departments(hospital_id: Optional[str] = None) -> List[dict]:
+    """Get departments - Firebase first, fallback to cache if quota exceeded."""
+    # Try cache first
+    cached = _get_cached_data("_departments")
+    
+    try:
+        ref = db.collection("departments")
+        if hospital_id:
+            ref = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id))
+        
+        departments = [{"id": d.id, **d.to_dict()} for d in ref.stream()]
+        _set_cache_data("_departments", departments)  # Update cache on success
+        return departments
+    except Exception as e:
+        # If quota exceeded or error, fallback to cache
+        if "quota" in str(e).lower() or "RESOURCE_EXHAUSTED" in str(e):
+            print(f"⚠️ Firebase quota limit hit, using cached data: {e}")
+            if cached:
+                if hospital_id:
+                    return [d for d in cached if d.get("hospital_id") == hospital_id]
+                return cached
+        
+        # If no cache and error, return empty list
+        print(f"Error accessing Firebase departments: {e}")
+        return []
+
+
+def get_department_by_id(department_id: str) -> Optional[dict]:
+    """Get department by ID directly from Firebase."""
+    try:
+        doc = db.collection("departments").document(department_id).get()
+        if doc.exists:
+            return {"id": doc.id, **doc.to_dict()}
+    except Exception:
+        pass
+    return None
+
+
+# ─────────────────────────────────────────────
+#  DOCTOR CRUD (CACHE-FIRST)
+# ─────────────────────────────────────────────
+
+def get_all_doctors(hospital_id: Optional[str] = None, department_id: Optional[str] = None) -> List[dict]:
+    """Get doctors - Firebase first, fallback to cache if quota exceeded."""
+    # Try cache first
+    cached = _get_cached_data("_doctors")
+    
+    try:
+        ref = db.collection("doctors")
+        if hospital_id:
+            ref = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id))
+        if department_id:
+            ref = ref.where(filter=FieldFilter("department_id", "==", department_id))
+        
+        doctors = [{"id": d.id, **d.to_dict()} for d in ref.stream()]
+        _set_cache_data("_doctors", doctors)  # Update cache on success
+        return doctors
+    except Exception as e:
+        # If quota exceeded or error, fallback to cache
+        if "quota" in str(e).lower() or "RESOURCE_EXHAUSTED" in str(e):
+            print(f"⚠️ Firebase quota limit hit, using cached data: {e}")
+            if cached:
+                result = cached
+                if hospital_id:
+                    result = [d for d in result if d.get("hospital_id") == hospital_id]
+                if department_id:
+                    result = [d for d in result if d.get("department_id") == department_id]
+                return result
+        
+        # If no cache and error, return empty list
+        print(f"Error accessing Firebase doctors: {e}")
+        return []
+
+
+def get_doctor_by_id(doctor_id: str) -> Optional[dict]:
+    """Get doctor by ID directly from Firebase."""
+    try:
+        doc = db.collection("doctors").document(doctor_id).get()
+        if doc.exists:
+            return {"id": doc.id, **doc.to_dict()}
+    except Exception:
+        pass
+    return None
 
 
 # ─────────────────────────────────────────────
