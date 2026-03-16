@@ -1,7 +1,7 @@
 # backend/routes/auth.py - Authentication endpoints
 
 from fastapi import APIRouter, HTTPException, status, Depends
-from services import auth_service
+from services import auth_service, user_service
 from pydantic import BaseModel
 from typing import Optional
 
@@ -12,6 +12,13 @@ class LoginRequest(BaseModel):
     email: str
     password: str
     role: str
+    hospital_id: Optional[str] = None
+
+
+class FirebaseLoginRequest(BaseModel):
+    id_token: str
+    role: str
+    hospital_id: Optional[str] = None
 
 
 class StandardResponse(BaseModel):
@@ -22,15 +29,46 @@ class StandardResponse(BaseModel):
 
 @router.post("/login", response_model=StandardResponse)
 def login(req: LoginRequest):
-    """Authenticate user and return ID token."""
-    user = auth_service.authenticate_user(req.email, req.password, req.role)
+    """Authenticate user and return token."""
+    user = user_service.authenticate_user(req.email, req.password, req.role)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials.")
     
+    token = auth_service.create_access_token({"sub": user.get("id"), "email": user.get("email"), "role": user.get("role")})
     return StandardResponse(
         success=True,
         message="Login successful.",
-        data={"user": user},
+        data={"user": user, "token": token},
+    )
+
+
+@router.post("/firebase-login", response_model=StandardResponse)
+def firebase_login(req: FirebaseLoginRequest):
+    """Authenticate via Firebase ID token."""
+    decoded = user_service.verify_firebase_token(req.id_token)
+    if not decoded:
+        raise HTTPException(status_code=401, detail="Invalid Firebase token.")
+    
+    email = decoded.get("email", "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=401, detail="Firebase token missing email.")
+    
+    user = user_service.get_user_by_email(email)
+    if not user:
+        user = user_service.create_user({
+            "name": decoded.get("name", email.split("@")[0]),
+            "email": email,
+            "role": req.role or "patient",
+            "status": "active",
+            "firebase_uid": decoded.get("uid"),
+            "hospital_id": req.hospital_id or "",
+        })
+    
+    token = auth_service.create_access_token({"sub": user.get("id"), "email": user.get("email"), "role": user.get("role")})
+    return StandardResponse(
+        success=True,
+        message="Firebase login successful.",
+        data={"user": user, "token": token},
     )
 
 
@@ -40,7 +78,7 @@ def verify_token(token: str = None):
     if not token:
         raise HTTPException(status_code=400, detail="Token required.")
     
-    decoded = auth_service.verify_firebase_token(token)
+    decoded = user_service.verify_firebase_token(token)
     if not decoded:
         raise HTTPException(status_code=401, detail="Invalid token.")
     

@@ -10,6 +10,9 @@ SECRET_KEY = os.environ.get("JWT_SECRET", "noq_jwt_secret_2026_change_in_prod")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
+# In-memory cache to reduce Firebase quota usage
+_user_cache = {}
+
 
 def create_access_token(payload: Dict[str, Any], expires_hours: int = ACCESS_TOKEN_EXPIRE_HOURS) -> str:
     """Generate a signed JWT access token."""
@@ -64,17 +67,22 @@ def require_auth(authorization: str = Header(default=None)) -> Dict[str, Any]:
                 detail="Firebase token missing email claim",
             )
 
-        user = user_service.get_user_by_email(email)
+        # Check cache first
+        user = _user_cache.get(email)
         if not user:
-            user = user_service.create_user(
-                {
-                    "name": firebase_claims.get("name") or email.split("@")[0] or "Firebase User",
-                    "email": email,
-                    "role": "patient",
-                    "status": "active",
-                    "firebase_uid": firebase_claims.get("uid"),
-                }
-            )
+            user = user_service.get_user_by_email(email)
+            if not user:
+                user = user_service.create_user(
+                    {
+                        "name": firebase_claims.get("name") or email.split("@")[0] or "Firebase User",
+                        "email": email,
+                        "role": "patient",
+                        "status": "active",
+                        "firebase_uid": firebase_claims.get("uid"),
+                    }
+                )
+            # Cache user
+            _user_cache[email] = user
 
         return {
             "sub": user.get("id"),
@@ -103,3 +111,13 @@ def require_role(*roles: str):
             )
         return payload
     return checker
+
+
+def cache_user(email: str, user: dict) -> None:
+    """Cache user data to reduce Firestore quota usage."""
+    _user_cache[email] = user
+
+
+def get_cached_user(email: str) -> Optional[dict]:
+    """Get cached user data."""
+    return _user_cache.get(email)

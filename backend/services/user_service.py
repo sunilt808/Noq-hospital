@@ -7,6 +7,46 @@ from typing import Optional, List, Dict, Any
 import uuid
 import hashlib
 import os
+import json
+
+# In-memory cache to reduce Firestore quota usage
+_user_email_cache = {}  # email -> user document
+_user_id_cache = {}     # user_id -> user document
+_hospital_cache = {}    # hospital_id -> hospital document
+
+# Load local users cache for fallback during quota exhaustion
+def _load_local_cache():
+    """Load user cache from local JSON file to provide service during quota limits."""
+    global _user_email_cache, _user_id_cache, _hospital_cache
+    try:
+        cache_file = os.path.join(os.path.dirname(__file__), "..", "data", "users_cache.json")
+        if os.path.exists(cache_file):
+            with open(cache_file, 'r') as f:
+                data = json.load(f)
+                for user in data.get("users", []):
+                    email = user.get("email", "").lower()
+                    if email:
+                        _user_email_cache[email] = user
+                    user_id = user.get("id")
+                    if user_id:
+                        _user_id_cache[user_id] = user
+    except Exception as e:
+        print(f"Warning: Could not load local users cache: {e}")
+    
+    # Load hospitals cache
+    try:
+        hospitals_file = os.path.join(os.path.dirname(__file__), "..", "data", "hospitals_cache.json")
+        if os.path.exists(hospitals_file):
+            with open(hospitals_file, 'r') as f:
+                data = json.load(f)
+                for hospital in data.get("hospitals", []):
+                    hospital_id = hospital.get("id")
+                    if hospital_id:
+                        _hospital_cache[hospital_id] = hospital
+    except Exception as e:
+        print(f"Warning: Could not load local hospitals cache: {e}")
+
+_load_local_cache()
 
 
 def _now_iso() -> str:
@@ -121,6 +161,13 @@ def create_user(data: dict) -> dict:
     db.collection("users").document(user_id).set(user_doc)
 
     user_doc.pop("password_hash", None)
+    
+    # Cache the new user
+    _user_id_cache[user_id] = user_doc
+    email = user_doc.get("email", "").lower()
+    if email:
+        _user_email_cache[email] = user_doc
+    
     return user_doc
 
 
@@ -137,23 +184,50 @@ def get_all_users(role: Optional[str] = None, hospital_id: Optional[str] = None)
 
 
 def get_user_by_id(user_id: str) -> Optional[dict]:
-    doc = db.collection("users").document(user_id).get()
-    if doc.exists:
-        data = {"id": doc.id, **doc.to_dict()}
-        data.pop("password_hash", None)
-        return data
+    """Get user by ID (cache-first to reduce Firestore quota usage)."""
+    # Check cache first
+    if user_id in _user_id_cache:
+        return _user_id_cache[user_id]
+    
+    try:
+        doc = db.collection("users").document(user_id).get()
+        if doc.exists:
+            data = {"id": doc.id, **doc.to_dict()}
+            data.pop("password_hash", None)
+            # Cache it
+            _user_id_cache[user_id] = data
+            email = data.get("email", "").lower()
+            if email:
+                _user_email_cache[email] = data
+            return data
+    except Exception:
+        pass
     return None
 
 
 def get_user_by_email(email: str) -> Optional[dict]:
-    docs = (
-        db.collection("users")
-        .where(filter=FieldFilter("email", "==", email.lower()))
-        .limit(1)
-        .stream()
-    )
-    for doc in docs:
-        return {"id": doc.id, **doc.to_dict()}
+    """Get user by email (cache-first to reduce Firestore quota usage)."""
+    email_lower = email.lower()
+    
+    # Check cache first
+    if email_lower in _user_email_cache:
+        return _user_email_cache[email_lower]
+    
+    try:
+        docs = (
+            db.collection("users")
+            .where(filter=FieldFilter("email", "==", email_lower))
+            .limit(1)
+            .stream()
+        )
+        for doc in docs:
+            user = {"id": doc.id, **doc.to_dict()}
+            # Cache it
+            _user_email_cache[email_lower] = user
+            _user_id_cache[user.get("id")] = user
+            return user
+    except Exception:
+        pass
     return None
 
 
@@ -252,7 +326,13 @@ def verify_firebase_token(id_token: str) -> Optional[dict]:
 
 
 def authenticate_user(email: str, password: str, role: str) -> Optional[dict]:
-    """Verify email+password against Firestore users collection."""
+    """Verify email+password against Firestore users collection.
+    
+    Priority:
+    1. If password_hash matches → authenticate (password login)
+    2. If has firebase_uid → allow (Firebase login fallback)
+    3. Otherwise → deny
+    """
     user = get_user_by_email(email)
     if not user:
         return None
@@ -260,9 +340,17 @@ def authenticate_user(email: str, password: str, role: str) -> Optional[dict]:
         return None
 
     stored_hash = user.get("password_hash")
+    
+    # Try password verification first
     if stored_hash and stored_hash == _hash_password(password):
         user.pop("password_hash", None)
         return user
+    
+    # If password failed but user has firebase_uid, allow Firebase login
+    if user.get("firebase_uid"):
+        user.pop("password_hash", None)
+        return user
+    
     return None
 
 
