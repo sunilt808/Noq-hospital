@@ -1,112 +1,59 @@
-# backend/routes/hospitals.py - Hospital management endpoints
+# backend/routes/hospitals.py - Hospital Management Routes
 
-from fastapi import APIRouter, HTTPException, status, Depends, Query
-from models.hospital import HospitalCreate, HospitalUpdate, HospitalStatusUpdate
-from services import user_service, auth_service
+import logging
+from fastapi import APIRouter, HTTPException, Depends, status
+from sqlalchemy.orm import Session
+from database import get_db, Hospital
 from pydantic import BaseModel
-from typing import Optional
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/hospitals", tags=["Hospitals"])
 
 
-class StandardResponse(BaseModel):
-    success: bool
-    message: str
-    data: dict = {}
+class HospitalResponse(BaseModel):
+    """Hospital response model."""
+    id: str
+    name: str
+    address: str = None
+    phone: str = None
+    email: str = None
+    city: str = None
+    state: str = None
+    pincode: str = None
+    status: str
+
+    class Config:
+        from_attributes = True
 
 
-@router.post("/register", response_model=StandardResponse, status_code=201)
-def register_hospital(hospital: HospitalCreate):
-    """Register a new hospital (HM self-registration)."""
+@router.get("/", response_model=list[HospitalResponse])
+def list_hospitals(db: Session = Depends(get_db)):
+    """List all hospitals."""
     try:
-        existing = user_service.get_user_by_email(hospital.email)
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    if existing:
-        raise HTTPException(status_code=409, detail="An account with this email already exists.")
-
-    new_hospital = user_service.create_hospital(hospital.model_dump())
-    hm_user = user_service.create_user({
-        "name": hospital.hm_name,
-        "email": hospital.email,
-        "role": "hm",
-        "phone": hospital.phone,
-        "gender": hospital.hm_gender,
-        "dob": hospital.hm_dob,
-        "password": hospital.password,
-        "hospital_id": new_hospital["id"],
-        "status": "pending",
-    })
-
-    return StandardResponse(
-        success=True,
-        message="Hospital registration submitted. Pending admin approval.",
-        data={"hospital": new_hospital, "hm_user_id": hm_user.get("id")},
-    )
+        hospitals = db.query(Hospital).filter(Hospital.status == "active").all()
+        return hospitals
+    except Exception as e:
+        logger.error(f"Error listing hospitals: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.get("", response_model=StandardResponse)
-def get_hospitals(status_filter: Optional[str] = Query(None, alias="status"), payload: dict = Depends(auth_service.require_auth)):
-    """Get all hospitals. Admin only."""
-    if payload.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required.")
-
+@router.get("/{hospital_id}", response_model=HospitalResponse)
+def get_hospital(hospital_id: str, db: Session = Depends(get_db)):
+    """Get hospital by ID."""
     try:
-        hospitals = user_service.get_all_hospitals(status=status_filter)
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    return StandardResponse(
-        success=True,
-        message="Hospitals fetched.",
-        data={"hospitals": hospitals, "count": len(hospitals)},
-    )
-
-
-@router.get("/available", response_model=StandardResponse)
-def get_available_hospitals():
-    """Get hospitals available for booking. Public endpoint - no auth required."""
-    try:
-        hospitals = user_service.get_all_hospitals()
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    allowed_statuses = {"approved", "active"}
-    
-    filtered = [
-        hospital for hospital in hospitals
-        if str(hospital.get("status") or "").strip().lower() in allowed_statuses
-    ]
-    
-    return StandardResponse(
-        success=True,
-        message="Available hospitals fetched.",
-        data={"hospitals": filtered, "count": len(filtered)},
-    )
-
-
-@router.get("/{hospital_id}", response_model=StandardResponse)
-def get_hospital(hospital_id: str, payload: dict = Depends(auth_service.require_auth)):
-    """Get a hospital by ID."""
-    caller_role = payload.get("role")
-    caller_hospital_id = payload.get("hospital_id")
-    
-    if caller_role != "admin" and caller_hospital_id != hospital_id:
-        raise HTTPException(status_code=403, detail="Access denied.")
-    
-    hospital = user_service.get_hospital_by_id(hospital_id)
-    if not hospital:
-        raise HTTPException(status_code=404, detail="Hospital not found.")
-    
-    return StandardResponse(success=True, message="Hospital fetched.", data=hospital)
-
-
-@router.patch("/{hospital_id}/status", response_model=StandardResponse)
-def update_hospital_status(hospital_id: str, req: HospitalStatusUpdate, payload: dict = Depends(auth_service.require_auth)):
-    """Update hospital status."""
-    if payload.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required.")
-    
-    hospital = user_service.update_hospital_status(hospital_id, req.status.value, req.message or "")
-    if not hospital:
-        raise HTTPException(status_code=404, detail="Hospital not found.")
-    
-    return StandardResponse(success=True, message=f"Hospital status updated.", data=hospital)
+        hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+        if not hospital:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Hospital not found: {hospital_id}"
+            )
+        return hospital
+    except Exception as e:
+        logger.error(f"Error getting hospital: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )

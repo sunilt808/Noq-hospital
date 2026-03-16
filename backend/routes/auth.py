@@ -1,131 +1,139 @@
-# backend/routes/auth.py - Authentication endpoints
+# backend/routes/auth.py - Authentication Routes
 
 import logging
-from fastapi import APIRouter, HTTPException, status
-from services import auth_service, user_service
-from pydantic import BaseModel
-from typing import Optional
-from response_models import StandardResponse, success_response, error_response
-from api_utils import (
-    ValidationError, UnauthorizedError, DatabaseError,
-    validate_email, validate_required_fields
-)
+from fastapi import APIRouter, HTTPException, Depends, status, Request
+from pydantic import BaseModel, EmailStr
+from sqlalchemy.orm import Session
+from database import get_db
+from services.auth_service import AuthService, UserService
+from audit import AuditLogger
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
 class LoginRequest(BaseModel):
-    email: str
+    """Login request model."""
+    email: EmailStr
     password: str
-    role: str
-    hospital_id: Optional[str] = None
-    otp: Optional[str] = None
-    _generatedOtp: Optional[str] = None
+    role: str = None  # For role-based access logging
 
 
-class FirebaseLoginRequest(BaseModel):
-    id_token: str
-    role: str
-    hospital_id: Optional[str] = None
+class LoginResponse(BaseModel):
+    """Login response model."""
+    success: bool
+    message: str
+    data: dict = {}
 
 
-@router.post("/login", response_model=StandardResponse)
-def login(req: LoginRequest):
-    """Authenticate user and return token."""
+class SignupRequest(BaseModel):
+    """Signup request model."""
+    email: EmailStr
+    password: str
+    full_name: str
+    phone: str = None
+    role: str = "patient"
+
+
+@router.post("/login", response_model=LoginResponse)
+def login(
+    req: LoginRequest, 
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Authenticate user with email and password."""
     try:
-        # Validate required fields
-        if not req.email or not req.password:
-            raise ValidationError("Email and password are required")
-        
-        # Validate email format
-        if not validate_email(req.email):
-            raise ValidationError("Invalid email format")
+        # Get client IP
+        client_ip = request.client.host if request.client else None
         
         # Authenticate user
-        user = user_service.authenticate_user(req.email, req.password, req.role)
-        
-        if not user:
-            logger.warning(f"Login failed for {req.email} with role {req.role}")
-            raise UnauthorizedError("Invalid credentials")
-        
-        # Generate token
-        token = auth_service.create_access_token({
-            "sub": user.get("id"),
-            "email": user.get("email"),
-            "role": user.get("role")
-        })
-        
-        logger.info(f"User {req.email} logged in successfully with role {req.role}")
-        
-        return success_response(
-            message="Login successful",
-            data={"user": user, "token": token},
-            status_code=200
+        user_data = AuthService.authenticate_user(
+            db=db,
+            email=req.email,
+            password=req.password,
+            ip_address=client_ip
         )
         
-    except ValidationError as e:
-        logger.warning(f"Validation error: {e}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except UnauthorizedError as e:
-        logger.warning(f"Authentication error: {e}")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
-    except DatabaseError as e:
-        logger.error(f"Database error during login: {e}")
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database error")
-    except RuntimeError as e:
-        logger.error(f"Runtime error during login: {e}")
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+        return LoginResponse(
+            success=True,
+            message="Login successful",
+            data=user_data
+        )
+        
+    except ValueError as e:
+        logger.warning(f"Login failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e)
+        )
     except Exception as e:
-        logger.error(f"Unexpected error during login: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+        logger.error(f"Login error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.post("/firebase-login", response_model=StandardResponse)
-def firebase_login(req: FirebaseLoginRequest):
-    """Authenticate via Firebase ID token."""
-    decoded = user_service.verify_firebase_token(req.id_token)
-    if not decoded:
-        raise HTTPException(status_code=401, detail="Invalid Firebase token.")
-    
-    email = decoded.get("email", "").strip().lower()
-    if not email:
-        raise HTTPException(status_code=401, detail="Firebase token missing email.")
-    
+@router.post("/signup", response_model=LoginResponse)
+def signup(
+    req: SignupRequest,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Register a new user."""
     try:
-        user = user_service.get_user_by_email(email)
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    if not user:
-        user = user_service.create_user({
-            "name": decoded.get("name", email.split("@")[0]),
-            "email": email,
-            "role": req.role or "patient",
-            "status": "active",
-            "firebase_uid": decoded.get("uid"),
-            "hospital_id": req.hospital_id or "",
+        # Get client IP
+        client_ip = request.client.host if request.client else None
+        
+        # Create user
+        user = UserService.create_user(
+            db=db,
+            email=req.email,
+            password=req.password,
+            full_name=req.full_name,
+            phone=req.phone,
+            role=req.role or "patient"
+        )
+        
+        # Create token
+        token = AuthService.create_access_token({
+            "sub": user.id,
+            "email": user.email,
+            "role": user.role,
         })
-    
-    token = auth_service.create_access_token({"sub": user.get("id"), "email": user.get("email"), "role": user.get("role")})
-    return StandardResponse(
-        success=True,
-        message="Firebase login successful.",
-        data={"user": user, "token": token},
-    )
-
-
-@router.post("/verify-token", response_model=StandardResponse)
-def verify_token(token: str = None):
-    """Verify ID token."""
-    if not token:
-        raise HTTPException(status_code=400, detail="Token required.")
-    
-    decoded = user_service.verify_firebase_token(token)
-    if not decoded:
-        raise HTTPException(status_code=401, detail="Invalid token.")
-    
-    return StandardResponse(
-        success=True,
-        message="Token valid.",
-        data={"decoded": decoded},
-    )
+        
+        # Log signup
+        AuditLogger.log(
+            db=db,
+            action="SIGNUP",
+            entity_type="User",
+            entity_id=user.id,
+            user_id=user.id,
+            new_values={"email": user.email, "role": user.role},
+            ip_address=client_ip,
+        )
+        
+        return LoginResponse(
+            success=True,
+            message="Signup successful",
+            data={
+                "id": user.id,
+                "email": user.email,
+                "full_name": user.full_name,
+                "role": user.role,
+                "token": token,
+            }
+        )
+        
+    except ValueError as e:
+        logger.warning(f"Signup failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Signup error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )

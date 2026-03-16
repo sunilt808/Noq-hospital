@@ -1,79 +1,68 @@
-# backend/routes/appointments.py - Appointment management endpoints
+# backend/routes/appointments.py - Appointment Management Routes
 
-from fastapi import APIRouter, HTTPException, Depends
-from services import auth_service
+import logging
+from fastapi import APIRouter, HTTPException, Depends, status
+from sqlalchemy.orm import Session
+from database import get_db, Appointment
 from pydantic import BaseModel
-from typing import Optional
-from database import db
-from google.cloud.firestore_v1.base_query import FieldFilter
 from datetime import datetime
-import uuid
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/appointments", tags=["Appointments"])
 
 
-class AppointmentCreate(BaseModel):
-    patient_id: str
+class AppointmentResponse(BaseModel):
+    """Appointment response model."""
+    id: str
     hospital_id: str
-    doctor_id: Optional[str] = None
-    department_id: Optional[str] = None
-    appointment_date: Optional[str] = None
-    notes: Optional[str] = None
+    doctor_id: str
+    patient_id: str
+    appointment_date: datetime
+    status: str
+    notes: str = None
+
+    class Config:
+        from_attributes = True
 
 
-class StandardResponse(BaseModel):
-    success: bool
-    message: str
-    data: dict = {}
-
-
-@router.get("/my", response_model=StandardResponse)
-def get_my_appointments(payload: dict = Depends(auth_service.require_auth)):
-    """Get appointments for current user."""
+@router.get("/", response_model=list[AppointmentResponse])
+def list_appointments(
+    patient_id: str = None,
+    db: Session = Depends(get_db)
+):
+    """List appointments."""
     try:
-        user_id = payload.get("sub")
-        ref = db.collection("appointments").where(filter=FieldFilter("patient_id", "==", user_id))
-        appointments = []
-        for doc in ref.stream():
-            appointments.append({"id": doc.id, **doc.to_dict()})
-        appointments.sort(key=lambda x: x.get("appointment_date", ""), reverse=True)
-        return StandardResponse(
-            success=True,
-            message="Appointments fetched.",
-            data={"appointments": appointments, "count": len(appointments)},
-        )
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Unable to fetch appointments from server: {str(e)}")
-
-
-@router.post("/create", response_model=StandardResponse, status_code=201)
-def create_appointment(appt: AppointmentCreate):
-    """Create a new appointment."""
-    try:
-        appt_id = f"APT-{uuid.uuid4().hex[:12].upper()}"
-        appt_doc = {
-            "id": appt_id,
-            "patient_id": appt.patient_id,
-            "hospital_id": appt.hospital_id,
-            "doctor_id": appt.doctor_id or "",
-            "department_id": appt.department_id or "",
-            "appointment_date": appt.appointment_date or "",
-            "notes": appt.notes or "",
-            "status": "confirmed",
-            "created_at": datetime.utcnow().isoformat() + "Z",
-        }
+        query = db.query(Appointment)
         
-        db.collection("appointments").document(appt_id).set(appt_doc)
-        return StandardResponse(
-            success=True,
-            message="Appointment created.",
-            data={"appointment": {"id": appt_id, **appt_doc}},
-        )
+        if patient_id:
+            query = query.filter(Appointment.patient_id == patient_id)
+        
+        appointments = query.all()
+        return appointments
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error creating appointment: {str(e)}")
+        logger.error(f"Error listing appointments: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.post("", response_model=StandardResponse, status_code=201)
-def create_appointment_alt(appt: AppointmentCreate):
-    """Create appointment (alternate endpoint)."""
-    return create_appointment(appt)
+@router.get("/{appointment_id}", response_model=AppointmentResponse)
+def get_appointment(appointment_id: str, db: Session = Depends(get_db)):
+    """Get appointment by ID."""
+    try:
+        appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        if not appointment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Appointment not found: {appointment_id}"
+            )
+        return appointment
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting appointment: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
