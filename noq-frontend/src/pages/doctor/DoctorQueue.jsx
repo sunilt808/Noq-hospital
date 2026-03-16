@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { recordHistory } from '../../services/historyService';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
-import firebaseDbService from '../../services/firebaseDbService';
+import { useAuth } from '../../context/AuthContext';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faArrowLeft, faUsers, faClock, faUserInjured,

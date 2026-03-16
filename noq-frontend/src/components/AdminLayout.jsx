@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import * as Icons from '@fortawesome/free-solid-svg-icons';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/FirebaseAuthContext';
+import { useAuth } from '../context/AuthContext';
 
 const AdminLayout = ({ children }) => {
   const navigate = useNavigate();

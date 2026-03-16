@@ -3,8 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import * as Icons from '@fortawesome/free-solid-svg-icons';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import firebaseDbService from '../../services/firebaseDbService';
+import { useAuth } from '../../context/AuthContext';
 
 const DEFAULT_SETTINGS = {
   theme: 'light',

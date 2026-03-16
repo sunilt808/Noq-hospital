@@ -25,8 +25,7 @@ import {
   faKey,
   faUserCircle
 } from '@fortawesome/free-solid-svg-icons';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
+import { useAuth } from '../../context/AuthContext';
 
 const HmLayout = ({ children }) => {
   const navigate = useNavigate();

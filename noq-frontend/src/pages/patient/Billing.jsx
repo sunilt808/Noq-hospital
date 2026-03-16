@@ -1,9 +1,7 @@
 // pages/PatientBilling.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
-import firebaseDbService from '../../services/firebaseDbService';
+import { useAuth } from '../../context/AuthContext';
 import revenueService from '../../services/revenueService';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {

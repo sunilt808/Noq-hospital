@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
+import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function HMDepartments() {

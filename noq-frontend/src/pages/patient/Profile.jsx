@@ -2,9 +2,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { useAuth } from "../../context/FirebaseAuthContext";
-import useFirebaseData from "../../hooks/useFirebaseData";
-import firebaseDbService from "../../services/firebaseDbService";
+import { useAuth } from "../../context/AuthContext";
 import {
   faUser,
   faEnvelope,

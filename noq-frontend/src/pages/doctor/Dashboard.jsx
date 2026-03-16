@@ -11,8 +11,7 @@ import {
   faNotesMedical, faPrescriptionBottle, faFileMedical,
   faBolt, faUserPlus, faPlus // Added for enhanced quick actions
 } from '@fortawesome/free-solid-svg-icons';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import firebaseDbService from '../../services/firebaseDbService';
+import { useAuth } from '../../context/AuthContext';
 import notificationService from '../../services/notificationService';
 import revenueService from '../../services/revenueService';
 import './doctor.css';

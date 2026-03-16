@@ -27,9 +27,7 @@ import {
   faCheck,
   faSpinner,
 } from '@fortawesome/free-solid-svg-icons';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
-import firebaseDbService from '../../services/firebaseDbService';
+import { useAuth } from '../../context/AuthContext';
 import reviewService from '../../services/reviewService';
 
 // Helper function to calculate age from date of birth

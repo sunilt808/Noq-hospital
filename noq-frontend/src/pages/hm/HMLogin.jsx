@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/FirebaseAuthContext';
+import { useAuth } from '../../context/AuthContext';
 
 export default function HMLogin() {
   const { login } = useAuth();

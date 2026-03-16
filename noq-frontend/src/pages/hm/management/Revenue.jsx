@@ -10,8 +10,7 @@ import {
   faBuilding,
   faClock,
 } from '@fortawesome/free-solid-svg-icons';
-import { useAuth } from '../../../context/FirebaseAuthContext';
-import firebaseDbService from '../../../services/firebaseDbService';
+import { useAuth } from '../../../context/AuthContext';
 import revenueService from '../../../services/revenueService';
 
 const Revenue = () => {

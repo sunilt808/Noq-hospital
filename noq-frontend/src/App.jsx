@@ -1,7 +1,7 @@
-// App.jsx - Firebase-only Auth (no localStorage)
+// App.jsx - JWT-based Auth with localStorage
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useAuth } from "./context/FirebaseAuthContext.jsx";
+import { useAuth } from "./context/AuthContext.jsx";
 
 import Login from "./pages/Login";
 import HmSignup from "./pages/hm/Signup";
