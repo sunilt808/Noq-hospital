@@ -24,8 +24,17 @@ class StandardResponse(BaseModel):
 @router.get("", response_model=StandardResponse)
 def get_queues(hospital_id: Optional[str] = None, payload: dict = Depends(auth_service.require_auth)):
     """Get all queues."""
-    queues = queue_service.get_all_queues()
+    queues = queue_service.get_all_queues(hospital_id=hospital_id)
     return StandardResponse(success=True, message="Queues fetched.", data={"queues": queues, "count": len(queues)})
+
+
+@router.get("/{queue_id}", response_model=StandardResponse)
+def get_queue(queue_id: str, payload: dict = Depends(auth_service.require_auth)):
+    """Get a specific queue."""
+    queue = queue_service.get_queue_by_id(queue_id)
+    if not queue:
+        raise HTTPException(status_code=404, detail="Queue not found.")
+    return StandardResponse(success=True, message="Queue fetched.", data={"queue": queue})
 
 
 @router.post("", response_model=StandardResponse, status_code=201)

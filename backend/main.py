@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import auth, users, queues, tokens, hospitals, advanced_bookings, reviews, departments, rooms, appointments
+from routes import auth, users, queues, tokens, hospitals, advanced_bookings, reviews, departments, rooms, appointments, prescriptions, revenue, diseases
 from services import bootstrap_service
 
 app = FastAPI(
@@ -39,7 +39,10 @@ app.include_router(hospitals.router)
 app.include_router(advanced_bookings.router)
 app.include_router(reviews.router)
 app.include_router(departments.router)
+app.include_router(diseases.router)
 app.include_router(rooms.router)
+app.include_router(prescriptions.router)
+app.include_router(revenue.router)
 
 
 @app.on_event("startup")

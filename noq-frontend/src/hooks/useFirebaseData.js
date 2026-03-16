@@ -17,7 +17,6 @@ const EMPTY_DATA = {
   appointments: [],
   departments: [],
   rooms: [],
-  bills: [],
   prescriptions: [],
   medicalRecords: [],
   reviews: [],
@@ -63,7 +62,7 @@ const useFirebaseData = () => {
 
         const [
           users, hospitals, doctors, patients, queues, appointments,
-          departments, rooms, bills, prescriptions, medicalRecords,
+          departments, rooms, prescriptions, medicalRecords,
           reviews, diseases, advancedBookings, audit_logs
         ] = await Promise.all([
           firebaseDbService.getCollection('users'),
@@ -74,7 +73,6 @@ const useFirebaseData = () => {
           firebaseDbService.getCollection('appointments'),
           firebaseDbService.getCollection('departments'),
           firebaseDbService.getCollection('rooms'),
-          firebaseDbService.getCollection('bills'),
           firebaseDbService.getCollection('prescriptions'),
           firebaseDbService.getCollection('medicalRecords'),
           firebaseDbService.getCollection('reviews'),
@@ -96,7 +94,6 @@ const useFirebaseData = () => {
           appointments: appointments || [],
           departments: departments || [],
           rooms: rooms || [],
-          bills: bills || [],
           prescriptions: prescriptions || [],
           medicalRecords: medicalRecords || [],
           reviews: reviews || [],
@@ -106,7 +103,6 @@ const useFirebaseData = () => {
         });
         console.log('📦 useFirebaseData setData:', { 
           appointmentsCount: (appointments || []).length,
-          billsCount: (bills || []).length,
           appointmentsSample: (appointments || []).slice(0, 1)
         });
       } catch (err) {
@@ -176,7 +172,6 @@ const useFirebaseData = () => {
     })(),
     departments: data.departments || [],
     rooms: data.rooms || [],
-    bills: data.bills || [],
     prescriptions: data.prescriptions || [],
     medicalRecords: data.medicalRecords || [],
     reviews: data.reviews || [],

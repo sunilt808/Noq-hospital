@@ -24,10 +24,20 @@ class StandardResponse(BaseModel):
 @router.get("/my", response_model=StandardResponse)
 def get_my_appointments(payload: dict = Depends(auth_service.require_auth)):
     """Get appointments for current user."""
+    from firebase import db
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    
+    user_id = payload.get("sub")
+    ref = db.collection("appointments").where(filter=FieldFilter("patient_id", "==", user_id))
+    appointments = []
+    for doc in ref.stream():
+        appointments.append({"id": doc.id, **doc.to_dict()})
+    
+    appointments.sort(key=lambda x: x.get("appointment_date", ""), reverse=True)
     return StandardResponse(
         success=True,
         message="Appointments fetched.",
-        data={"appointments": []},
+        data={"appointments": appointments, "count": len(appointments)},
     )
 
 

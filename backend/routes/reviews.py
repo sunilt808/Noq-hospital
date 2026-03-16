@@ -21,9 +21,20 @@ class StandardResponse(BaseModel):
 
 
 @router.get("", response_model=StandardResponse)
-def get_reviews(hospital_id: Optional[str] = None, payload: dict = Depends(auth_service.require_auth)):
-    """Get reviews."""
-    return StandardResponse(success=True, message="Reviews fetched.", data={"reviews": []})
+def get_reviews(hospital_id: Optional[str] = None):
+    """Get reviews - PUBLIC endpoint."""
+    from firebase import db
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    
+    ref = db.collection("reviews")
+    if hospital_id:
+        ref = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id))
+    
+    reviews = []
+    for doc in ref.stream():
+        reviews.append({"id": doc.id, **doc.to_dict()})
+    
+    return StandardResponse(success=True, message="Reviews fetched.", data={"reviews": reviews, "count": len(reviews)})
 
 
 @router.post("", response_model=StandardResponse, status_code=201)

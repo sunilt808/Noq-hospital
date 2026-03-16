@@ -21,9 +21,26 @@ class StandardResponse(BaseModel):
 
 
 @router.get("", response_model=StandardResponse)
-def get_departments(hospital_id: Optional[str] = None, payload: dict = Depends(auth_service.require_auth)):
-    """Get departments."""
-    return StandardResponse(success=True, message="Departments fetched.", data={"departments": []})
+def get_departments(hospital_id: Optional[str] = None):
+    """Get departments - PUBLIC endpoint for patient booking."""
+    from firebase import db
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    
+    ref = db.collection("departments")
+    if hospital_id:
+        ref = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id))
+    
+    departments = []
+    for doc in ref.stream():
+        dept = {"id": doc.id, **doc.to_dict()}
+        if dept.get("status", "active").lower() in ["active", "approved"]:
+            departments.append(dept)
+    
+    return StandardResponse(
+        success=True,
+        message="Departments fetched.",
+        data={"departments": departments, "count": len(departments)}
+    )
 
 
 @router.post("", response_model=StandardResponse, status_code=201)

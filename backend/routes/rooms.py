@@ -25,7 +25,18 @@ class StandardResponse(BaseModel):
 @router.get("", response_model=StandardResponse)
 def get_rooms(hospital_id: Optional[str] = None, payload: dict = Depends(auth_service.require_auth)):
     """Get rooms."""
-    return StandardResponse(success=True, message="Rooms fetched.", data={"rooms": []})
+    from firebase import db
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    
+    ref = db.collection("rooms")
+    if hospital_id:
+        ref = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id))
+    
+    rooms = []
+    for doc in ref.stream():
+        rooms.append({"id": doc.id, **doc.to_dict()})
+    
+    return StandardResponse(success=True, message="Rooms fetched.", data={"rooms": rooms, "count": len(rooms)})
 
 
 @router.post("", response_model=StandardResponse, status_code=201)

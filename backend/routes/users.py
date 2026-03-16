@@ -54,6 +54,29 @@ def get_current_user(payload: dict = Depends(auth_service.require_auth)):
     )
 
 
+@router.get("/doctors-directory", response_model=StandardResponse)
+def get_doctors_directory():
+    """Get all active doctors - PUBLIC endpoint for patient booking."""
+    doctors = user_service.get_all_users(role="doctor")
+    active_doctors = [d for d in doctors if d.get("status", "active").lower() in ["active", "approved"]]
+    return StandardResponse(
+        success=True,
+        message="Doctors fetched.",
+        data={"doctors": active_doctors, "count": len(active_doctors)},
+    )
+
+
+@router.get("", response_model=StandardResponse)
+def list_users(role: Optional[str] = None, hospital_id: Optional[str] = None, payload: dict = Depends(auth_service.require_auth)):
+    """List users by role (authenticated)."""
+    users = user_service.get_all_users(role=role, hospital_id=hospital_id)
+    return StandardResponse(
+        success=True,
+        message="Users fetched.",
+        data={"users": users, "count": len(users)},
+    )
+
+
 @router.get("/{user_id}", response_model=StandardResponse)
 def get_user(user_id: str, payload: dict = Depends(auth_service.require_auth)):
     """Get a user by ID."""
@@ -68,23 +91,3 @@ def get_user(user_id: str, payload: dict = Depends(auth_service.require_auth)):
     )
 
 
-@router.get("", response_model=StandardResponse)
-def list_users(role: Optional[str] = None, payload: dict = Depends(auth_service.require_auth)):
-    """List users by role."""
-    users = user_service.get_all_users(role=role)
-    return StandardResponse(
-        success=True,
-        message="Users fetched.",
-        data={"users": users, "count": len(users)},
-    )
-
-
-@router.get("/doctors-directory", response_model=StandardResponse)
-def get_doctors_directory(payload: dict = Depends(auth_service.require_auth)):
-    """Get all active doctors."""
-    doctors = user_service.get_all_users(role="doctor")
-    return StandardResponse(
-        success=True,
-        message="Doctors fetched.",
-        data={"doctors": doctors, "count": len(doctors)},
-    )
