@@ -73,20 +73,18 @@ const loginAdmin = async ({ email, password }) => {
   throw new Error('Invalid admin email or password.');
 };
 
-const loginPatient = async ({ email, otp, _generatedOtp }) => {
-  const expectedOtp = _generatedOtp || '123456';
-  if (!otp || otp !== expectedOtp) {
-    throw new Error('Invalid OTP.');
-  }
+const loginPatient = async ({ email, password }) => {
+  if (!email?.trim()) throw new Error('Email is required.');
+  if (!password?.trim()) throw new Error('Password is required.');
 
   const res = await api.post('/auth/login', {
     role: 'patient',
     email,
-    password: '',
+    password,
   });
 
-  if (res?.success && res?.data?.user) {
-    const user = normalizeUser(res.data.user);
+  if (res?.success && res?.data) {
+    const user = normalizeUser(res.data);
     saveCurrentUser(user, res.data.token);
     return { user, token: res.data.token };
   }
@@ -152,36 +150,19 @@ export const authService = {
     if (!password?.trim()) throw new Error('Password is required.');
 
     if (role === 'patient') {
-      if (!proofFile) throw new Error('Proof document is required for patient signup.');
+      // Use backend /auth/signup endpoint with email + password
+      const response = await api.post('/auth/signup', {
+        email: email.trim().toLowerCase(),
+        password: password.trim(),
+        full_name: fullName.trim(),
+        phone: phone.trim(),
+        role: 'patient',
+      });
 
-      const proofFileName = proofFile?.name || '';
-      const isProofImage = Boolean(proofFile?.type?.startsWith('image/'));
-      let proofImageDataUrl = '';
-      if (isProofImage) {
-        try {
-          proofImageDataUrl = await fileToDataUrl(proofFile);
-        } catch (_) {
-          proofImageDataUrl = '';
-        }
-      }
-
-      const formData = new FormData();
-      formData.append('username', fullName.trim());
-      formData.append('gender', gender.toLowerCase());
-      formData.append('dob', dob);
-      formData.append('email', email.trim().toLowerCase());
-      formData.append('phone', phone.trim());
-      formData.append('password', password.trim());
-      formData.append('proof', proofFile);
-
-      const response = await api.postForm('/users/patient-signup', formData);
-      if (response?.success && response?.data?.user) {
-        const user = {
-          ...response.data.user,
-          proofName: proofFileName,
-          ...(proofImageDataUrl ? { profileImage: proofImageDataUrl } : {}),
-        };
-        return { user, proof: response.data.proof };
+      if (response?.success && response?.data) {
+        const user = normalizeUser(response.data);
+        saveCurrentUser(user, response.data.token);
+        return { user, token: response.data.token };
       }
 
       throw new Error('Patient signup failed.');

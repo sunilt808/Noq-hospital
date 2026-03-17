@@ -89,8 +89,8 @@ const Signup = () => {
 
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+    } else if (formData.password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters with uppercase, lowercase, digit, and special char';
     }
 
     if (formData.password !== formData.confirmPassword) {
@@ -100,10 +100,6 @@ const Signup = () => {
     if (role === 'hm') {
       if (!formData.hospitalName.trim()) newErrors.hospitalName = 'Hospital name is required';
       if (!formData.category) newErrors.category = 'Please select a category';
-    }
-
-    if (role === 'patient' && !proofFile) {
-      newErrors.proofFile = 'Proof document is required any (PDF/Image)';
     }
 
     if (!termsAccepted) {

@@ -197,6 +197,88 @@ def get_current_user(
         )
 
 
+@router.patch("/me", response_model=UserResponse)
+def update_current_user(
+    req: UpdateUserRequest,
+    db: Session = Depends(get_db),
+    auth_payload: dict = Depends(require_auth)
+):
+    """Update current user's profile."""
+    try:
+        user_id = auth_payload.get("sub")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token: user ID not found"
+            )
+        
+        # Get user from database
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            logger.warning(f"User not found: {user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Update allowed fields
+        if req.full_name is not None:
+            user.full_name = req.full_name
+        if req.name is not None:
+            user.full_name = req.name  # Map name to full_name
+        if req.phone is not None:
+            user.phone = req.phone
+        if req.status is not None:
+            user.status = req.status
+        if req.hospital_name is not None:
+            user.hospital_name = req.hospital_name
+        if req.specialization is not None:
+            user.specialization = req.specialization
+        if req.department_id is not None:
+            user.department_id = req.department_id
+        if req.department_name is not None:
+            user.department_name = req.department_name
+        if req.room_id is not None:
+            user.room_id = req.room_id
+        if req.room_no is not None:
+            user.room_no = req.room_no
+        if req.floor is not None:
+            user.floor = req.floor
+        if req.license is not None:
+            user.license = req.license
+        if req.shift is not None:
+            user.shift = req.shift
+        if req.advanced_booking_category is not None:
+            user.advanced_booking_category = req.advanced_booking_category
+        if req.fee is not None:
+            user.fee = req.fee
+        if req.experience is not None:
+            user.experience = req.experience
+        if req.qualifications is not None:
+            user.qualifications = req.qualifications
+        if req.category is not None:
+            user.category = req.category
+        if req.promotion_label is not None:
+            user.promotion_label = req.promotion_label
+        
+        # Update timestamp
+        user.updated_at = datetime.utcnow().isoformat()
+        
+        db.commit()
+        db.refresh(user)
+        
+        return _serialize_user(user)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating user profile: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user(
     user_id: str,

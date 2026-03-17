@@ -1,8 +1,7 @@
-// pages/Settings.js - Redesigned to match Profile UI/UX, internal CSS, dynamic
+// pages/Settings.js - Patient Settings with API backend
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
-import firebaseDbService from '../../services/firebaseDbService';
+import { useAuth } from '../../context/AuthContext';
+import patientService from '../../services/patientService';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCog,
@@ -55,8 +54,7 @@ const defaultSettings = {
 };
 
 const Settings = () => {
-  const { currentUser, loading: authLoading } = useAuth();
-  const { patients: allPatients, appointments, bills, prescriptions, medicalRecords, loading: dataLoading } = useFirebaseData();
+  const { currentUser, loading: authLoading, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('general');
   const [settings, setSettings] = useState(defaultSettings);
   const [showPassword, setShowPassword] = useState(false);

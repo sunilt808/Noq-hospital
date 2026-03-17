@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
+import { useAuth } from '../../context/AuthContext';
+import patientService from '../../services/patientService';
 import {
   faPrescriptionBottle,
   faMagnifyingGlass,
@@ -17,67 +17,51 @@ import {
 const Prescriptions = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const { patients, prescriptions: rawPrescriptions, loading } = useFirebaseData();
-  const [allPrescriptions, setAllPrescriptions] = useState([]);
+  const [prescriptions, setPrescriptions] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPrescription, setSelectedPrescription] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const patient = useMemo(() => {
-    const matchedPatient =
-      patients.find((item) => String(item.id) === String(currentUser?.id)) ||
-      patients.find((item) => item.email?.toLowerCase() === currentUser?.email?.toLowerCase());
-
-    if (matchedPatient) {
-      return matchedPatient;
-    }
-
-    if (currentUser && String(currentUser.role || '').toLowerCase() === 'patient') {
-      return currentUser;
-    }
-
-    return null;
-  }, [patients, currentUser]);
-
+  // Load prescriptions from API
   useEffect(() => {
-    if (!authLoading && (!currentUser || String(currentUser.role || '').toLowerCase() !== 'patient')) {
+    if (authLoading) return;
+    
+    if (!currentUser || currentUser.role !== 'patient') {
       navigate('/login', { replace: true });
       return;
     }
-  }, [authLoading, currentUser, navigate]);
 
-  useEffect(() => {
-    if (!patient) return;
-
-    const normalized = rawPrescriptions
-      .filter(
-        (item) =>
-          String(item.patientId || '') === String(patient.id || '') ||
-          item.patientEmail?.toLowerCase() === patient.email?.toLowerCase()
-      )
-      .map((item) => {
-        const createdAt = item.date || item.createdAt || new Date().toISOString();
-        const text = String(item.prescription || item.instructions || item.notes || '').trim();
-
-        return {
+    const loadPrescriptions = async () => {
+      try {
+        setLoading(true);
+        const data = await patientService.getMyPrescriptions();
+        const normalized = Array.isArray(data) ? data.map((item) => ({
           id: item.id || `RX-${Math.random().toString(36).slice(2, 10)}`,
-          doctorName: item.doctorName || item.doctor || 'Doctor',
-          hospitalName: item.hospitalName || item.hospital || '',
-          createdAt,
-          prescriptionText: text || 'Prescription details not provided.',
+          doctorName: item.doctor_name || item.doctorName || 'Doctor',
+          hospitalName: item.hospital_name || item.hospitalName || '',
+          createdAt: item.created_at || item.createdAt || new Date().toISOString(),
+          prescriptionText: item.prescription || item.instructions || item.notes || 'Prescription details not provided.',
           medicineName: item.medicine || item.drug || 'General Prescription',
           status: String(item.status || 'active').toLowerCase(),
-        };
-      })
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        })) : [];
+        
+        setPrescriptions(normalized.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+      } catch (error) {
+        console.error('Error loading prescriptions:', error);
+        setPrescriptions([]);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    setAllPrescriptions(normalized);
-  }, [patient, rawPrescriptions]);
+    loadPrescriptions();
+  }, [authLoading, currentUser, navigate]);
 
   const filteredPrescriptions = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return allPrescriptions;
+    if (!query) return prescriptions;
 
-    return allPrescriptions.filter((item) =>
+    return prescriptions.filter((item) =>
       [item.doctorName, item.hospitalName, item.medicineName, item.prescriptionText]
         .join(' ')
         .toLowerCase()

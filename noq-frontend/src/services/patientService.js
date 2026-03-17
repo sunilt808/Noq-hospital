@@ -162,6 +162,24 @@ const patientService = {
   updateProfile: async (profileData) => {
     const response = await api.patch('/users/me', profileData);
     return response || null;
+  },
+
+  // Get my reviews
+  getMyReviews: async () => {
+    const response = await api.get('/reviews/my');
+    return response?.data?.reviews || response || [];
+  },
+
+  // Submit a review for an appointment
+  submitReview: async (reviewData) => {
+    const response = await api.post('/reviews', reviewData);
+    return response || null;
+  },
+
+  // Get my medical records
+  getMedicalRecords: async () => {
+    const response = await api.get('/medical-records/my');
+    return response?.data?.records || response || [];
   }
 };
 

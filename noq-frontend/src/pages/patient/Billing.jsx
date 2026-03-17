@@ -1,8 +1,8 @@
 // pages/PatientBilling.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import revenueService from '../../services/revenueService';
+import patientService from '../../services/patientService';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faArrowLeft,
@@ -54,14 +54,11 @@ import {
   faPercentage,
   faIndianRupeeSign
 } from '@fortawesome/free-solid-svg-icons';
-import { recordHistory } from '../../services/historyService';
 import './patient.css';
 
 const PatientBilling = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const { patients: allPatients, bills: allBills, loading: dataLoading } = useFirebaseData();
-  const [patient, setPatient] = useState(null);
   const [bills, setBills] = useState([]);
   const [filteredBills, setFilteredBills] = useState([]);
   const [activeTab, setActiveTab] = useState('pending');
@@ -78,6 +75,48 @@ const PatientBilling = () => {
   const [filterDate, setFilterDate] = useState('');
   const [totalPending, setTotalPending] = useState(0);
   const [totalPaid, setTotalPaid] = useState(0);
+
+  // Load bills from API
+  useEffect(() => {
+    if (authLoading) return;
+    
+    if (!currentUser || currentUser.role !== 'patient') {
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    const loadBills = async () => {
+      try {
+        setLoading(true);
+        const data = await patientService.getBillingHistory();
+        const normalized = Array.isArray(data) ? data.map((bill) => ({
+          id: bill.id,
+          appointmentId: bill.appointment_id,
+          amount: Number(bill.amount || 0),
+          status: String(bill.status || 'pending').toLowerCase(),
+          createdAt: bill.created_at || new Date().toISOString(),
+          hospitalName: bill.hospital_name || bill.hospitalName || 'Hospital',
+          doctorName: bill.doctor_name || bill.doctorName || 'Doctor',
+          description: bill.description || '',
+          dueDate: bill.due_date || bill.dueDate
+        })) : [];
+
+        setBills(normalized.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+        
+        const pending = normalized.filter(b => b.status === 'pending').reduce((sum, b) => sum + b.amount, 0);
+        const paid = normalized.filter(b => b.status === 'paid').reduce((sum, b) => sum + b.amount, 0);
+        setTotalPending(pending);
+        setTotalPaid(paid);
+      } catch (error) {
+        console.error('Error loading bills:', error);
+        setBills([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadBills();
+  }, [authLoading, currentUser, navigate]);
   const [showAddPaymentMethod, setShowAddPaymentMethod] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState([]);
 

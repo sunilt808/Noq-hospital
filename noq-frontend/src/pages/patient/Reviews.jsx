@@ -1,164 +1,134 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faChevronLeft, faHospital, faStar } from '@fortawesome/free-solid-svg-icons';
-import { recordHistory } from '../../services/historyService';
-import reviewService from '../../services/reviewService';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
+import { faChevronLeft, faHospital, faStar, faCheckCircle, faExclamationCircle } from '@fortawesome/free-solid-svg-icons';
+import patientService from '../../services/patientService';
+import { useAuth } from '../../context/AuthContext';
 
 const COMPLETED_STATUSES = ['completed', 'visited', 'done', 'closed'];
 
 const Reviews = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const { appointments: allAppointments } = useFirebaseData();
   const [appointments, setAppointments] = useState([]);
-  const [allReviews, setAllReviews] = useState([]);
+  const [reviews, setReviews] = useState([]);
   const [selectedHospitalId, setSelectedHospitalId] = useState('');
   const [form, setForm] = useState({ doctorRating: 5, hospitalRating: 5, comment: '' });
   const [isLoading, setIsLoading] = useState(false);
 
-  const loadData = async () => {
-    if (!currentUser || String(currentUser.role || '').toLowerCase() !== 'patient') {
+  // Load appointments and reviews from API
+  useEffect(() => {
+    if (authLoading) return;
+    
+    if (!currentUser || currentUser.role !== 'patient') {
       navigate('/login', { replace: true });
       return;
     }
 
-    const mine = allAppointments.filter((item) => String(item?.patientId || '') === String(currentUser.id || ''));
-    setAppointments(mine);
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        const [appointmentsData, reviewsData] = await Promise.all([
+          patientService.getMyAppointments(),
+          patientService.getMyReviews()
+        ]);
+        
+        setAppointments(Array.isArray(appointmentsData) ? appointmentsData : []);
+        setReviews(Array.isArray(reviewsData) ? reviewsData : []);
+      } catch (error) {
+        console.error('Error loading data:', error);
+        setAppointments([]);
+        setReviews([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-    setIsLoading(true);
-    try {
-      const reviews = await reviewService.getPublicReviews();
-      setAllReviews(reviews);
-    } catch (_) {
-      setAllReviews([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    loadData();
+  }, [authLoading, currentUser, navigate]);
 
-  useEffect(() => {
-    if (!authLoading) {
-      loadData();
-    }
-  }, [navigate, currentUser, allAppointments, authLoading]);
-
+  // Get eligible hospitals from completed appointments
   const eligibleHospitals = useMemo(() => {
-    const completed = appointments.filter((item) =>
-      COMPLETED_STATUSES.includes(String(item?.status || '').toLowerCase())
-    );
+    const reviewedIds = new Set((reviews || []).map(r => String(r.appointment_id || '')));
+    const completed = appointments.filter((item) => {
+      const status = String(item?.status || '').toLowerCase();
+      const isCompleted = COMPLETED_STATUSES.includes(status);
+      const notReviewed = !reviewedIds.has(String(item?.id || ''));
+      return isCompleted && notReviewed;
+    });
 
     const map = new Map();
     completed.forEach((item) => {
-      const hospitalId = String(item?.hospitalId || item?.HID || '');
+      const appointmentId = String(item?.id || '');
+      if (!appointmentId) return;
+      
+      const hospitalId = String(item?.hospital_id || item?.HID || '');
       if (!hospitalId) return;
+
       const previous = map.get(hospitalId);
-      const currentTime = new Date(item?.appointmentDate || item?.createdAt || 0).getTime();
+      const currentTime = new Date(item?.appointment_date || item?.createdAt || 0).getTime();
       const previousTime = new Date(previous?.lastVisitAt || 0).getTime();
 
       if (!previous || currentTime >= previousTime) {
         map.set(hospitalId, {
+          appointmentId,
           hospitalId,
-          hospitalName: item?.hospitalName || item?.hospital || 'Hospital',
-          doctorName: item?.doctorName || 'Doctor',
-          lastVisitAt: item?.appointmentDate || item?.createdAt || new Date().toISOString(),
-          visits: (previous?.visits || 0) + 1,
-        });
-      } else {
-        map.set(hospitalId, {
-          ...previous,
+          hospitalName: item?.hospital_name || item?.hospitalName || 'Hospital',
+          doctorName: item?.doctor_name || item?.doctorName || 'Doctor',
+          departmentName: item?.department_name || item?.department || '',
+          lastVisitAt: item?.appointment_date || item?.createdAt || new Date().toISOString(),
           visits: (previous?.visits || 0) + 1,
         });
       }
     });
 
     return Array.from(map.values()).sort((a, b) => new Date(b.lastVisitAt) - new Date(a.lastVisitAt));
-  }, [appointments]);
-
-  useEffect(() => {
-    if (!eligibleHospitals.length) {
-      setSelectedHospitalId('');
-      return;
-    }
-    if (!selectedHospitalId || !eligibleHospitals.some((item) => item.hospitalId === selectedHospitalId)) {
-      setSelectedHospitalId(eligibleHospitals[0].hospitalId);
-    }
-  }, [eligibleHospitals, selectedHospitalId]);
+  }, [appointments, reviews]);
 
   const selectedHospital = eligibleHospitals.find((item) => item.hospitalId === selectedHospitalId) || null;
 
-  const myReviews = useMemo(() => {
-    return allReviews
-      .filter((item) => String(item?.patientId || '') === String(currentUser?.id || ''))
-      .sort((a, b) => new Date(b?.date || b?.createdAt || 0) - new Date(a?.date || a?.createdAt || 0));
-  }, [allReviews, currentUser]);
+  const handleSubmitReview = async () => {
+    if (!selectedHospitalId) {
+      alert('Please select a hospital');
+      return;
+    }
 
-  const publicReviews = useMemo(() => {
-    return allReviews
-      .filter((item) => String(item?.visibility || 'public').toLowerCase() === 'public')
-      .sort((a, b) => new Date(b?.date || b?.createdAt || 0) - new Date(a?.date || a?.createdAt || 0));
-  }, [allReviews]);
-
-  useEffect(() => {
-    if (!selectedHospital || !currentUser) return;
-    const existing = myReviews.find((item) => String(item?.hospitalId || '') === String(selectedHospital.hospitalId));
-    setForm({
-      doctorRating: Number(existing?.doctorRating || existing?.rating || 5),
-      hospitalRating: Number(existing?.hospitalRating || existing?.rating || 5),
-      comment: String(existing?.comment || ''),
-    });
-  }, [selectedHospitalId, selectedHospital, myReviews, currentUser]);
-
-  const submitReview = async () => {
-    if (!currentUser) return;
-    if (!selectedHospital) {
-      alert('You can review only after visiting a hospital.');
+    const selected = eligibleHospitals.find(h => h.hospitalId === selectedHospitalId);
+    if (!selected) {
+      alert('Hospital not found');
       return;
     }
 
     const comment = String(form.comment || '').trim();
     if (comment.length < 5) {
-      alert('Please add at least 5 characters in review comment.');
+      alert('Please add a comment with at least 5 characters.');
       return;
     }
 
-    const review = {
-      patientId: String(currentUser.id || ''),
-      patient: currentUser.name || 'Patient',
-      hospitalId: selectedHospital.hospitalId,
-      hospital: selectedHospital.hospitalName,
-      doctor: selectedHospital.doctorName || 'Doctor',
-      doctorRating: Number(form.doctorRating || 5),
-      hospitalRating: Number(form.hospitalRating || 5),
-      rating: Number(((Number(form.doctorRating || 5) + Number(form.hospitalRating || 5)) / 2).toFixed(1)),
-      comment,
-      date: new Date().toISOString(),
-      status: 'published',
-      visibility: 'public',
-    };
-
-    let saved;
+    setIsLoading(true);
     try {
-      saved = await reviewService.upsertReview(review);
-      const next = await reviewService.getPublicReviews();
-      setAllReviews(next);
+      const reviewData = {
+        appointment_id: selected.appointmentId,
+        doctor_rating: Number(form.doctorRating || 5),
+        hospital_rating: Number(form.hospitalRating || 5),
+        comment: comment
+      };
+
+      await patientService.submitReview(reviewData);
+      
+      // Reload reviews
+      const updatedReviews = await patientService.getMyReviews();
+      setReviews(Array.isArray(updatedReviews) ? updatedReviews : []);
+      
+      setSelectedHospitalId('');
+      setForm({ doctorRating: 5, hospitalRating: 5, comment: '' });
+      alert('Review submitted successfully!');
     } catch (error) {
-      alert(error?.message || 'Unable to submit review right now.');
-      return;
+      console.error('Error submitting review:', error);
+      alert('Failed to submit review. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
-
-    recordHistory({
-      module: 'reviews',
-      action: 'review-submitted',
-      message: `Hospital review submitted for ${saved.hospital}`,
-      patientId: String(saved.patientId || ''),
-      hospitalId: String(saved.hospitalId || ''),
-      meta: { doctorRating: saved.doctorRating, hospitalRating: saved.hospitalRating },
-    });
-
-    alert('Review submitted successfully.');
   };
 
   const styles = {

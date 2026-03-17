@@ -28,6 +28,7 @@ import {
   faSpinner,
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../context/AuthContext';
+import patientService from '../../services/patientService';
 import reviewService from '../../services/reviewService';
 
 // Helper function to calculate age from date of birth
@@ -52,7 +53,12 @@ const formatStatusLabel = (value) => {
 const PatientDashboard = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading, logout } = useAuth();
-  const { patients, appointments, bills: allBills, reviews: allReviews, loading } = useFirebaseData();
+  
+  const [patient, setPatient] = useState(null);
+  const [appointments, setAppointments] = useState([]);
+  const [bills, setBills] = useState([]);
+  const [userReviews, setUserReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
   
   const [showBlockInfo, setShowBlockInfo] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
@@ -60,51 +66,79 @@ const PatientDashboard = () => {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewTarget, setReviewTarget] = useState(null);
   const [reviewForm, setReviewForm] = useState({ doctorRating: 5, hospitalRating: 5, comment: '' });
-  const [userReviews, setUserReviews] = useState([]);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
-  // Get current patient from Firebase data
-  const patient = useMemo(
-    () =>
-      patients.find((p) => String(p.id || '') === String(currentUser?.id || '')) ||
-      patients.find((p) => String(p.email || '').toLowerCase() === String(currentUser?.email || '').toLowerCase()) ||
-      (String(currentUser?.role || '').toLowerCase() === 'patient'
-        ? {
-            ...currentUser,
-            name: currentUser?.name || currentUser?.fullName || 'Patient',
-            status: currentUser?.status || 'active',
-          }
-        : null),
-    [patients, currentUser]
-  );
-
-  // Load patient reviews
+  // Load patient data from API
   useEffect(() => {
-    const loadReviews = async () => {
-      if (!patient?.id) return;
+    if (authLoading) return;
+
+    if (!currentUser || currentUser.role !== 'patient') {
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    const loadPatientData = async () => {
       try {
-        const reviews = await reviewService.getPublicReviews({ patientId: String(patient.id) });
-        setUserReviews(reviews || []);
+        setLoading(true);
+        const results = await Promise.allSettled([
+          patientService.getMyProfile(),
+          patientService.getMyAppointments(),
+          patientService.getBillingHistory()
+        ]);
+
+        const patientData = results[0]?.status === 'fulfilled' ? results[0].value : null;
+        const appointmentsData = results[1]?.status === 'fulfilled' ? results[1].value : [];
+        const billsData = results[2]?.status === 'fulfilled' ? results[2].value : [];
+
+        // Normalize patient data
+        const normalizedPatient = patientData ? {
+          ...patientData,
+          name: patientData.full_name || patientData.name || 'Patient',
+          status: patientData.status || 'active'
+        } : {
+          ...currentUser,
+          name: currentUser.full_name || currentUser.name || 'Patient',
+          status: currentUser.status || 'active'
+        };
+
+        setPatient(normalizedPatient);
+        setAppointments(Array.isArray(appointmentsData) ? appointmentsData : []);
+        setBills(Array.isArray(billsData) ? billsData : []);
+
+        // Load reviews for current patient
+        try {
+          const reviews = await reviewService.getPublicReviews({ patientId: normalizedPatient.id });
+          setUserReviews(Array.isArray(reviews) ? reviews : []);
+        } catch (err) {
+          console.error('Error loading reviews:', err);
+          setUserReviews([]);
+        }
       } catch (error) {
-        console.error('Error loading reviews:', error);
-        setUserReviews([]);
+        console.error('Error loading patient data:', error);
+        // Fallback to currentUser data
+        setPatient({
+          ...currentUser,
+          name: currentUser.full_name || currentUser.name || 'Patient',
+          status: currentUser.status || 'active'
+        });
+        setAppointments([]);
+        setBills([]);
+      } finally {
+        setLoading(false);
       }
     };
-    if (patient?.id) {
-      loadReviews();
-    }
-  }, [patient?.id]);
+
+    loadPatientData();
+  }, [authLoading, currentUser, navigate]);
 
   // Filter appointments for current patient
-  const patientAppointments = useMemo(
-    () =>
-      (appointments || []).filter(
-        (apt) =>
-          String(apt.patientId || '') === String(patient?.id || '') ||
-          String(apt.patientEmail || '').toLowerCase() === String(patient?.email || '').toLowerCase()
-      ),
-    [appointments, patient]
-  );
+  const patientAppointments = useMemo(() => {
+    return (appointments || []).filter(
+      (apt) =>
+        String(apt.patient_id || '') === String(patient?.id || '') ||
+        String(apt.patientEmail || '').toLowerCase() === String(patient?.email || '').toLowerCase()
+    );
+  }, [appointments, patient]);
 
   // Completed appointments awaiting review
   const completedAwaitingReview = useMemo(() => {
@@ -121,12 +155,12 @@ const PatientDashboard = () => {
 
   // Patient's bills
   const patientBills = useMemo(() => {
-    return (allBills || []).filter(
+    return (bills || []).filter(
       (bill) =>
         String(bill.patientId || '') === String(patient?.id || '') ||
         String(bill.patientEmail || '').toLowerCase() === String(patient?.email || '').toLowerCase()
     );
-  }, [allBills, patient]);
+  }, [bills, patient]);
 
   // Calculate pending bills
   const pendingBills = useMemo(() => {

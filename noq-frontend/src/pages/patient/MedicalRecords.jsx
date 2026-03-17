@@ -2,9 +2,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
-import firebaseDbService from '../../services/firebaseDbService';
+import { useAuth } from '../../context/AuthContext';
+import patientService from '../../services/patientService';
 import {
   faFileMedical,
   faFilePdf,
@@ -40,12 +39,7 @@ import './patient.css';
 const MedicalRecords = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const {
-    patients: allPatients,
-    medicalRecords: allMedicalRecords,
-    prescriptions,
-    loading: dataLoading,
-  } = useFirebaseData();
+  
   const [records, setRecords] = useState([]);
   const [filteredRecords, setFilteredRecords] = useState([]);
   const [activeTab, setActiveTab] = useState('all');
@@ -55,10 +49,45 @@ const MedicalRecords = () => {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('');
 
+  // Load medical records from API
+  useEffect(() => {
+    if (authLoading) return;
+    
+    if (!currentUser || currentUser.role !== 'patient') {
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    const loadRecords = async () => {
+      try {
+        setLoading(true);
+        const data = await patientService.getMedicalRecords();
+        const normalized = Array.isArray(data) ? data.map((record) => ({
+          id: record.id,
+          title: record.title || record.name || 'Medical Record',
+          recordType: record.type || record.record_type || 'general',
+          uploadedAt: record.created_at || record.uploadedAt || new Date().toISOString(),
+          hospitalName: record.hospital_name || record.hospitalName || '',
+          doctorName: record.doctor_name || record.doctorName || '',
+          notes: record.notes || record.description || '',
+          fileUrl: record.file_url || record.fileUrl || '',
+          fileName: record.file_name || record.fileName || 'record'
+        })) : [];
+
+        setRecords(normalized.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt)));
+      } catch (error) {
+        console.error('Error loading medical records:', error);
+        setRecords([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadRecords();
+  }, [authLoading, currentUser, navigate]);
+
   const patient = useMemo(() => {
-    const matchedPatient =
-      allPatients.find((p) => String(p.id || '') === String(currentUser?.id || '')) ||
-      allPatients.find((p) => p.email?.toLowerCase() === currentUser?.email?.toLowerCase());
+    const matchedPatient = allPatients.find((p) => p.email?.toLowerCase() === currentUser?.email?.toLowerCase());
 
     if (matchedPatient) {
       return matchedPatient;

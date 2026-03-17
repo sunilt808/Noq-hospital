@@ -80,22 +80,32 @@ const BookAppointment = () => {
   const loadBookingData = async () => {
     try {
       // Fetch data from backend API
-      const [hospitalsRes, departmentsRes] = await Promise.all([
-        api.get('/hospitals'),
-        api.get('/departments'),
+      const [hospitalsRes, departmentsRes, diseasesRes, doctorsRes] = await Promise.all([
+        api.get('/hospitals/available').catch(err => { console.error('Hospitals fetch error:', err); return null; }),
+        api.get('/departments/').catch(err => { console.error('Departments fetch error:', err); return null; }),
+        api.get('/diseases/').catch(err => { console.error('Diseases fetch error:', err); return null; }),
+        api.get('/users/?role=doctor').catch(err => { console.error('Doctors fetch error:', err); return null; }),
       ]);
 
-      const hospitals = hospitalsRes?.data || [];
-      const departments = departmentsRes?.data || [];
+      const hospitals = hospitalsRes?.data || hospitalsRes?.value || hospitalsRes || [];
+      const departments = departmentsRes?.data?.departments || departmentsRes?.data || departmentsRes || [];
+      const diseases = diseasesRes?.data?.diseases || diseasesRes?.data || diseasesRes || [];
+      
+      // Fetch doctors from users endpoint
+      const doctors = doctorsRes?.data?.users || doctorsRes?.data || doctorsRes || [];
+      
+      // Initialize local data sources (from localStorage or empty)
+      const doctorUsers = [];
+      const savedDoctorUsers = [];
+      const rooms = [];
+      const patients = [];
+      const hmUsers = [];
 
       console.log('📚 BOOKING DATA LOAD:', {
         hospitalsCount: hospitals.length,
-        apiDepartmentsCount: departments.length,
-        savedDoctorUsersCount: Array.isArray(savedDoctorUsers) ? savedDoctorUsers.length : 0,
-        roomsCount: Array.isArray(rooms) ? rooms.length : 0,
-        departmentsCount: Array.isArray(departments) ? departments.length : 0,
-        diseasesCount: Array.isArray(diseases) ? diseases.length : 0,
-        patientsCount: Array.isArray(patients) ? patients.length : 0,
+        departmentsCount: departments.length,
+        diseasesCount: diseases.length,
+        doctors: doctors.length,
       });
 
       const mergedDoctorsMap = new Map();
@@ -122,7 +132,6 @@ const BookAppointment = () => {
         fromUsers: doctorUsers.length,
         fromDoctorsCollection: Array.isArray(doctors) ? doctors.length : 0,
         fromSavedDoctorUsers: Array.isArray(savedDoctorUsers) ? savedDoctorUsers.length : 0,
-        sample: mergedDoctors.slice(0, 1).map(d => ({ id: d.id, name: d.name, role: d.role, hospitalId: d.hospitalId }))
       });
 
       setHospitalsRaw(Array.isArray(hospitals) ? hospitals : []);
@@ -235,17 +244,34 @@ const BookAppointment = () => {
   }, [hmUsersRaw]);
 
   const isDoctorForHospital = (doctor, hospital) => {
-    const doctorHospitalId = String(doctor.hospitalId || '');
+    const doctorHospitalId = String(doctor.hospitalId || doctor.hospital_id || doctor.HID || '');
     const hospitalId = String(hospital.id || hospital.HID || '');
-    const doctorHospitalName = normalizeText(doctor.hospitalName);
-    const hospitalName = normalizeText(hospital.hospitalName || hospital.hospital_name || hospital.name);
+    const doctorHospitalName = normalizeText(doctor.hospitalName || doctor.hospital_name || '');
+    const hospitalName = normalizeText(hospital.hospitalName || hospital.hospital_name || hospital.name || '');
     const hmIds = hospitalHmIdsMap[hospitalId] || [];
 
-    return (
-      doctorHospitalId === hospitalId ||
-      hmIds.includes(doctorHospitalId) ||
-      (doctorHospitalName && hospitalName && doctorHospitalName === hospitalName)
-    );
+    // Exact ID match
+    if (doctorHospitalId && hospitalId && doctorHospitalId === hospitalId) {
+      return true;
+    }
+
+    // HM ID match
+    if (hmIds.includes(doctorHospitalId)) {
+      return true;
+    }
+
+    // Hospital name match (both must be non-empty and exact match)
+    if (doctorHospitalName && hospitalName && doctorHospitalName === hospitalName) {
+      return true;
+    }
+
+    // Substring match for partial name matching (helpful for static hospitals)
+    if (doctorHospitalName && hospitalName && 
+        (doctorHospitalName.includes(hospitalName) || hospitalName.includes(doctorHospitalName))) {
+      return true;
+    }
+
+    return false;
   };
 
   const hospitalsData = useMemo(() => {
@@ -318,6 +344,8 @@ const BookAppointment = () => {
     if (!selectedHospital) return [];
 
     const selectedHospitalId = String(selectedHospital.id || '');
+    const selectedHospitalName = normalizeText(selectedHospital.name || selectedHospital.hospitalName || '');
+    
     const matchedDepartments = departmentsRaw.filter((department) => {
       const departmentHospitalId = getDepartmentHospitalId(department);
       const status = normalizeText(department.status || 'active');
@@ -340,28 +368,48 @@ const BookAppointment = () => {
       });
     });
 
-    normalizedDoctors
-      .filter((doctor) => isDoctorForHospital(doctor, selectedHospital))
-      .forEach((doctor) => {
-        getDoctorSpecializationCandidates(doctor).forEach((candidate) => {
-          const name = String(candidate || '').trim();
-          if (!name) return;
-          const key = normalizeText(name);
-          if (!byName.has(key)) {
-            const doctorDepartmentId = normalizeDepartmentId(doctor.departmentId || doctor.deptId || name);
-            byName.set(key, {
-              id: doctorDepartmentId || `dept-${key}`,
-              name,
-              specialization: name,
-              icon: getDiseaseIcon(name),
-              severity: 'Standard',
-              departmentId: doctorDepartmentId,
-            });
-          }
-        });
-      });
+    // Get all doctors (even if they don't perfectly match the hospital)
+    // This helps when hospitals are static but doctors are from DB
+    const allDocsForHospital = normalizedDoctors.filter((doctor) => {
+      // Check strict match
+      if (isDoctorForHospital(doctor, selectedHospital)) return true;
+      
+      // Fallback: Match by hospital name if hospital ID doesn't match
+      const docHospitalName = normalizeText(doctor.hospitalName || doctor.hospital_name || '');
+      return docHospitalName === selectedHospitalName && docHospitalName.length > 0;
+    });
 
-    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+    allDocsForHospital.forEach((doctor) => {
+      getDoctorSpecializationCandidates(doctor).forEach((candidate) => {
+        const name = String(candidate || '').trim();
+        if (!name) return;
+        const key = normalizeText(name);
+        if (!byName.has(key)) {
+          const doctorDepartmentId = normalizeDepartmentId(doctor.departmentId || doctor.deptId || name);
+          byName.set(key, {
+            id: doctorDepartmentId || `dept-${key}`,
+            name,
+            specialization: name,
+            icon: getDiseaseIcon(name),
+            severity: 'Standard',
+            departmentId: doctorDepartmentId,
+          });
+        }
+      });
+    });
+
+    const result = Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+    
+    console.log('🏥 SELECTED HOSPITAL DEPARTMENTS:', {
+      hospitalName: selectedHospital?.name,
+      hospitalId: selectedHospitalId,
+      departmentsFromAPI: matchedDepartments.length,
+      doctorsForHospital: allDocsForHospital.length,
+      derivedDepartmentsCount: result.length,
+      departments: result.slice(0, 5).map(d => d.name)
+    });
+    
+    return result;
   }, [selectedHospital, departmentsRaw, normalizedDoctors, hmUsersRaw]);
 
   const departmentOptions = useMemo(() => selectedHospitalDepartments, [selectedHospitalDepartments]);
@@ -369,6 +417,57 @@ const BookAppointment = () => {
   const diseaseOptions = useMemo(() => {
     if (!selectedHospital) return [];
 
+    // If a department is selected, filter diseases for that department
+    if (selectedDepartmentId) {
+      const targetDepartmentId = normalizeDepartmentId(selectedDepartmentId);
+      const mappedDiseases = diseasesRaw
+        .filter((disease) => {
+          const diseaseDepartmentId = normalizeDepartmentId(disease.departmentId || disease.deptId || disease.department_id);
+          const diseaseDepartmentName = normalizeText(disease.departmentName || getDepartmentNameById(diseaseDepartmentId));
+          const targetDeptName = normalizeText(
+            selectedHospitalDepartments.find((d) => normalizeDepartmentId(d.departmentId || d.id) === targetDepartmentId)?.name || ''
+          );
+          return (diseaseDepartmentId === targetDepartmentId || diseaseDepartmentName === targetDeptName);
+        })
+        .map((disease) => {
+          const diseaseDepartmentId = normalizeDepartmentId(disease.departmentId || disease.deptId || disease.department_id);
+          const specialization =
+            getDepartmentNameById(diseaseDepartmentId) ||
+            disease.departmentName ||
+            disease.specialization ||
+            disease.name ||
+            'General Medicine';
+          return {
+            id: String(disease.id || `DIS-${normalizeText(disease.name)}`),
+            name: String(disease.name || specialization).trim(),
+            specialization: String(specialization).trim(),
+            severity: String(disease.severity || 'Standard'),
+            icon: getDiseaseIcon(disease.name || specialization),
+            departmentId: diseaseDepartmentId,
+          };
+        });
+
+      if (mappedDiseases.length > 0) {
+        return mappedDiseases.sort((a, b) => a.name.localeCompare(b.name));
+      }
+
+      // Fallback to selected department
+      const selectedDept = selectedHospitalDepartments.find((d) => normalizeDepartmentId(d.departmentId || d.id) === targetDepartmentId);
+      return selectedDept
+        ? [
+            {
+              id: String(selectedDept.id || `DEPT-${normalizeText(selectedDept.name)}`),
+              name: selectedDept.name,
+              specialization: selectedDept.specialization || selectedDept.name,
+              severity: 'Standard',
+              icon: selectedDept.icon || getDiseaseIcon(selectedDept.name),
+              departmentId: targetDepartmentId,
+            },
+          ]
+        : [];
+    }
+
+    // Original logic: filter diseases by hospital departments
     const departmentIds = new Set(
       selectedHospitalDepartments.map((department) => normalizeDepartmentId(department.departmentId || department.id)).filter(Boolean)
     );
@@ -405,7 +504,9 @@ const BookAppointment = () => {
       return mappedDiseases.sort((a, b) => a.name.localeCompare(b.name));
     }
 
-    return selectedHospitalDepartments.map((department) => ({
+    // FALLBACK: If no diseases from API, use departments as disease options
+    // This ensures users can still select something even if disease data is not available
+    const fallbackDiseases = selectedHospitalDepartments.map((department) => ({
       id: String(department.id || `DEPT-${normalizeText(department.name)}`),
       name: department.name,
       specialization: department.specialization || department.name,
@@ -413,7 +514,52 @@ const BookAppointment = () => {
       icon: department.icon || getDiseaseIcon(department.name),
       departmentId: normalizeDepartmentId(department.departmentId || department.id),
     }));
-  }, [selectedHospital, selectedHospitalDepartments, diseasesRaw, departmentsRaw]);
+
+    console.log('📋 DISEASE OPTIONS DEBUG:', {
+      selectedHospital: selectedHospital?.name,
+      apiDiseasesCount: diseasesRaw.length,
+      selectedDepartmentsCount: selectedHospitalDepartments.length,
+      mappedDiseasesCount: mappedDiseases.length,
+      fallbackDiseasesCount: fallbackDiseases.length,
+      usingFallback: fallbackDiseases.length > 0,
+      fallbackDiseases: fallbackDiseases.slice(0, 3).map(d => d.name)
+    });
+
+    return fallbackDiseases;
+  }, [selectedHospital, selectedDepartmentId, selectedHospitalDepartments, diseasesRaw, departmentsRaw]);
+
+  // ---------- Filter doctors by selected department ----------
+  const departmentDoctors = useMemo(() => {
+    if (!selectedHospital || !selectedDepartmentId) {
+      // If hospital is selected but not department, show all doctors in that hospital
+      if (selectedHospital) {
+        return normalizedDoctors.filter((doctor) => isDoctorForHospital(doctor, selectedHospital));
+      }
+      return [];
+    }
+
+    // Filter doctors by selected department
+    const targetDepartmentId = normalizeDepartmentId(selectedDepartmentId);
+    return normalizedDoctors.filter((doctor) => {
+      // Must be from selected hospital
+      if (!isDoctorForHospital(doctor, selectedHospital)) return false;
+
+      // Check if doctor's department matches
+      const doctorDepartmentId = normalizeDepartmentId(doctor.departmentId || doctor.deptId);
+      if (doctorDepartmentId === targetDepartmentId) return true;
+
+      // Check specialization candidates
+      const candidates = getDoctorSpecializationCandidates(doctor)
+        .map((v) => normalizeText(v))
+        .filter(Boolean);
+
+      const targetDeptName = normalizeText(
+        selectedHospitalDepartments.find((d) => normalizeDepartmentId(d.departmentId || d.id) === targetDepartmentId)?.name || ''
+      );
+
+      return candidates.some((c) => c === targetDeptName);
+    });
+  }, [selectedHospital, selectedDepartmentId, normalizedDoctors, selectedHospitalDepartments]);
 
   // ---------- Authentication ----------
   useEffect(() => {
@@ -441,6 +587,13 @@ const BookAppointment = () => {
         String(d.specialization || '').toLowerCase().includes(diseaseSearch.toLowerCase())
       );
     }
+    console.log('🔍 FILTERED DISEASES:', {
+      hospitalName: selectedHospital?.name,
+      diseaseOptionsCount: diseaseOptions.length,
+      filteredCount: filtered.length,
+      searchQuery: diseaseSearch,
+      firstThree: filtered.slice(0, 3).map(d => d.name)
+    });
     setFilteredDiseases(filtered);
   }, [selectedHospital, diseaseSearch, diseaseOptions]);
 
@@ -465,7 +618,7 @@ const BookAppointment = () => {
   }, [hospitalsData, selectedHospital]);
 
   // ---------- Allocation functions ----------
-  const allocateDoctor = (hospital, specialization, departmentId) => {
+  const allocateDoctor = (hospital, specialization, departmentId, availableDoctorsPool = null) => {
     const targetDepartmentId = normalizeDepartmentId(departmentId);
     const targetSpecialization = normalizeText(specialization);
 
@@ -473,6 +626,9 @@ const BookAppointment = () => {
       console.warn('⚠️ allocateDoctor: No specialization or departmentId provided');
       return null;
     }
+
+    // Use the provided doctor pool (e.g., departmentDoctors) or fall back to normalizedDoctors
+    const doctorPool = availableDoctorsPool && availableDoctorsPool.length > 0 ? availableDoctorsPool : normalizedDoctors;
 
     const matchesDepartment = (doctor) => {
       const doctorDepartmentId = normalizeDepartmentId(doctor.departmentId || doctor.deptId);
@@ -517,7 +673,7 @@ const BookAppointment = () => {
       matchesDepartment(doctor) || matchesSpecialization(doctor);
 
     // 1. STRICT: Same hospital + matches specialization + available + under capacity
-    const strictAvailable = normalizedDoctors.filter(
+    const strictAvailable = doctorPool.filter(
       (doc) =>
         isDoctorForHospital(doc, hospital) &&
         matchesSelectedCriteria(doc) &&
@@ -526,7 +682,7 @@ const BookAppointment = () => {
     );
 
     // 2. RELAXED: Any hospital + matches specialization + available + under capacity
-    const relaxedAvailable = normalizedDoctors.filter(
+    const relaxedAvailable = doctorPool.filter(
       (doc) =>
         matchesSelectedCriteria(doc) &&
         doc.available !== false &&
@@ -534,18 +690,18 @@ const BookAppointment = () => {
     );
 
     // 3. STRICT: Same hospital + matches specialization (ignore availability)
-    const strictAny = normalizedDoctors.filter(
+    const strictAny = doctorPool.filter(
       (doc) => isDoctorForHospital(doc, hospital) && matchesSelectedCriteria(doc)
     );
 
     // 4. RELAXED: Any doctor matching specialization
-    const relaxedAny = normalizedDoctors.filter((doc) => matchesSelectedCriteria(doc));
+    const relaxedAny = doctorPool.filter((doc) => matchesSelectedCriteria(doc));
 
     // 5. FALLBACK: Any doctor from the hospital (if no specialization match found)
-    const hospitalFallback = normalizedDoctors.filter((doc) => isDoctorForHospital(doc, hospital));
+    const hospitalFallback = doctorPool.filter((doc) => isDoctorForHospital(doc, hospital));
 
     // 6. LAST RESORT: ANY active doctor (matching is too strict, just assign someone)
-    const absoluteFallback = normalizedDoctors;
+    const absoluteFallback = doctorPool;
 
     const candidates =
       strictAvailable.length > 0
@@ -563,6 +719,8 @@ const BookAppointment = () => {
     console.log('🏥 Doctor Allocation:', {
       targetSpecialization,
       targetDepartmentId,
+      doctorPoolSize: doctorPool.length,
+      usingDepartmentPool: availableDoctorsPool && availableDoctorsPool.length > 0,
       strictAvailable: strictAvailable.length,
       relaxedAvailable: relaxedAvailable.length,
       strictAny: strictAny.length,
@@ -658,7 +816,8 @@ const BookAppointment = () => {
         const allocatedDoctor = allocateDoctor(
           selectedHospital,
           selectedSpecialization,
-          selectedDept?.departmentId || selectedDepartmentId
+          selectedDept?.departmentId || selectedDepartmentId,
+          selectedDepartmentId && departmentDoctors.length > 0 ? departmentDoctors : null
         );
         if (!allocatedDoctor) {
           setAllocationError('No doctor available for this specialization. Please choose another hospital or disease.');
@@ -723,6 +882,7 @@ const BookAppointment = () => {
         specialization: selectedSpecialization,
         departmentId: selectedDepartmentId,
         totalDoctors: normalizedDoctors.length,
+        departmentFilteredDoctors: departmentDoctors.length,
         doctorsForHospital: normalizedDoctors.filter(d => isDoctorForHospital(d, selectedHospital)).length,
         sampleDoctors: normalizedDoctors.slice(0, 2).map(d => ({
           name: d.name,
@@ -733,7 +893,7 @@ const BookAppointment = () => {
       });
       runAllocationAlgorithm();
     }
-  }, [step, selectedHospital, selectedSpecialization, selectedDisease]);
+  }, [step, selectedHospital, selectedSpecialization, selectedDisease, departmentDoctors, selectedDepartmentId]);
 
   const ensureQueueForBooking = async () => {
     const allQueues = await queueService.fetchAll();
@@ -1230,37 +1390,67 @@ const BookAppointment = () => {
               />
             </div>
 
+            {/* Debug info */}
+            {filteredDiseases.length === 0 && (
+              <div style={{ padding: '10px', background: '#f3f4f6', borderRadius: '8px', marginBottom: '15px', fontSize: '12px' }}>
+                <p><strong>Debug:</strong> selectedHospital={selectedHospital?.name}, departments={selectedHospitalDepartments.length}, diseases={diseaseOptions.length}</p>
+              </div>
+            )}
+
             <div className="disease-list">
-              {filteredDiseases.map(disease => (
-                <div 
-                  key={disease.id}
-                  className={`disease-card ${selectedDisease === disease.id.toString() ? 'selected' : ''}`}
-                  onClick={() => {
-                    setSelectedDisease(String(disease.id));
-                    setSelectedDepartmentId(String(disease.departmentId || disease.id || ''));
-                    setSelectedSpecialization(disease.specialization);
-                  }}
-                >
-                  <div className="disease-icon">
-                    <FontAwesomeIcon icon={disease.icon} />
+              {filteredDiseases.length > 0 ? (
+                filteredDiseases.map(disease => (
+                  <div 
+                    key={disease.id}
+                    className={`disease-card ${selectedDisease === disease.id.toString() ? 'selected' : ''}`}
+                    onClick={() => {
+                      setSelectedDisease(String(disease.id));
+                      setSelectedDepartmentId(String(disease.departmentId || disease.id || ''));
+                      setSelectedSpecialization(disease.specialization);
+                    }}
+                  >
+                    <div className="disease-icon">
+                      <FontAwesomeIcon icon={disease.icon} />
+                    </div>
+                    <div className="disease-info">
+                      <h4>{disease.name}</h4>
+                      <p>{disease.specialization} • Severity: {disease.severity}</p>
+                    </div>
                   </div>
-                  <div className="disease-info">
-                    <h4>{disease.name}</h4>
-                    <p>{disease.specialization} • Severity: {disease.severity}</p>
-                  </div>
+                ))
+              ) : (
+                <div style={{ padding: '20px', textAlign: 'center' }}>
+                  <p className="no-results">No diseases available for this hospital.</p>
+                  <button className="btn-secondary" onClick={() => {
+                    setSelectedHospital(null);
+                    setHospitalCategory('');
+                    setSelectedDepartmentId('');
+                    setSelectedDisease('');
+                    setStep(1);
+                  }} style={{ marginTop: '10px' }}>
+                    Select Different Hospital
+                  </button>
                 </div>
-              ))}
-              {filteredDiseases.length === 0 && (
-                <p className="no-results">No diseases available for this hospital.</p>
               )}
             </div>
 
             {selectedDisease && (
               <div className="selected-summary">
                 <p><strong>Selected:</strong> {filteredDiseases.find((item) => String(item.id) === String(selectedDisease))?.name}</p>
-                <button className="btn-primary" onClick={() => setStep(3)}>
-                  Find Doctor <FontAwesomeIcon icon={faChevronRight} />
-                </button>
+                <div className="button-group">
+                  <button className="btn-secondary" onClick={() => {
+                    setSelectedHospital(null);
+                    setHospitalCategory('');
+                    setSelectedDepartmentId('');
+                    setSelectedDisease('');
+                    setStep(1);
+                  }}>
+                    <FontAwesomeIcon icon={faArrowLeft} /> Back
+                  </button>
+                  <button className="btn-primary" onClick={() => setStep(3)}>
+                    Find Doctor <FontAwesomeIcon icon={faChevronRight} />
+                  </button>
+                </div>
               </div>
             )}
           </div>

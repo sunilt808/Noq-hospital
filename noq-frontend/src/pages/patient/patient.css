@@ -1659,6 +1659,30 @@
   background: #e5e7eb;
 }
 
+.button-group {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.button-group .btn-primary,
+.button-group .btn-secondary {
+  flex: 1;
+  min-width: 140px;
+}
+
+@media (max-width: 640px) {
+  .button-group {
+    flex-direction: column;
+  }
+  
+  .button-group .btn-primary,
+  .button-group .btn-secondary {
+    width: 100%;
+  }
+}
+
 .confirmation-note {
   display: flex;
   align-items: center;

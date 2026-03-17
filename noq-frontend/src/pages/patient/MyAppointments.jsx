@@ -2,89 +2,142 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
-import firebaseDbService from '../../services/firebaseDbService';
+import { useAuth } from '../../context/AuthContext';
+import patientService from '../../services/patientService';
 import { 
   faPrint, faCopy, faTimes, faTicketAlt, 
-  faUserMd, faDoorOpen, faClock, faCalendarAlt, faChevronLeft
+  faUserMd, faDoorOpen, faClock, faCalendarAlt, faChevronLeft,
+  faCheckCircle, faStar
 } from '@fortawesome/free-solid-svg-icons';
-import { recordHistory } from '../../services/historyService';
 import reviewService from '../../services/reviewService';
 
 const MyAppointments = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const { patients, appointments, reviews: allReviews, loading } = useFirebaseData();
   
+  const [appointments, setAppointments] = useState([]);
+  const [userReviews, setUserReviews] = useState([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewTarget, setReviewTarget] = useState(null);
   const [reviewForm, setReviewForm] = useState({ doctorRating: 5, hospitalRating: 5, comment: '' });
-  const [userReviews, setUserReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
-  // Get current patient from auth context (don't rely on patients collection lookup)
-  const patient = useMemo(() => {
-    console.log('🔍 Setting patient from currentUser:', { currentUser, role: currentUser?.role });
-    if (!currentUser || String(currentUser?.role || '').toLowerCase() !== 'patient') {
-      console.log('❌ CurrentUser not set or not patient');
-      return null;
-    }
-    // Use currentUser directly (already authenticated)
-    return currentUser;
-  }, [currentUser]);
-
-  // Filter appointments for current patient
-  const patientAppointments = useMemo(() => {
-    if (!patient?.id) {
-      console.log('🔍 MyAppointments: No patient ID available');
-      return [];
-    }
-    const filtered = appointments.filter(app =>
-      String(app.patientId) === String(patient.id) || 
-      String(app.patientEmail)?.toLowerCase() === String(patient.email)?.toLowerCase()
-    );
-    console.log('🔍 MyAppointments Filter Debug:', {
-      patientId: patient?.id,
-      patientEmail: patient?.email,
-      totalAppointments: appointments.length,
-      filtered: filtered.length,
-      sample: appointments.slice(0, 1).map(a => ({ id: a.id, patientId: a.patientId }))
-    });
-    return filtered;
-  }, [appointments, patient]);
-
-  // Load patient reviews
+  // Load appointments and reviews from API
   useEffect(() => {
-    const loadReviews = async () => {
+    if (authLoading) return;
+    
+    if (!currentUser || currentUser.role !== 'patient') {
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    const loadData = async () => {
       try {
-        const publicReviews = await reviewService.getPublicReviews({ 
-          patientId: String(patient?.id || '') 
-        });
-        setUserReviews(publicReviews || []);
+        setLoading(true);
+        const [appointmentsData, reviewsData] = await Promise.all([
+          patientService.getMyAppointments(),
+          patientService.getMyReviews()
+        ]);
+        
+        setAppointments(Array.isArray(appointmentsData) ? appointmentsData : []);
+        setUserReviews(Array.isArray(reviewsData) ? reviewsData : []);
       } catch (error) {
-        console.error('Error loading reviews:', error);
+        console.error('Error loading appointments:', error);
+        setAppointments([]);
         setUserReviews([]);
+      } finally {
+        setLoading(false);
       }
     };
 
-    if (patient?.id) {
-      loadReviews();
-    }
-  }, [patient?.id]);
+    loadData();
+  }, [authLoading, currentUser, navigate]);
 
-  // Verify patient is authenticated
-  useEffect(() => {
-    console.log('🔐 Auth check:', { authLoading, currentUser: !!currentUser, role: currentUser?.role });
-    if (!authLoading && (!currentUser || String(currentUser?.role || '').toLowerCase() !== 'patient')) {
-      console.log('🚫 Not authenticated, redirecting to login');
-      navigate('/login', { replace: true });
-    }
-  }, [currentUser, authLoading, navigate]);
+  // Filter completed appointments awaiting review
+  const completedAwaitingReview = useMemo(() => {
+    const reviewedIds = new Set((userReviews || []).map(r => String(r.appointment_id || '')));
+    return appointments.filter((apt) => {
+      const status = String(apt.status || '').toLowerCase();
+      const isCompleted = ['completed', 'visited', 'done', 'closed'].includes(status);
+      const notReviewed = !reviewedIds.has(String(apt.id || ''));
+      return isCompleted && notReviewed;
+    }).sort((a, b) => new Date(b.appointment_date || b.date) - new Date(a.appointment_date || a.date));
+  }, [appointments, userReviews]);
 
-  const getDoctorLiveStatus = (appointment) => {
-    // Doctor presence is loaded via useFirebaseData
-    // For now, return default status - can be enhanced with realtime presence
-    return { text: 'Available', bg: '#dcfce7', color: '#166534' };
+  // Split appointments into upcoming and past
+  const { upcomingAppointments, pastAppointments } = useMemo(() => {
+    if (!appointments.length) {
+      return { upcomingAppointments: [], pastAppointments: [] };
+    }
+
+    const now = new Date();
+    const upcoming = appointments
+      .filter((apt) => {
+        const aptDate = new Date(apt.appointment_date || apt.date);
+        return !Number.isNaN(aptDate.getTime()) && aptDate >= now;
+      })
+      .sort((a, b) => new Date(a.appointment_date || a.date) - new Date(b.appointment_date || b.date));
+
+    const past = appointments
+      .filter((apt) => {
+        const aptDate = new Date(apt.appointment_date || apt.date);
+        return Number.isNaN(aptDate.getTime()) || aptDate < now;
+      })
+      .sort((a, b) => new Date(b.appointment_date || b.date) - new Date(a.appointment_date || a.date));
+
+    return { upcomingAppointments: upcoming, pastAppointments: past };
+  }, [appointments]);
+
+  const openReviewModal = (appointment) => {
+    const existing = userReviews.find(
+      (item) =>
+        item.appointment_id === appointment.id &&
+        item.patient_id === currentUser?.id
+    );
+
+    setReviewTarget(appointment);
+    setReviewForm({
+      doctorRating: Number(existing?.doctor_rating || existing?.rating || 5),
+      hospitalRating: Number(existing?.hospital_rating || existing?.rating || 5),
+      comment: String(existing?.comment || ''),
+    });
+    setShowReviewModal(true);
+  };
+
+  const submitReview = async () => {
+    if (!currentUser || !reviewTarget) return;
+
+    const comment = String(reviewForm.comment || '').trim();
+    if (comment.length < 5) {
+      alert('Please add a review comment with at least 5 characters.');
+      return;
+    }
+
+    setReviewSubmitting(true);
+    try {
+      const reviewData = {
+        appointment_id: reviewTarget.id,
+        doctor_rating: Number(reviewForm.doctorRating || 5),
+        hospital_rating: Number(reviewForm.hospitalRating || 5),
+        comment: comment
+      };
+
+      await patientService.submitReview(reviewData);
+      
+      // Reload reviews
+      const updatedReviews = await patientService.getMyReviews();
+      setUserReviews(Array.isArray(updatedReviews) ? updatedReviews : []);
+      
+      setShowReviewModal(false);
+      setReviewTarget(null);
+      alert('Review submitted successfully!');
+    } catch (error) {
+      console.error('Error submitting review:', error);
+      alert('Failed to submit review. Please try again.');
+    } finally {
+      setReviewSubmitting(false);
+    }
   };
 
   const [selectedAppointment, setSelectedAppointment] = useState(null);
@@ -116,81 +169,6 @@ const MyAppointments = () => {
   const copyTokenToClipboard = (tokenNumber) => {
     navigator.clipboard.writeText(tokenNumber);
     alert('Token copied to clipboard!');
-  };
-
-  const openReviewModal = (appointment) => {
-    const existing = userReviews.find(
-      (item) =>
-        item.appointmentId === appointment.id &&
-        item.patientId === patient?.id
-    );
-
-    setReviewTarget(appointment);
-    setReviewForm({
-      doctorRating: Number(existing?.doctorRating || existing?.rating || 5),
-      hospitalRating: Number(existing?.hospitalRating || existing?.rating || 5),
-      comment: String(existing?.comment || ''),
-    });
-    setShowReviewModal(true);
-  };
-
-  const submitReview = async () => {
-    if (!currentUser || !reviewTarget || !patient) return;
-
-    if (!canReviewAppointment(reviewTarget)) {
-      alert('Review is allowed only after the visit is completed.');
-      return;
-    }
-
-    const comment = String(reviewForm.comment || '').trim();
-    if (comment.length < 5) {
-      alert('Please add a review comment with at least 5 characters.');
-      return;
-    }
-
-    const newReview = {
-      appointmentId: reviewTarget.id,
-      patientId: patient.id,
-      patient: currentUser.name || reviewTarget.patientName || 'Patient',
-      doctorId: reviewTarget.doctorId || '',
-      doctor: reviewTarget.doctorName || 'Doctor',
-      hospitalId: reviewTarget.hospitalId || '',
-      hospital: reviewTarget.hospitalName || 'Hospital',
-      doctorRating: Number(reviewForm.doctorRating || 5),
-      hospitalRating: Number(reviewForm.hospitalRating || 5),
-      rating: Number(((Number(reviewForm.doctorRating || 5) + Number(reviewForm.hospitalRating || 5)) / 2).toFixed(1)),
-      comment,
-      date: new Date().toISOString(),
-      status: 'published',
-      visibility: 'public',
-    };
-
-    try {
-      const saved = await reviewService.upsertReview(newReview);
-      const nextReviews = await reviewService.getPublicReviews({ patientId: String(patient.id || '') });
-      setUserReviews(nextReviews);
-      
-      recordHistory({
-        module: 'reviews',
-        action: 'review-submitted',
-        message: `Review submitted for ${saved.doctor} at ${saved.hospital}`,
-        patientId: String(saved.patientId || ''),
-        doctorId: String(saved.doctorId || ''),
-        hospitalId: String(saved.hospitalId || ''),
-        appointmentId: String(saved.appointmentId || ''),
-        meta: {
-          doctorRating: saved.doctorRating,
-          hospitalRating: saved.hospitalRating,
-        },
-      });
-      setShowReviewModal(false);
-      setReviewTarget(null);
-      setReviewForm({ doctorRating: 5, hospitalRating: 5, comment: '' });
-      alert('Review submitted successfully.');
-    } catch (error) {
-      console.error('Error submitting review:', error);
-      alert(error?.message || 'Unable to submit review right now.');
-    }
   };
 
   const closeReviewModal = () => {
