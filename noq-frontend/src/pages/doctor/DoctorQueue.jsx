@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { recordHistory } from '../../services/historyService';
 import { useAuth } from '../../context/AuthContext';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import doctorService from '../../services/doctorService';
 import {
   faArrowLeft, faUsers, faClock, faUserInjured,
   faCheckCircle, faExclamationTriangle, faPause,

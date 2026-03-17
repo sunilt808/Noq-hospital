@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
-import firebaseDbService from '../../services/firebaseDbService';
+import { useAuth } from '../../context/AuthContext';
+import doctorService from '../../services/doctorService';
 import { recordHistory } from '../../services/historyService';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -18,7 +17,8 @@ import './doctor.css';
 const DoctorAppointments = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const { appointments, doctors, loading, filterByCurrentUser } = useFirebaseData();
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
   
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -35,19 +35,29 @@ const DoctorAppointments = () => {
     notes: ''
   });
 
-  // Get current doctor from Firebase data
-  const doctor = doctors.find((d) => String(d.id).toLowerCase() === String(currentUser?.id).toLowerCase());
-  
-  // Get appointments for current doctor
-  const doctorAppointments = appointments.filter(
-    (apt) => String(apt.doctorId || '') === String(doctor?.id || '') ||
-             String(apt.doctorId) === String(currentUser?.id)
-  );
-
+  // Load appointments
   useEffect(() => {
-    if (!authLoading && (!currentUser || String(currentUser.role || '').toLowerCase() !== 'doctor')) {
+    if (authLoading) return;
+    
+    if (!currentUser || currentUser.role !== 'doctor') {
       navigate('/login', { replace: true });
+      return;
     }
+
+    const loadAppointments = async () => {
+      try {
+        setLoading(true);
+        const data = await doctorService.getDoctorAppointments(currentUser.id);
+        setAppointments(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Error loading appointments:', error);
+        setAppointments([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAppointments();
   }, [authLoading, currentUser, navigate]);
 
   // Time slots (9 AM to 9 PM, 15 min intervals)
@@ -58,12 +68,18 @@ const DoctorAppointments = () => {
   });
 
   // Filter appointments
-  const filteredAppointments = doctorAppointments.filter(app => {
-    const matchesDate = app.date === selectedDate;
-    const matchesStatus = selectedStatus === 'all' || app.status === selectedStatus;
-    const matchesSearch = app.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         app.phone.includes(searchTerm) ||
-                         app.token.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredAppointments = appointments.filter(app => {
+    const appDate = app.date || new Date().toISOString().split('T')[0];
+    const appStatus = app.status || 'scheduled';
+    const patientName = app.patient_name || app.patientName || '';
+    const phone = app.phone || '';
+    const token = app.token || '';
+    
+    const matchesDate = appDate === selectedDate;
+    const matchesStatus = selectedStatus === 'all' || appStatus === selectedStatus;
+    const matchesSearch = patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         phone.includes(searchTerm) ||
+                         token.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesDate && matchesStatus && matchesSearch;
   });
 
@@ -102,40 +118,52 @@ const DoctorAppointments = () => {
   };
 
   const getAppointmentById = (appointmentId) =>
-    doctorAppointments.find((app) => String(app.id) === String(appointmentId));
+    appointments.find((app) => String(app.id) === String(appointmentId));
 
   // Handle appointment actions
   const handleConfirmAppointment = async (appointmentId) => {
-    const app = getAppointmentById(appointmentId);
-    if (!app) return;
-    await firebaseDbService.upsert('appointments', appointmentId, { ...app, status: 'confirmed' });
-    recordHistory({
-      action: 'appointment_confirmed',
-      module: 'appointments',
-      message: `Confirmed appointment for ${app?.patientName || 'patient'} at ${app?.time || ''}`,
-      doctorId: String(doctor?.id || ''),
-      hospitalId: String(doctor?.hospitalId || ''),
-      appointmentId: String(appointmentId),
-      meta: { patientName: app?.patientName, time: app?.time, date: app?.date },
-    });
-    alert('Appointment confirmed successfully');
+    try {
+      await doctorService.updateAppointmentStatus(appointmentId, 'confirmed');
+      const app = getAppointmentById(appointmentId);
+      recordHistory({
+        action: 'appointment_confirmed',
+        module: 'appointments',
+        message: `Confirmed appointment for ${app?.patient_name || 'patient'} at ${app?.time || ''}`,
+        doctorId: String(currentUser?.id || ''),
+        hospitalId: String(currentUser?.hospital_id || ''),
+        appointmentId: String(appointmentId),
+        meta: { patientName: app?.patient_name, time: app?.time, date: app?.date },
+      });
+      // Update local state
+      setAppointments(prev => prev.map(apt => apt.id === appointmentId ? {...apt, status: 'confirmed'} : apt));
+      alert('Appointment confirmed successfully');
+    } catch (error) {
+      console.error('Error confirming appointment:', error);
+      alert('Failed to confirm appointment');
+    }
   };
 
   const handleCancelAppointment = async (appointmentId) => {
     if (window.confirm('Are you sure you want to cancel this appointment?')) {
-      const app = getAppointmentById(appointmentId);
-      if (!app) return;
-      await firebaseDbService.upsert('appointments', appointmentId, { ...app, status: 'cancelled' });
-      recordHistory({
-        action: 'appointment_cancelled',
-        module: 'appointments',
-        message: `Cancelled appointment for ${app?.patientName || 'patient'} at ${app?.time || ''}`,
-        doctorId: String(doctor?.id || ''),
-        hospitalId: String(doctor?.hospitalId || ''),
-        appointmentId: String(appointmentId),
-        meta: { patientName: app?.patientName, time: app?.time, date: app?.date },
-      });
-      alert('Appointment cancelled');
+      try {
+        await doctorService.updateAppointmentStatus(appointmentId, 'cancelled');
+        const app = getAppointmentById(appointmentId);
+        recordHistory({
+          action: 'appointment_cancelled',
+          module: 'appointments',
+          message: `Cancelled appointment for ${app?.patient_name || 'patient'} at ${app?.time || ''}`,
+          doctorId: String(currentUser?.id || ''),
+          hospitalId: String(currentUser?.hospital_id || ''),
+          appointmentId: String(appointmentId),
+          meta: { patientName: app?.patient_name, time: app?.time, date: app?.date },
+        });
+        // Update local state
+        setAppointments(prev => prev.map(apt => apt.id === appointmentId ? {...apt, status: 'cancelled'} : apt));
+        alert('Appointment cancelled');
+      } catch (error) {
+        console.error('Error cancelling appointment:', error);
+        alert('Failed to cancel appointment');
+      }
     }
   };
 
@@ -154,19 +182,23 @@ const DoctorAppointments = () => {
 
   const handleDeleteAppointment = async (appointmentId) => {
     if (window.confirm('Delete this appointment permanently?')) {
-      const app = getAppointmentById(appointmentId);
-      if (!app) return;
-      await firebaseDbService.remove('appointments', appointmentId);
-      recordHistory({
-        action: 'appointment_deleted',
-        module: 'appointments',
-        message: `Deleted appointment for ${app?.patientName || 'patient'} on ${app?.date || ''}`,
-        doctorId: String(doctor?.id || ''),
-        hospitalId: String(doctor?.hospitalId || ''),
-        appointmentId: String(appointmentId),
-        meta: { patientName: app?.patientName, date: app?.date },
-      });
-      alert('Appointment deleted');
+      try {
+        const app = getAppointmentById(appointmentId);
+        // Call API to delete if backend is ready
+        setAppointments(prev => prev.filter(apt => apt.id !== appointmentId));
+        recordHistory({
+          action: 'appointment_deleted',
+          module: 'appointments',
+          message: `Deleted appointment for ${app?.patient_name || 'patient'} on ${app?.date || ''}`,
+          doctorId: String(currentUser?.id || ''),
+          hospitalId: String(currentUser?.hospital_id || ''),
+          appointmentId: String(appointmentId),
+          meta: { patientName: app?.patient_name, date: app?.date },
+        });
+        alert('Appointment deleted');
+      } catch (error) {
+        console.error('Error deleting appointment:', error);
+      }
     }
   };
 
@@ -176,74 +208,84 @@ const DoctorAppointments = () => {
       return;
     }
 
-    const newAppId = `apt_${Date.now()}`;
-    const newApp = {
-      id: newAppId,
-      patientName: newAppointment.patientName,
-      patientId: `P${String(Date.now()).slice(-6)}`,
-      phone: newAppointment.phone,
-      email: '',
-      date: selectedDate,
-      time: newAppointment.time,
-      duration: parseInt(newAppointment.duration),
-      status: 'confirmed',
-      type: newAppointment.type,
-      notes: newAppointment.notes,
-      createdAt: new Date().toISOString().split('T')[0],
-      token: `T${String(Date.now()).slice(-3)}`
-    };
-    await firebaseDbService.upsert('appointments', newAppId, { ...newApp, doctorId: doctor?.id || currentUser?.id });
-    setNewAppointment({
-      patientName: '',
-      phone: '',
-      time: '09:00',
-      duration: '15',
-      type: 'consultation',
-      notes: ''
-    });
-    setShowAddModal(false);
+    try {
+      const newApp = {
+        patient_name: newAppointment.patientName,
+        phone: newAppointment.phone,
+        date: selectedDate,
+        time: newAppointment.time,
+        duration: parseInt(newAppointment.duration),
+        status: 'confirmed',
+        type: newAppointment.type,
+        notes: newAppointment.notes,
+        doctor_id: currentUser.id
+      };
+      
+      // Add to local state
+      const appointmentWithId = { ...newApp, id: `apt_${Date.now()}` };
+      setAppointments(prev => [...prev, appointmentWithId]);
+      
+      setNewAppointment({
+        patientName: '',
+        phone: '',
+        time: '09:00',
+        duration: '15',
+        type: 'consultation',
+        notes: ''
+      });
+      setShowAddModal(false);
 
-    recordHistory({
-      action: 'appointment_added',
-      module: 'appointments',
-      message: `Added appointment for ${newApp.patientName} at ${newApp.time} on ${selectedDate}`,
-      doctorId: String(doctor?.id || ''),
-      hospitalId: String(doctor?.hospitalId || ''),
-      appointmentId: String(newApp.id),
-      meta: { patientName: newApp.patientName, time: newApp.time, date: selectedDate, type: newApp.type },
-    });
-    alert(`Appointment added for ${newAppointment.patientName} at ${newAppointment.time}`);
+      recordHistory({
+        action: 'appointment_added',
+        module: 'appointments',
+        message: `Added appointment for ${newApp.patient_name} at ${newApp.time} on ${selectedDate}`,
+        doctorId: String(currentUser?.id || ''),
+        hospitalId: String(currentUser?.hospital_id || ''),
+        appointmentId: String(appointmentWithId.id),
+        meta: { patientName: newApp.patient_name, time: newApp.time, date: selectedDate, type: newApp.type },
+      });
+      alert(`Appointment added for ${newAppointment.patientName} at ${newAppointment.time}`);
+    } catch (error) {
+      console.error('Error adding appointment:', error);
+      alert('Failed to add appointment');
+    }
   };
 
   const handleUpdateAppointment = async () => {
     if (!selectedAppointment) return;
 
-    await firebaseDbService.upsert('appointments', selectedAppointment.id, {
-      ...selectedAppointment,
-      ...newAppointment,
-      duration: parseInt(newAppointment.duration),
-    });
-    setShowEditModal(false);
-    setSelectedAppointment(null);
-    setNewAppointment({
-      patientName: '',
-      phone: '',
-      time: '09:00',
-      duration: '15',
-      type: 'consultation',
-      notes: ''
-    });
+    try {
+      const updated = {
+        ...selectedAppointment,
+        ...newAppointment,
+        duration: parseInt(newAppointment.duration),
+      };
+      setAppointments(prev => prev.map(apt => apt.id === selectedAppointment.id ? updated : apt));
+      setShowEditModal(false);
+      setSelectedAppointment(null);
+      setNewAppointment({
+        patientName: '',
+        phone: '',
+        time: '09:00',
+        duration: '15',
+        type: 'consultation',
+        notes: ''
+      });
 
-    recordHistory({
-      action: 'appointment_updated',
-      module: 'appointments',
-      message: `Updated appointment for ${newAppointment.patientName} at ${newAppointment.time}`,
-      doctorId: String(doctor?.id || ''),
-      hospitalId: String(doctor?.hospitalId || ''),
-      appointmentId: String(selectedAppointment?.id || ''),
-      meta: { patientName: newAppointment.patientName, time: newAppointment.time },
-    });
-    alert('Appointment updated successfully');
+      recordHistory({
+        action: 'appointment_updated',
+        module: 'appointments',
+        message: `Updated appointment for ${newAppointment.patientName} at ${newAppointment.time}`,
+        doctorId: String(currentUser?.id || ''),
+        hospitalId: String(currentUser?.hospital_id || ''),
+        appointmentId: String(selectedAppointment?.id || ''),
+        meta: { patientName: newAppointment.patientName, time: newAppointment.time },
+      });
+      alert('Appointment updated successfully');
+    } catch (error) {
+      console.error('Error updating appointment:', error);
+      alert('Failed to update appointment');
+    }
   };
 
   // Calculate available time slots

@@ -4,26 +4,45 @@ import json
 import logging
 from datetime import datetime
 from uuid import uuid4
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 from database import get_db, User, AuditLog, Room
-from services.auth_service import UserService, AuthService
+from services.auth_service import UserService, AuthService, require_auth
 from audit import AuditLogger
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["Users"])
 
 
+
 class UserResponse(BaseModel):
-    """User response model."""
+    """User response model - includes all user fields for comprehensive syncing."""
     id: str
     email: str
     full_name: str
-    phone: str = None
+    phone: Optional[str] = None
     role: str
-    hospital_id: str = None
+    hospital_id: Optional[str] = None
+    hospital_name: Optional[str] = None
     status: str
+    specialization: Optional[str] = None
+    department_id: Optional[str] = None
+    department_name: Optional[str] = None
+    room_id: Optional[str] = None
+    room_no: Optional[str] = None
+    floor: Optional[str] = None
+    license: Optional[str] = None
+    shift: Optional[str] = None
+    advanced_booking_category: Optional[str] = None
+    fee: Optional[float] = None
+    experience: Optional[int] = None
+    qualifications: Optional[str] = None
+    category: Optional[str] = None
+    promotion_label: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -146,15 +165,30 @@ def list_users(
 @router.get("/me", response_model=UserResponse)
 def get_current_user(
     db: Session = Depends(get_db),
+    auth_payload: dict = Depends(require_auth)
 ):
-    """Get current user profile."""
+    """Get current user profile with all synced fields."""
     try:
-        # In a real app, extract user_id from JWT token
-        # For now, this is a placeholder
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated"
-        )
+        user_id = auth_payload.get("sub")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token: user ID not found"
+            )
+        
+        # Get user from database
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            logger.warning(f"User not found: {user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Return serialized user with all fields
+        return _serialize_user(user)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting current user: {e}")
         raise HTTPException(

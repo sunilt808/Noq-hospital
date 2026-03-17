@@ -99,6 +99,20 @@ class Hospital(Base):
     city = Column(String)
     state = Column(String)
     pincode = Column(String)
+    category = Column(String)
+    hospital_type = Column(String)
+    established_year = Column(String)
+    registration_number = Column(String)
+    website = Column(String)
+    emergency_contact = Column(String)
+    owner_name = Column(String)
+    director_name = Column(String)
+    total_beds = Column(Integer, default=0)
+    total_icu_beds = Column(Integer, default=0)
+    total_operation_theatres = Column(Integer, default=0)
+    accreditation = Column(Text)
+    services = Column(Text)
+    last_updated = Column(String)
     status = Column(String, default="active")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -284,6 +298,33 @@ def _ensure_users_schema():
                 connection.execute(text(f"ALTER TABLE users ADD COLUMN {column_name} {column_sql}"))
 
 
+def _ensure_hospitals_schema():
+    """Ensure hospitals table has all HM profile fields."""
+    if "sqlite" not in DATABASE_URL:
+        return
+
+    with engine.begin() as connection:
+        hospital_columns = {
+            "category": "TEXT",
+            "hospital_type": "TEXT",
+            "established_year": "TEXT",
+            "registration_number": "TEXT",
+            "website": "TEXT",
+            "emergency_contact": "TEXT",
+            "owner_name": "TEXT",
+            "director_name": "TEXT",
+            "total_beds": "INTEGER DEFAULT 0",
+            "total_icu_beds": "INTEGER DEFAULT 0",
+            "total_operation_theatres": "INTEGER DEFAULT 0",
+            "accreditation": "TEXT",
+            "services": "TEXT",
+            "last_updated": "TEXT",
+        }
+        for column_name, column_sql in hospital_columns.items():
+            if not _sqlite_column_exists(connection, "hospitals", column_name):
+                connection.execute(text(f"ALTER TABLE hospitals ADD COLUMN {column_name} {column_sql}"))
+
+
 def get_db():
     """Get database session - used as dependency in FastAPI."""
     db = SessionLocal()
@@ -298,3 +339,4 @@ def init_db():
     create_tables()
     _ensure_rooms_schema()
     _ensure_users_schema()
+    _ensure_hospitals_schema()

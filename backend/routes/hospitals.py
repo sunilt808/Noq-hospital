@@ -1,6 +1,7 @@
 # backend/routes/hospitals.py - Hospital Management Routes
 
 import logging
+import json
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 from database import get_db, Hospital, User
@@ -25,6 +26,20 @@ class HospitalResponse(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     pincode: Optional[str] = None
+    category: Optional[str] = None
+    hospital_type: Optional[str] = None
+    established_year: Optional[str] = None
+    registration_number: Optional[str] = None
+    website: Optional[str] = None
+    emergency_contact: Optional[str] = None
+    owner_name: Optional[str] = None
+    director_name: Optional[str] = None
+    total_beds: Optional[int] = 0
+    total_icu_beds: Optional[int] = 0
+    total_operation_theatres: Optional[int] = 0
+    accreditation: Optional[str] = None
+    services: Optional[str] = None
+    last_updated: Optional[str] = None
     status: str
 
     class Config:
@@ -56,6 +71,20 @@ class HospitalUpdateRequest(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     pincode: Optional[str] = None
+    category: Optional[str] = None
+    hospital_type: Optional[str] = None
+    established_year: Optional[str] = None
+    registration_number: Optional[str] = None
+    website: Optional[str] = None
+    emergency_contact: Optional[str] = None
+    owner_name: Optional[str] = None
+    director_name: Optional[str] = None
+    total_beds: Optional[int] = None
+    total_icu_beds: Optional[int] = None
+    total_operation_theatres: Optional[int] = None
+    accreditation: Optional[list[str]] = None
+    services: Optional[list[str]] = None
+    last_updated: Optional[str] = None
 
 
 class NotificationRequest(BaseModel):
@@ -270,6 +299,10 @@ def update_hospital(
             )
 
         updates = payload.model_dump(exclude_unset=True)
+        if "accreditation" in updates and updates["accreditation"] is not None:
+            updates["accreditation"] = json.dumps(updates["accreditation"])
+        if "services" in updates and updates["services"] is not None:
+            updates["services"] = json.dumps(updates["services"])
         for key, value in updates.items():
             setattr(hospital, key, value)
 
@@ -289,6 +322,20 @@ def update_hospital(
                 "city": hospital.city,
                 "state": hospital.state,
                 "pincode": hospital.pincode,
+                "category": hospital.category,
+                "hospital_type": hospital.hospital_type,
+                "established_year": hospital.established_year,
+                "registration_number": hospital.registration_number,
+                "website": hospital.website,
+                "emergency_contact": hospital.emergency_contact,
+                "owner_name": hospital.owner_name,
+                "director_name": hospital.director_name,
+                "total_beds": hospital.total_beds,
+                "total_icu_beds": hospital.total_icu_beds,
+                "total_operation_theatres": hospital.total_operation_theatres,
+                "accreditation": hospital.accreditation,
+                "services": hospital.services,
+                "last_updated": hospital.last_updated,
                 "status": hospital.status,
             },
         }

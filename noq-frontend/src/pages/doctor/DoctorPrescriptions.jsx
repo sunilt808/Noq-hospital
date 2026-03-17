@@ -1,9 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
-import firebaseDbService from '../../services/firebaseDbService';
+import { useAuth } from '../../context/AuthContext';
+import doctorService from '../../services/doctorService';
 import {
   faArrowLeft,
   faPrescriptionBottle,
@@ -18,105 +17,49 @@ import './doctor.css';
 const DoctorPrescriptions = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const { doctors, patients: allPatients, appointments, prescriptions: allPrescriptions, loading } = useFirebaseData();
   const [form, setForm] = useState({
     patientId: '',
     medicine: '',
     notes: '',
     status: 'active',
   });
+  const [patients, setPatients] = useState([]);
+  const [prescriptions, setPrescriptions] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!authLoading && (!currentUser || String(currentUser.role || '').toLowerCase() !== 'doctor')) {
+    if (authLoading) return;
+    
+    if (!currentUser || currentUser.role !== 'doctor') {
       navigate('/login', { replace: true });
+      return;
     }
+
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        const [patientsData, prescriptionsData] = await Promise.all([
+          doctorService.getDoctorPatients(currentUser.id),
+          doctorService.getDoctorPrescriptions()
+        ]);
+
+        setPatients(Array.isArray(patientsData) ? patientsData : []);
+        setPrescriptions(Array.isArray(prescriptionsData) ? prescriptionsData : []);
+      } catch (error) {
+        console.error('Error loading prescriptions:', error);
+        setPatients([]);
+        setPrescriptions([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
   }, [authLoading, currentUser, navigate]);
 
-  const doctor = useMemo(() => {
-    if (!currentUser) return null;
-    return (
-      doctors.find((item) => String(item.id) === String(currentUser.id)) ||
-      doctors.find((item) => item.email?.toLowerCase() === currentUser.email?.toLowerCase()) || {
-        id: currentUser.id,
-        name: currentUser.name || 'Doctor',
-        email: currentUser.email,
-        specialization: currentUser.specialization || 'General Physician',
-      }
-    );
-  }, [doctors, currentUser]);
-
-  const patients = useMemo(() => {
-    if (!doctor?.id) return [];
-    const doctorAppointments = appointments.filter(
-      (item) => String(item.doctorId || '') === String(doctor.id || '')
-    );
-    const mappedPatients = new Map();
-
-    allPatients.forEach((item) => {
-      const id = String(item.id || '');
-      const email = String(item.email || '').toLowerCase();
-      if (id) {
-        mappedPatients.set(`id:${id}`, {
-          id,
-          name: item.name || item.fullName || 'Patient',
-          email: item.email || '',
-        });
-      }
-      if (email) {
-        mappedPatients.set(`email:${email}`, {
-          id: id || email,
-          name: item.name || item.fullName || 'Patient',
-          email: item.email || '',
-        });
-      }
-    });
-
-    doctorAppointments.forEach((item) => {
-      const patientId = String(item.patientId || '');
-      const patientEmail = String(item.patientEmail || '').toLowerCase();
-      const patientName = item.patientName || 'Patient';
-
-      if (patientId && !mappedPatients.has(`id:${patientId}`)) {
-        mappedPatients.set(`id:${patientId}`, {
-          id: patientId,
-          name: patientName,
-          email: item.patientEmail || '',
-        });
-      }
-
-      if (patientEmail && !mappedPatients.has(`email:${patientEmail}`)) {
-        mappedPatients.set(`email:${patientEmail}`, {
-          id: patientId || patientEmail,
-          name: patientName,
-          email: item.patientEmail || '',
-        });
-      }
-    });
-
-    const uniquePatients = new Map();
-    Array.from(mappedPatients.values()).forEach((item) => {
-      const key = String(item.id || item.email || '').toLowerCase();
-      if (!key || uniquePatients.has(key)) return;
-      uniquePatients.set(key, item);
-    });
-
-    return Array.from(uniquePatients.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [doctor?.id, appointments, allPatients]);
-
-  const savedPrescriptions = useMemo(() => {
-    if (!doctor?.id) return [];
-    return allPrescriptions
-      .filter((item) => String(item.doctorId || '') === String(doctor.id || ''))
-      .sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
-  }, [allPrescriptions, doctor?.id]);
-
-  const selectedPatient = useMemo(
-    () => patients.find((item) => String(item.id) === String(form.patientId)) || null,
-    [patients, form.patientId]
-  );
+  const selectedPatient = patients.find((p) => String(p.id) === String(form.patientId)) || null;
 
   const savePrescription = async () => {
-    if (!doctor) return;
     if (!form.patientId) {
       alert('Please select a patient.');
       return;
@@ -130,27 +73,24 @@ const DoctorPrescriptions = () => {
 
     const medicine = String(form.medicine || '').trim() || 'General Prescription';
 
-    const prescriptionId = `rx_${Date.now()}`;
-    const payload = {
-      id: prescriptionId,
-      patientId: String(form.patientId),
-      patientName: selectedPatient?.name || 'Patient',
-      patientEmail: selectedPatient?.email || '',
-      doctorId: String(doctor.id || ''),
-      doctorName: doctor.name || 'Doctor',
-      hospitalId: doctor.hospitalId || doctor.hospital_id || doctor.HID || null,
-      hospitalName: doctor.hospitalName || '',
-      medicine,
-      prescription: notes,
-      status: form.status,
-      specialization: doctor.specialization || doctor.departmentName || 'General Physician',
-      date: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-    };
-
     try {
-      await firebaseDbService.upsert('prescriptions', prescriptionId, payload);
-      setForm((prev) => ({ ...prev, medicine: '', notes: '' }));
+      const payload = {
+        patient_id: form.patientId,
+        patient_name: selectedPatient?.name || 'Patient',
+        doctor_id: currentUser.id,
+        doctor_name: currentUser.name || 'Doctor',
+        medicine,
+        prescription: notes,
+        status: form.status,
+        date: new Date().toISOString()
+      };
+
+      await doctorService.createPrescription(payload);
+      setForm({ patientId: '', medicine: '', notes: '', status: 'active' });
+      
+      const updatedPrescriptions = await doctorService.getDoctorPrescriptions();
+      setPrescriptions(Array.isArray(updatedPrescriptions) ? updatedPrescriptions : []);
+      
       alert('Prescription saved successfully.');
     } catch (error) {
       console.error('Error saving prescription:', error);
@@ -158,7 +98,7 @@ const DoctorPrescriptions = () => {
     }
   };
 
-  if (loading || authLoading || !doctor) {
+  if (loading || authLoading) {
     return (
       <div className="doctor-loading">
         <div className="loading-spinner" />
@@ -186,12 +126,12 @@ const DoctorPrescriptions = () => {
           <select
             style={styles.input}
             value={form.patientId}
-            onChange={(e) => setForm((prev) => ({ ...prev, patientId: e.target.value }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, patientId:  e.target.value }))}
           >
             <option value="">Select patient</option>
             {patients.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.name} {item.email ? `(${item.email})` : ''}
+                {item.name}
               </option>
             ))}
           </select>
@@ -199,45 +139,44 @@ const DoctorPrescriptions = () => {
           <label style={styles.label}>Medicine</label>
           <input
             style={styles.input}
+            type="text"
+            placeholder="e.g., Paracetamol 500mg"
             value={form.medicine}
             onChange={(e) => setForm((prev) => ({ ...prev, medicine: e.target.value }))}
-            placeholder="e.g., Amoxicillin 500mg"
           />
 
           <label style={styles.label}>Prescription Notes</label>
           <textarea
-            style={{ ...styles.input, minHeight: 140, resize: 'vertical' }}
+            style={{ ...styles.input, minHeight: '120px' }}
+            placeholder="Enter detailed prescription..."
             value={form.notes}
             onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-            placeholder="Write diagnosis, dosage, timings, and duration..."
           />
 
-          <div style={styles.actionRow}>
-            <button className="doctor-btn doctor-btn-primary" onClick={savePrescription}>
-              <FontAwesomeIcon icon={faSave} /> Save Prescription
-            </button>
-          </div>
+          <button style={styles.submitBtn} onClick={savePrescription}>
+            <FontAwesomeIcon icon={faSave} /> Save Prescription
+          </button>
         </div>
 
         <div style={styles.card}>
           <h3 style={styles.sectionTitle}>Recent Prescriptions</h3>
-          {savedPrescriptions.length === 0 ? (
-            <p style={styles.emptyText}>No prescriptions written yet.</p>
+          {prescriptions.length === 0 ? (
+            <p style={styles.emptyMessage}>No prescriptions found</p>
           ) : (
-            <div style={styles.listWrap}>
-              {savedPrescriptions.slice(0, 15).map((item) => (
-                <div key={item.id} style={styles.itemCard}>
-                  <div style={styles.itemTop}>
-                    <strong><FontAwesomeIcon icon={faUser} /> {item.patientName || 'Patient'}</strong>
-                    <span style={styles.badge}>{item.status || 'active'}</span>
+            <div style={styles.prescriptionList}>
+              {prescriptions.slice(0, 10).map((rx) => (
+                <div key={rx.id} style={styles.prescriptionItem}>
+                  <div style={styles.prescriptionHeader}>
+                    <strong>{rx.patient_name}</strong>
+              <span style={styles.statusBadge}>{rx.status}</span>
                   </div>
-                  <p style={styles.itemMeta}>
-                    <FontAwesomeIcon icon={faNotesMedical} /> {item.medicine || 'General Prescription'}
+                  <p style={styles.prescriptionDetail}>
+                    <strong>Medicine:</strong> {rx.medicine}
                   </p>
-                  <p style={styles.itemNotes}>{item.prescription || ''}</p>
-                  <p style={styles.itemTime}>
-                    <FontAwesomeIcon icon={faClock} /> {new Date(item.date || item.createdAt).toLocaleString()}
+                  <p style={styles.prescriptionDetail}>
+                    <FontAwesomeIcon icon={faClock} /> {new Date(rx.date).toLocaleDateString()}
                   </p>
+                  <p style={styles.prescriptionText}>{rx.prescription.substring(0, 100)}...</p>
                 </div>
               ))}
             </div>
@@ -252,96 +191,97 @@ const styles = {
   headerRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.8rem',
-    marginBottom: '1rem',
+    gap: '1rem',
+    marginBottom: '2rem'
   },
   title: {
     margin: 0,
-    color: '#1e293b',
-    display: 'flex',
-    gap: '0.5rem',
-    alignItems: 'center',
+    color: '#333'
   },
   grid: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '1rem',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+    gap: '2rem'
   },
   card: {
-    background: 'white',
-    borderRadius: '12px',
-    padding: '1rem',
-    border: '1px solid #e2e8f0',
+    background: '#fff',
+    border: '1px solid #ddd',
+    borderRadius: '8px',
+    padding: '1.5rem'
   },
   sectionTitle: {
     marginTop: 0,
-    color: '#0f172a',
+    marginBottom: '1rem',
+    color: '#333',
+    fontSize: '1.2rem'
   },
   label: {
     display: 'block',
-    marginTop: '0.65rem',
-    marginBottom: '0.35rem',
-    fontWeight: 600,
-    color: '#334155',
+    marginBottom: '0.5rem',
+    fontWeight: 'bold',
+    color: '#555'
   },
   input: {
     width: '100%',
-    border: '1px solid #cbd5e1',
-    borderRadius: '8px',
-    padding: '0.65rem 0.75rem',
-    fontSize: '0.95rem',
-    fontFamily: 'inherit',
-    boxSizing: 'border-box',
-  },
-  actionRow: {
-    marginTop: '1rem',
-    display: 'flex',
-    justifyContent: 'flex-end',
-  },
-  emptyText: {
-    color: '#64748b',
-  },
-  listWrap: {
-    display: 'grid',
-    gap: '0.65rem',
-    maxHeight: '70vh',
-    overflow: 'auto',
-  },
-  itemCard: {
-    border: '1px solid #e2e8f0',
-    borderRadius: '10px',
     padding: '0.75rem',
-    background: '#f8fafc',
+    marginBottom: '1rem',
+    border: '1px solid #ddd',
+    borderRadius: '4px',
+    fontSize: '0.95rem',
+    fontFamily: 'inherit'
   },
-  itemTop: {
+  submitBtn: {
+    width: '100%',
+    padding: '0.75rem',
+    background: '#4CAF50',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    fontSize: '1rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    transition: 'background 0.3s'
+  },
+  emptyMessage: {
+    textAlign: 'center',
+    color: '#999',
+    margin: '2rem 0'
+  },
+  prescriptionList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1rem'
+  },
+  prescriptionItem: {
+    border: '1px solid #eee',
+    borderRadius: '4px',
+    padding: '1rem',
+    background: '#f9f9f9'
+  },
+  prescriptionHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: '0.5rem',
+    marginBottom: '0.5rem'
   },
-  badge: {
-    borderRadius: '999px',
-    padding: '0.2rem 0.6rem',
-    background: '#dcfce7',
-    color: '#166534',
-    fontSize: '0.75rem',
-    textTransform: 'capitalize',
-    fontWeight: 600,
+  statusBadge: {
+    background: '#4CAF50',
+    color: '#fff',
+    padding: '0.25rem 0.75rem',
+    borderRadius: '20px',
+    fontSize: '0.85rem'
   },
-  itemMeta: {
-    margin: '0.5rem 0 0.3rem',
-    color: '#334155',
+  prescriptionDetail: {
+    margin: '0.5rem 0',
+    color: '#666',
+    fontSize: '0.9rem'
   },
-  itemNotes: {
-    margin: 0,
-    color: '#1e293b',
-    whiteSpace: 'pre-wrap',
-  },
-  itemTime: {
-    margin: '0.45rem 0 0',
-    color: '#64748b',
-    fontSize: '0.85rem',
-  },
+  prescriptionText: {
+    margin: '0.5rem 0',
+    color: '#555',
+    fontSize: '0.9rem',
+    fontStyle: 'italic'
+  }
 };
 
 export default DoctorPrescriptions;

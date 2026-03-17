@@ -374,10 +374,8 @@ const DoctorLayout = () => {
     { path: '/doctor/profile', label: 'Profile', icon: faUserCircle }
   ];
 
-  const handleLogout = () => {
-    localStorage.removeItem('currentUser');
-    localStorage.removeItem('doctorToken');
-    localStorage.removeItem('doctorLoginTime');
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 

@@ -15,7 +15,7 @@ import api from '../../../services/api';
 const HospitalProfile = () => {
   const navigate = useNavigate();
   const { currentUser, updateUser } = useAuth();
-  const resolveHospitalId = (item) => String(item?.id || item?.HID || item?.hospitalId || item?.hospital_id || '');
+  const resolveHospitalId = (item) => String(item?.hospital_id || item?.hospitalId || item?.HID || item?.id || '');
 
   const [isEditing, setIsEditing] = useState(false);
   const [hospital, setHospital] = useState({
@@ -56,32 +56,50 @@ const HospitalProfile = () => {
       const hospitalRows = Array.isArray(hospitals) ? hospitals : [];
       const match = primary
         || hospitalRows.find((h) => String(h?.id || '') === currentHospitalId)
-        || (!currentHospitalId
-          ? hospitalRows.find((h) => String(h?.email || '').toLowerCase() === String(currentUser?.email || '').toLowerCase())
-          : null)
+        || hospitalRows.find((h) => String(h?.email || '').toLowerCase() === String(currentUser?.email || '').toLowerCase())
         || null;
 
+      const resolvedId = String(match?.id || currentHospitalId || '');
+      const resolvedName = String(match?.name || match?.hospitalName || match?.hospital_name || currentUser?.hospitalName || '');
+
+      if (resolvedId && currentHospitalId !== resolvedId) {
+        updateUser?.({ hospitalId: resolvedId, hospital_id: resolvedId, hospitalName: resolvedName });
+      }
+
       setHospital({
-        HID: currentHospitalId || resolveHospitalId(match) || '',
-        name: match?.name || match?.hospitalName || match?.hospital_name || currentUser?.hospitalName || '',
+        HID: resolvedId,
+        name: resolvedName,
         category: match?.category || '',
-        type: match?.type || '',
-        establishedYear: match?.establishedYear || '',
-        registrationNumber: match?.registrationNumber || '',
+        type: match?.hospital_type || match?.type || '',
+        establishedYear: match?.established_year || match?.establishedYear || '',
+        registrationNumber: match?.registration_number || match?.registrationNumber || '',
         address: match?.address || '',
         phone: match?.phone || currentUser?.phone || '',
         email: match?.email || currentUser?.email || '',
         website: match?.website || '',
-        emergencyContact: match?.emergencyContact || match?.emergency_contact || '',
-        ownerName: match?.ownerName || '',
-        directorName: match?.directorName || currentUser?.name || '',
-        totalBeds: match?.totalBeds || match?.beds || 0,
-        totalIcuBeds: match?.totalIcuBeds || 0,
-        totalOperationTheatres: match?.totalOperationTheatres || 0,
-        accreditation: match?.accreditation || [],
-        services: match?.services || [],
+        emergencyContact: match?.emergency_contact || match?.emergencyContact || '',
+        ownerName: match?.owner_name || match?.ownerName || '',
+        directorName: match?.director_name || match?.directorName || currentUser?.name || '',
+        totalBeds: match?.total_beds ?? match?.totalBeds ?? match?.beds ?? 0,
+        totalIcuBeds: match?.total_icu_beds ?? match?.totalIcuBeds ?? 0,
+        totalOperationTheatres: match?.total_operation_theatres ?? match?.totalOperationTheatres ?? 0,
+        accreditation: Array.isArray(match?.accreditation)
+          ? match.accreditation
+          : (() => {
+              try { return match?.accreditation ? JSON.parse(match.accreditation) : []; } catch { return []; }
+            })(),
+        services: Array.isArray(match?.services)
+          ? match.services
+          : (() => {
+              try { return match?.services ? JSON.parse(match.services) : []; } catch { return []; }
+            })(),
         status: String(match?.status || 'pending').toLowerCase(),
-        lastUpdated: match?.updated_at?.split?.('T')?.[0] || match?.lastUpdated || match?.updatedAt || new Date().toISOString().split('T')[0],
+        lastUpdated:
+          match?.last_updated ||
+          match?.updated_at?.split?.('T')?.[0] ||
+          match?.lastUpdated ||
+          match?.updatedAt ||
+          new Date().toISOString().split('T')[0],
       });
     };
 
@@ -385,12 +403,19 @@ const HospitalProfile = () => {
   };
 
   const handleSave = async () => {
+    const targetHospitalId = String(hospital.HID || currentUser?.hospital_id || currentUser?.hospitalId || '');
+    if (!targetHospitalId) {
+      alert('Hospital ID missing. Please logout and login again.');
+      return;
+    }
+
     const updated = {
       ...hospital,
+      HID: targetHospitalId,
       lastUpdated: new Date().toISOString().split('T')[0]
     };
 
-    await api.patch(`/hospitals/${encodeURIComponent(updated.HID)}`, {
+    await api.patch(`/hospitals/${encodeURIComponent(targetHospitalId)}`, {
       name: updated.name,
       address: updated.address,
       phone: updated.phone,
@@ -398,6 +423,20 @@ const HospitalProfile = () => {
       city: updated.city || '',
       state: updated.state || '',
       pincode: updated.pincode || '',
+      category: updated.category || '',
+      hospital_type: updated.type || '',
+      established_year: updated.establishedYear || '',
+      registration_number: updated.registrationNumber || '',
+      website: updated.website || '',
+      emergency_contact: updated.emergencyContact || '',
+      owner_name: updated.ownerName || '',
+      director_name: updated.directorName || '',
+      total_beds: Number(updated.totalBeds || 0),
+      total_icu_beds: Number(updated.totalIcuBeds || 0),
+      total_operation_theatres: Number(updated.totalOperationTheatres || 0),
+      accreditation: Array.isArray(updated.accreditation) ? updated.accreditation : [],
+      services: Array.isArray(updated.services) ? updated.services : [],
+      last_updated: updated.lastUpdated,
     });
 
     setHospital(updated);

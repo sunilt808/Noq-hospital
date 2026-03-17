@@ -9,11 +9,10 @@ import {
   faUserSlash, faBan, faUserCircle, faCalendarPlus,
   faCalendarCheck, faCalendarTimes, faBellSlash,
   faNotesMedical, faPrescriptionBottle, faFileMedical,
-  faBolt, faUserPlus, faPlus // Added for enhanced quick actions
+  faBolt, faUserPlus, faPlus
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../context/AuthContext';
-import notificationService from '../../services/notificationService';
-import revenueService from '../../services/revenueService';
+import doctorService from '../../services/doctorService';
 import './doctor.css';
 
 const DoctorDashboard = () => {
@@ -40,9 +39,7 @@ const DoctorDashboard = () => {
     billsCount: 0,
     avgEarning: 0
   });
-  const [patientsData, setPatientsData] = useState([]);
-  const [appointmentsData, setAppointmentsData] = useState([]);
-  const [billsData, setBillsData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // Load doctor data
   useEffect(() => {
@@ -56,344 +53,155 @@ const DoctorDashboard = () => {
     let active = true;
 
     const loadDoctorDashboard = async () => {
-      const [doctors, patients, appointments, bills] = await Promise.all([
-        firebaseDbService.getCollection('doctors'),
-        firebaseDbService.getCollection('patients'),
-        firebaseDbService.getCollection('appointments'),
-        firebaseDbService.getCollection('bills'),
-      ]);
-
-      if (!active) return;
-
-      const doctorData =
-        doctors.find(
-          (d) =>
-            String(d.id) === String(currentUser.id) ||
-            d.DID === currentUser.id ||
-            d.email?.toLowerCase() === currentUser.email?.toLowerCase()
-        ) || {
+      try {
+        setLoading(true);
+        
+        // Get doctor data
+        const doctorData = await doctorService.getCurrentDoctor();
+        if (!active) return;
+        
+        const finalDoctor = doctorData || {
           id: currentUser.id,
-          name: currentUser.name || 'Doctor',
+          name: currentUser.full_name || currentUser.name || 'Doctor',
           email: currentUser.email,
           specialization: currentUser.specialization || 'General Physician',
           status: 'active',
         };
 
-      const nameParts = String(doctorData.name || 'Doctor').split(' ');
-      doctorData.initials = nameParts.map(n => n[0]).join('').toUpperCase();
-      setDoctor(doctorData);
-      setPatientsData(Array.isArray(patients) ? patients : []);
-      setAppointmentsData(Array.isArray(appointments) ? appointments : []);
-      setBillsData(Array.isArray(bills) ? bills : []);
-      
-      // Calculate doctor earnings
-      const doctorEarnings = revenueService.calculateDoctorEarnings(
-        Array.isArray(bills) ? bills : [],
-        doctorData.id
-      );
-      setEarnings(doctorEarnings);
-      
-      loadQueueData(doctorData.id, patients, appointments);
-      loadTodayStats(doctorData.id, patients, appointments);
+        // Normalize API snake_case fields to component-expected names
+        finalDoctor.name = finalDoctor.full_name || finalDoctor.name || 'Doctor';
+        finalDoctor.roomNumber = finalDoctor.room_no || finalDoctor.roomNumber || null;
+        finalDoctor.specialization = finalDoctor.specialization || finalDoctor.department_name || 'General Physician';
+
+        const nameParts = String(finalDoctor.name).split(' ');
+        finalDoctor.initials = nameParts.map(n => n[0]).join('').toUpperCase();
+        setDoctor(finalDoctor);
+
+        // Load appointments and revenue data
+        const [appointmentsData, revenueData] = await Promise.all([
+          doctorService.getDoctorAppointments(currentUser.id),
+          doctorService.getRevenueData()
+        ]);
+
+        if (!active) return;
+
+        const appointments = Array.isArray(appointmentsData) ? appointmentsData : [];
+        setStats({
+          todayAppointments: appointments.length,
+          completed: appointments.filter(a => a.status === 'completed').length,
+          waiting: appointments.filter(a => ['waiting', 'pending', 'confirmed'].includes(a.status)).length,
+          absent: 0,
+          blocked: 0,
+          avgTime: '15 min'
+        });
+
+        // Set earnings
+        if (revenueData) {
+          setEarnings({
+            totalEarnings: revenueData.total_revenue || 0,
+            billsCount: revenueData.bills_count || 0,
+            avgEarning: revenueData.avg_revenue || 0
+          });
+        }
+
+        // Load queue
+        const queueData = appointments
+          .filter(a => ['waiting', 'pending', 'confirmed'].includes(a.status))
+          .map(a => ({
+            id: a.id,
+            token: a.token || `T${String(Math.random()).slice(-3)}`,
+            patient: a.patient_name || 'Patient',
+            patientId: a.patient_id || a.id,
+            time: a.time || new Date().toLocaleTimeString(),
+            status: a.status,
+            type: a.type || 'regular',
+            priority: a.priority || 'normal',
+            absentCount: 0,
+            isBlocked: false,
+            history: [],
+            reason: a.notes || a.reason || ''
+          }));
+        
+        setQueue(queueData);
+        if (queueData.length > 0) {
+          setCurrentPatient(queueData[0]);
+        }
+      } catch (error) {
+        console.error('Error loading doctor dashboard:', error);
+        // Still set doctor from currentUser to allow page to render
+        const nameParts = String(currentUser.name || 'Doctor').split(' ');
+        const dr = {
+          id: currentUser.id,
+          name: currentUser.name || 'Doctor',
+          email: currentUser.email,
+          specialization: currentUser.specialization || 'General Physician',
+          status: 'active',
+          initials: nameParts.map(n => n[0]).join('').toUpperCase()
+        };
+        setDoctor(dr);
+      } finally {
+        if (active) setLoading(false);
+      }
     };
 
     loadDoctorDashboard();
-    window.addEventListener('focus', loadDoctorDashboard);
+    
     return () => {
       active = false;
-      window.removeEventListener('focus', loadDoctorDashboard);
     };
   }, [authLoading, currentUser, navigate]);
 
-  // Load queue data with absent tracking
-  const loadQueueData = (doctorId, patientsList = patientsData, appointmentsList = appointmentsData) => {
-    const resolveTokenText = (appointment) => {
-      const tokenValue = appointment?.token ?? appointment?.queueToken ?? '';
-
-      if (typeof tokenValue === 'string') {
-        return tokenValue;
-      }
-
-      if (typeof tokenValue === 'number') {
-        return `T${String(tokenValue).padStart(2, '0')}`;
-      }
-
-      if (tokenValue && typeof tokenValue === 'object') {
-        return (
-          tokenValue.tokenCode ||
-          tokenValue.tokenNumber ||
-          tokenValue.token ||
-          tokenValue.id ||
-          ''
-        );
-      }
-
-      return '';
-    };
-
-    const activeQueue = (appointmentsList || [])
-      .filter((appointment) => String(appointment.doctorId || '') === String(doctorId) && ['waiting', 'confirmed', 'pending'].includes(String(appointment.status || '').toLowerCase()))
-      .map((appointment) => {
-        const patient = (patientsList || []).find((item) => String(item.id) === String(appointment.patientId));
-        return {
-          id: appointment.id,
-          token: resolveTokenText(appointment),
-          patient: appointment.patientName || patient?.name || 'Patient',
-          patientId: appointment.patientId,
-          time: appointment.time || '',
-          status: String(appointment.status || '').toLowerCase(),
-          type: appointment.type || 'regular',
-          priority: appointment.priority || 'normal',
-          absentCount: patient?.absentCount || 0,
-          isBlocked: patient?.isBlocked || false,
-          history: patient?.lastVisits || [],
-          reason: appointment.reason || appointment.notes || ''
-        };
-      })
-      .filter((patient) => !patient.isBlocked);
-
-    const uniqueQueue = [];
-    const seen = new Set();
-    activeQueue.forEach((item) => {
-      const dedupeKey = `${item.id || ''}-${item.patientId || ''}-${item.token || ''}`;
-      if (!seen.has(dedupeKey)) {
-        seen.add(dedupeKey);
-        uniqueQueue.push(item);
-      }
-    });
-
-    setQueue(uniqueQueue);
-    
-    // Set first patient as current
-    if (uniqueQueue.length > 0) {
-      setCurrentPatient(uniqueQueue[0]);
-    }
-  };
-
-  // Update absent count for patient
-  const updateAbsentCount = async (patientId, increment = true) => {
-    const patients = [...patientsData];
-    const patientIndex = patients.findIndex(p => p.id === patientId);
-    
-    if (patientIndex !== -1) {
-      if (increment) {
-        patients[patientIndex].absentCount += 1;
-        
-        // Check if absent count reaches 3 (continuous absences)
-        if (patients[patientIndex].absentCount >= 3) {
-          patients[patientIndex].isBlocked = true;
-          patients[patientIndex].blockedDate = new Date().toISOString();
-          patients[patientIndex].blockedReason = '3 consecutive absences';
-          
-          // Remove from all queues
-          removePatientFromAllQueues(patientId);
-          
-          alert(`⚠️ Patient ${patients[patientIndex].name} has been BLOCKED due to 3 consecutive absences. They cannot book appointments until unblocked.`);
-          
-          // Send notification
-          await sendBlockNotification(patients[patientIndex]);
-        }
-      } else {
-        // Reset absent count if patient shows up
-        patients[patientIndex].absentCount = 0;
-        patients[patientIndex].isBlocked = false;
-        delete patients[patientIndex].blockedDate;
-        delete patients[patientIndex].blockedReason;
-      }
-
-      setPatientsData(patients);
-      await firebaseDbService.upsert('patients', patients[patientIndex].id, patients[patientIndex]);
-      return patients[patientIndex];
-    }
-    return null;
-  };
-
-  const removePatientFromAllQueues = (patientId) => {
-    // Remove patient from current doctor's queue
-    setQueue(prev => prev.filter(p => p.patientId !== patientId));
-    
-    // In a real app, you would also remove from other doctors' queues
-    console.log(`Patient ${patientId} removed from all queues`);
-  };
-
-  const sendBlockNotification = async (patient) => {
-    await notificationService.publish({
-      id: `NOTIF-${Date.now()}`,
-      type: 'block',
-      targetRole: 'patient',
-      targetUserId: patient.id,
-      patientId: patient.id,
-      patientName: patient.name,
-      message: `Patient ${patient.name} has been blocked due to 3 consecutive absences`,
-      createdAt: new Date().toISOString(),
-    });
-  };
-
-  const loadTodayStats = (doctorId, patientsList = patientsData, appointmentsList = appointmentsData) => {
-    const appointments = (appointmentsList || []).filter(
-      (appointment) => String(appointment.doctorId || '') === String(doctorId)
-    );
-    const absentCount = (patientsList || []).filter(p => p.absentCount > 0).length;
-    const blockedCount = (patientsList || []).filter(p => p.isBlocked).length;
-    
-    setStats({
-      todayAppointments: appointments.length,
-      completed: appointments.filter((item) => String(item.status || '').toLowerCase() === 'completed').length,
-      waiting: appointments.filter((item) => ['waiting', 'pending', 'confirmed'].includes(String(item.status || '').toLowerCase())).length,
-      absent: absentCount,
-      blocked: blockedCount,
-      avgTime: appointments.length ? '15 min' : '0 min'
-    });
-  };
-
-  // Add new patient to queue
-  const handleAddPatient = async () => {
-    if (!newPatient.name.trim()) {
-      alert('Please enter patient name');
-      return;
-    }
-
-    const newPatientId = Date.now();
-    const newQueuePatient = {
-      id: newPatientId,
-      token: `T${Math.floor(Math.random() * 100)}`,
-      patient: newPatient.name,
-      patientId: newPatientId,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      status: 'waiting',
-      type: newPatient.type,
-      priority: newPatient.priority,
-      absentCount: 0,
-      isBlocked: false,
-      history: [],
-      reason: 'Walk-in'
-    };
-
-    // Add to patients list
-    const patientRecord = {
-      id: newPatientId,
-      name: newPatient.name,
-      absentCount: 0,
-      isBlocked: false,
-      contact: '',
-      lastVisits: []
-    };
-    await firebaseDbService.upsert('patients', patientRecord.id, patientRecord);
-    setPatientsData((prev) => [...prev, patientRecord]);
-
-    await firebaseDbService.upsert('appointments', newQueuePatient.id, {
-      id: newQueuePatient.id,
-      patientId: newQueuePatient.patientId,
-      patientName: newQueuePatient.patient,
-      doctorId: doctor.id,
-      doctorName: doctor.name,
-      time: newQueuePatient.time,
-      status: 'waiting',
-      type: newQueuePatient.type,
-      priority: newQueuePatient.priority,
-      reason: newQueuePatient.reason,
-      createdAt: new Date().toISOString(),
-    });
-    setAppointmentsData((prev) => [...prev, {
-      id: newQueuePatient.id,
-      patientId: newQueuePatient.patientId,
-      patientName: newQueuePatient.patient,
-      doctorId: doctor.id,
-      doctorName: doctor.name,
-      time: newQueuePatient.time,
-      status: 'waiting',
-      type: newQueuePatient.type,
-      priority: newQueuePatient.priority,
-      reason: newQueuePatient.reason,
-    }]);
-
-    // Add to queue
-    setQueue(prev => [...prev, newQueuePatient]);
-    setNewPatient({ name: '', type: 'regular', priority: 'normal' });
-    setShowAddPatient(false);
-    
-    alert(`Patient ${newPatient.name} added to queue`);
-  };
-
-  // Handle actions
   const handleStartConsultation = () => {
     if (queue.length === 0) return;
-    
     const nextPatient = queue[0];
     setCurrentPatient(nextPatient);
     setQueue(prev => prev.slice(1));
-    
     alert(`Starting consultation with ${nextPatient.patient} (Token: ${nextPatient.token})`);
   };
 
   const handleCompleteConsultation = async () => {
     if (!currentPatient) return;
     
-    // Update patient's absent count (reset if they showed up)
-    if (currentPatient.absentCount > 0) {
-      await updateAbsentCount(currentPatient.patientId, false);
-    }
-    
-    // Add to patient's visit history
-    const patients = [...patientsData];
-    const patientIndex = patients.findIndex(p => p.id === currentPatient.patientId);
-    if (patientIndex !== -1) {
-      patients[patientIndex].lastVisits = patients[patientIndex].lastVisits || [];
-      patients[patientIndex].lastVisits.unshift({
-        date: new Date().toISOString(),
-        doctor: doctor.name,
-        type: currentPatient.type,
-        notes: ''
-      });
-      setPatientsData(patients);
-      await firebaseDbService.upsert('patients', patients[patientIndex].id, patients[patientIndex]);
-    }
-    
-    alert(`✅ Completed consultation with ${currentPatient.patient}`);
-    setCurrentPatient(null);
-    
-    // Update stats
-    setStats(prev => ({
-      ...prev,
-      completed: prev.completed + 1,
-      waiting: Math.max(0, prev.waiting - 1)
-    }));
-    
-    // If queue has more patients, set next one
-    if (queue.length > 0) {
-      setCurrentPatient(queue[0]);
-      setQueue(prev => prev.slice(1));
+    try {
+      await doctorService.updateAppointmentStatus(currentPatient.id, 'completed');
+      alert(`✅ Completed consultation with ${currentPatient.patient}`);
+      setStats(prev => ({
+        ...prev,
+        completed: prev.completed + 1,
+        waiting: Math.max(0, prev.waiting - 1)
+      }));
+      setCurrentPatient(null);
+      
+      if (queue.length > 0) {
+        setCurrentPatient(queue[0]);
+        setQueue(prev => prev.slice(1));
+      }
+    } catch (error) {
+      console.error('Error completing consultation:', error);
+      alert('Failed to complete consultation');
     }
   };
 
   const handleMarkAbsent = async () => {
     if (!currentPatient) return;
     
-    // Update absent count
-    const updatedPatient = await updateAbsentCount(currentPatient.patientId);
-    
-    if (updatedPatient) {
-      const warningMsg = updatedPatient.isBlocked 
-        ? `🚫 Patient ${currentPatient.patient} has been BLOCKED due to 3 consecutive absences!`
-        : `⚠️ Marked ${currentPatient.patient} as absent. Total absences: ${updatedPatient.absentCount}`;
-      
-      alert(warningMsg);
-      
-      // Update stats
+    try {
+      await doctorService.updateAppointmentStatus(currentPatient.id, 'cancelled');
+      alert(`⚠️ Marked ${currentPatient.patient} as absent`);
       setStats(prev => ({
         ...prev,
         absent: prev.absent + 1,
-        blocked: updatedPatient.isBlocked ? prev.blocked + 1 : prev.blocked,
         waiting: Math.max(0, prev.waiting - 1)
       }));
       
-      // Move to next patient
       if (queue.length > 0) {
         setCurrentPatient(queue[0]);
         setQueue(prev => prev.slice(1));
       } else {
         setCurrentPatient(null);
       }
+    } catch (error) {
+      console.error('Error marking absent:', error);
     }
   };
 
@@ -419,20 +227,23 @@ const DoctorDashboard = () => {
       return;
     }
 
-    const prescriptionRecord = {
-      id: Date.now(),
-      patientId: currentPatient.patientId,
-      patientName: currentPatient.patient,
-      doctorId: doctor.id,
-      doctorName: doctor.name,
-      prescription: cleanedPrescription,
-      date: new Date().toISOString()
-    };
-    await firebaseDbService.upsert('prescriptions', prescriptionRecord.id, prescriptionRecord);
+    try {
+      await doctorService.createPrescription({
+        patient_id: currentPatient.patientId,
+        patient_name: currentPatient.patient,
+        doctor_id: currentUser.id,
+        doctor_name: currentUser.name,
+        prescription: cleanedPrescription,
+        date: new Date().toISOString()
+      });
 
-    alert('Prescription saved successfully!');
-    setPrescription('');
-    setShowPrescriptionModal(false);
+      alert('Prescription saved successfully!');
+      setPrescription('');
+      setShowPrescriptionModal(false);
+    } catch (error) {
+      console.error('Error saving prescription:', error);
+      alert('Failed to save prescription');
+    }
   };
 
   const handleReschedule = () => {
@@ -444,16 +255,7 @@ const DoctorDashboard = () => {
     const newTime = prompt(`Reschedule ${currentPatient.patient} for (HH:MM):`, '14:30');
     if (newTime) {
       alert(`${currentPatient.patient} rescheduled to ${newTime}`);
-      // In real app, update the appointment time
     }
-  };
-
-  const handleViewHistory = () => {
-    if (!currentPatient) {
-      alert('No current patient');
-      return;
-    }
-    navigate('/doctor/patient-history', { state: { patientId: currentPatient.patientId } });
   };
 
   const toggleBreak = () => {
@@ -462,27 +264,10 @@ const DoctorDashboard = () => {
   };
 
   const handleLogout = async () => {
-    if (doctor?.id) {
-      await firebaseDbService.remove('doctorPresence', doctor.id);
-    }
     await logout();
     navigate('/login');
   };
 
-  useEffect(() => {
-    if (!doctor?.id) return;
-
-    firebaseDbService.upsert('doctorPresence', doctor.id, {
-      doctorId: String(doctor.id),
-      doctorName: doctor.name || 'Doctor',
-      status: isOnBreak ? 'on_break' : currentPatient ? 'in_consultation' : 'available',
-      currentPatientId: currentPatient?.patientId || null,
-      currentPatientName: currentPatient?.patient || null,
-      updatedAt: new Date().toISOString(),
-    });
-  }, [doctor, currentPatient, isOnBreak]);
-
-  // Calculate next token
   const getNextToken = () => {
     if (queue.length === 0) return 'T01';
     const lastTokenRaw = queue[queue.length - 1]?.token;
@@ -492,11 +277,11 @@ const DoctorDashboard = () => {
     return `T${(lastNumber + 1).toString().padStart(2, '0')}`;
   };
 
-  if (!doctor) {
+  if (loading || !doctor) {
     return (
       <div className="doctor-loading">
         <div className="loading-spinner"></div>
-        <p>Loading doctor profile...</p>
+        <p>Loading doctor dashboard...</p>
       </div>
     );
   }
@@ -511,7 +296,7 @@ const DoctorDashboard = () => {
               {doctor.initials || 'DR'}
             </div>
             <div className="doctor-greeting">
-              <h1>Welcome, Dr. {doctor.name.split(' ')[0]}</h1>
+              <h1>Welcome, Dr. {(doctor.name || 'Doctor').split(' ')[0]}</h1>
               <p className="doctor-specialization">
                 <FontAwesomeIcon icon={faStethoscope} /> {doctor.specialization}
               </p>
@@ -664,23 +449,6 @@ const DoctorDashboard = () => {
                     <FontAwesomeIcon icon={faPrescriptionBottle} /> Prescription
                   </button>
                 </div>
-                
-                <div className="patient-extra-actions">
-                  <button className="extra-btn" onClick={handleReschedule}>
-                    <FontAwesomeIcon icon={faCalendarTimes} /> Reschedule
-                  </button>
-                  <button className="extra-btn" onClick={handleViewHistory}>
-                    <FontAwesomeIcon icon={faFileMedical} /> View History
-                  </button>
-                </div>
-                
-                {/* Absent Warning */}
-                {currentPatient.absentCount >= 2 && !currentPatient.isBlocked && (
-                  <div className="absent-warning">
-                    <FontAwesomeIcon icon={faExclamationTriangle} />
-                    <span>⚠️ WARNING: Patient has {currentPatient.absentCount} consecutive absences. Next absence will BLOCK them!</span>
-                  </div>
-                )}
               </div>
             ) : (
               <div className="no-patient">
@@ -699,104 +467,7 @@ const DoctorDashboard = () => {
             )}
           </div>
 
-          {/* Quick Actions - Enhanced Version */}
-          <div className="quick-actions-card enhanced">
-            <div className="card-header">
-              <h3>
-                <FontAwesomeIcon icon={faBolt} />
-                Quick Actions
-              </h3>
-              <span className="action-badge">4 Actions</span>
-            </div>
-            
-            <div className="enhanced-action-grid">
-              <button 
-                onClick={() => navigate('/doctor/queue')} 
-                className="action-card primary"
-              >
-                <div className="action-icon">
-                  <FontAwesomeIcon icon={faUsers} />
-                </div>
-                <div className="action-content">
-                  <span className="action-title">View Full Queue</span>
-                  <span className="action-subtitle">{queue.length} patients waiting</span>
-                </div>
-                <div className="action-arrow">
-                  <FontAwesomeIcon icon={faArrowRight} />
-                </div>
-              </button>
-              
-              <button 
-                onClick={() => navigate('/doctor/patients')} 
-                className="action-card success"
-              >
-                <div className="action-icon">
-                  <FontAwesomeIcon icon={faUserInjured} />
-                </div>
-                <div className="action-content">
-                  <span className="action-title">Manage Patients</span>
-                  <span className="action-subtitle">{stats.absent} absent today</span>
-                </div>
-                <div className="action-arrow">
-                  <FontAwesomeIcon icon={faArrowRight} />
-                </div>
-              </button>
-              
-              <button 
-                onClick={() => setShowAddPatient(true)} 
-                className="action-card warning"
-              >
-                <div className="action-icon">
-                  <FontAwesomeIcon icon={faUserPlus} />
-                </div>
-                <div className="action-content">
-                  <span className="action-title">Add Walk-in</span>
-                  <span className="action-subtitle">New patient registration</span>
-                </div>
-                <div className="action-arrow">
-                  <FontAwesomeIcon icon={faPlus} />
-                </div>
-              </button>
-              
-              <button 
-                onClick={() => navigate('/doctor/patients')} 
-                className="action-card danger"
-              >
-                <div className="action-icon">
-                  <FontAwesomeIcon icon={faBan} />
-                </div>
-                <div className="action-content">
-                  <span className="action-title">Blocked Patients</span>
-                  <span className="action-subtitle">{stats.blocked} blocked</span>
-                </div>
-                <div className="action-arrow">
-                  <FontAwesomeIcon icon={faArrowRight} />
-                </div>
-              </button>
-            </div>
-            
-            {/* Additional Quick Stats */}
-            <div className="quick-stats-footer">
-              <div className="quick-stat-item">
-                <span className="quick-stat-label">Current Token</span>
-                <span className="quick-stat-value">{currentPatient?.token || getNextToken()}</span>
-              </div>
-              <div className="quick-stat-item">
-                <span className="quick-stat-label">Est. Wait Time</span>
-                <span className="quick-stat-value">{Math.round(queue.length * 12)} min</span>
-              </div>
-              <div className="quick-stat-item">
-                <span className="quick-stat-label">Break Status</span>
-                <span className={`quick-stat-value ${isOnBreak ? 'on-break' : 'active'}`}>
-                  {isOnBreak ? '⏸️ On Break' : '🟢 Active'}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column - Queue Preview */}
-        <div className="doctor-right-column">
+          {/* Queue Preview */}
           <div className="queue-preview-card">
             <div className="card-header">
               <h3>
@@ -817,51 +488,9 @@ const DoctorDashboard = () => {
               </div>
             </div>
             
-            {showAddPatient && (
-              <div className="add-patient-form">
-                <h4>Add Walk-in Patient</h4>
-                <input
-                  type="text"
-                  placeholder="Patient Name"
-                  value={newPatient.name}
-                  onChange={(e) => setNewPatient({...newPatient, name: e.target.value})}
-                  className="form-input"
-                />
-                <select
-                  value={newPatient.type}
-                  onChange={(e) => setNewPatient({...newPatient, type: e.target.value})}
-                  className="form-select"
-                >
-                  <option value="regular">Regular</option>
-                  <option value="follow-up">Follow-up</option>
-                  <option value="new">New Patient</option>
-                  <option value="emergency">Emergency</option>
-                </select>
-                <select
-                  value={newPatient.priority}
-                  onChange={(e) => setNewPatient({...newPatient, priority: e.target.value})}
-                  className="form-select"
-                >
-                  <option value="normal">Normal Priority</option>
-                  <option value="high">High Priority</option>
-                  <option value="urgent">Urgent</option>
-                </select>
-                <div className="form-actions">
-                  <button onClick={handleAddPatient} className="add-btn">Add to Queue</button>
-                  <button onClick={() => setShowAddPatient(false)} className="cancel-btn">Cancel</button>
-                </div>
-              </div>
-            )}
-            
             {queue.length === 0 ? (
               <div className="empty-queue">
                 <p>No patients waiting</p>
-                <button 
-                  onClick={() => setShowAddPatient(true)}
-                  className="add-patient-btn"
-                >
-                  <FontAwesomeIcon icon={faCalendarPlus} /> Add Walk-in Patient
-                </button>
               </div>
             ) : (
               <div className="queue-list">
@@ -878,15 +507,7 @@ const DoctorDashboard = () => {
                           {patient.priority === 'urgent' && (
                             <span className="priority-dot urgent"></span>
                           )}
-                          {patient.priority === 'high' && (
-                            <span className="priority-dot high"></span>
-                          )}
                         </div>
-                        {patient.absentCount > 0 && (
-                          <span className="queue-absent-count">
-                            <FontAwesomeIcon icon={faUserSlash} /> {patient.absentCount} absences
-                          </span>
-                        )}
                         <span className="queue-reason">{patient.reason}</span>
                       </div>
                     </div>
@@ -913,8 +534,10 @@ const DoctorDashboard = () => {
               <p className="queue-info-text">Next Token: {getNextToken()} | Est. Wait Time: ~{Math.round(queue.length * 15)} min</p>
             </div>
           </div>
+        </div>
 
-          {/* Today's Summary */}
+        {/* Right Column - Summary */}
+        <div className="doctor-right-column">
           <div className="summary-card">
             <h3>
               <FontAwesomeIcon icon={faChartLine} />
@@ -942,22 +565,9 @@ const DoctorDashboard = () => {
                 <span className="summary-value">{stats.blocked}</span>
               </div>
             </div>
-            <div className="summary-note">
-              <FontAwesomeIcon icon={faBellSlash} />
-              <span>Patients with 3 consecutive absences are automatically blocked</span>
-            </div>
           </div>
         </div>
       </div>
-
-      {/* Floating Action Button for Mobile */}
-      <button 
-        className="floating-add-btn"
-        onClick={() => setShowAddPatient(true)}
-        title="Add Walk-in Patient"
-      >
-        <FontAwesomeIcon icon={faPlus} />
-      </button>
 
       {/* Prescription Modal */}
       {showPrescriptionModal && (

@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
-import firebaseDbService from '../../services/firebaseDbService';
+import { useAuth } from '../../context/AuthContext';
+import doctorService from '../../services/doctorService';
 import {
   faArrowLeft, faUserMd, faStethoscope, faBuilding,
   faDoorOpen, faIdCard, faClock, faRupeeSign,
@@ -16,7 +15,10 @@ import './doctor.css';
 const DoctorProfile = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const { doctors, appointments, reviews, loading } = useFirebaseData();
+  const [doctor, setDoctor] = useState(null);
+  const [appointments, setAppointments] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
   
   const [stats, setStats] = useState({
     totalPatients: 0,
@@ -24,36 +26,56 @@ const DoctorProfile = () => {
     completedAppointments: 0
   });
 
-  // Get current doctor from Firebase
-  const doctor = useMemo(() => {
-    return doctors.find(d =>
-      d.id === currentUser?.id ||
-      d.email?.toLowerCase() === currentUser?.email?.toLowerCase()
-    ) || {
-      id: currentUser?.id,
-      name: currentUser?.name || 'Doctor',
-      email: currentUser?.email,
-      specialization: currentUser?.specialization || 'General Physician',
-      status: 'active'
-    };
-  }, [doctors, currentUser]);
-
-  // Verify doctor is authenticated
+  // Fetch doctor data
   useEffect(() => {
-    if (!authLoading && (!currentUser || currentUser.role !== 'doctor')) {
-      navigate('/login', { replace: true });
-    }
-  }, [currentUser, authLoading, navigate]);
-
-  // Calculate doctor stats from Firebase data
-  useEffect(() => {
-    const doctorAppointments = appointments.filter(a => a.doctorId === doctor?.id);
-    const completedAppointments = doctorAppointments.filter(a => a.status === 'completed').length;
-    const uniquePatientIds = new Set(doctorAppointments.map(a => a.patientId));
+    if (authLoading) return;
     
-    const doctorReviews = reviews.filter(r => r.doctorId === doctor?.id);
+    if (!currentUser || currentUser.role !== 'doctor') {
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    const loadDoctorProfile = async () => {
+      try {
+        setLoading(true);
+        const [doctorData, appointmentsData, reviewsData] = await Promise.all([
+          doctorService.getCurrentDoctor(),
+          doctorService.getDoctorAppointments(currentUser.id),
+          doctorService.getDoctorRevenue() // Use revenue as reviews for now
+        ]);
+
+        // Normalize API snake_case fields → component-expected names
+        const normalized = doctorData || {};
+        normalized.name = normalized.full_name || normalized.name || currentUser?.full_name || currentUser?.name || 'Doctor';
+        normalized.roomNumber = normalized.room_no || normalized.roomNumber || null;
+        normalized.specialization = normalized.specialization || normalized.department_name || 'General Physician';
+
+        console.log('Doctor data loaded:', normalized);
+
+        setDoctor(Object.keys(normalized).length > 0 ? normalized : currentUser);
+        setAppointments(Array.isArray(appointmentsData) ? appointmentsData : []);
+        setReviews(Array.isArray(reviewsData) ? reviewsData : []);
+      } catch (error) {
+        console.error('Error loading doctor profile:', error);
+        setDoctor(currentUser);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDoctorProfile();
+  }, [authLoading, currentUser, navigate]);
+
+  // Calculate doctor stats
+  useEffect(() => {
+    if (!doctor) return;
+
+    const completedAppointments = appointments.filter(a => a.status === 'completed').length;
+    const uniquePatientIds = new Set(appointments.map(a => a.patient_id || a.patientId));
+    
+    const doctorReviews = Array.isArray(reviews) ? reviews : [];
     const avgRating = doctorReviews.length > 0
-      ? (doctorReviews.reduce((sum, r) => sum + (r.rating || r.doctorRating || 0), 0) / doctorReviews.length).toFixed(1)
+      ? (doctorReviews.reduce((sum, r) => sum + (r.rating || 0), 0) / doctorReviews.length).toFixed(1)
       : 0;
 
     setStats({
@@ -61,7 +83,7 @@ const DoctorProfile = () => {
       avgRating: parseFloat(avgRating),
       completedAppointments
     });
-  }, [doctor?.id, appointments, reviews]);
+  }, [doctor, appointments, reviews]);
 
   if (!doctor) {
     return (
@@ -134,11 +156,11 @@ const DoctorProfile = () => {
               <div className="info-grid">
                 <div className="info-item">
                   <label>Department:</label>
-                  <span>{doctor.departmentName || doctor.specialization || 'Not assigned'}</span>
+                  <span>{doctor.department_name || doctor.specialization || 'Not assigned'}</span>
                 </div>
                 <div className="info-item">
                   <label>Room:</label>
-                  <span>{doctor.roomInfo || (doctor.roomNo ? `Room ${doctor.roomNo}` : 'Not assigned')}</span>
+                  <span>{doctor.room_no ? `Room ${doctor.room_no}${doctor.floor ? ` Floor ${doctor.floor}` : ''}` : 'Not assigned'}</span>
                 </div>
                 <div className="info-item">
                   <label>Shift:</label>
@@ -146,7 +168,7 @@ const DoctorProfile = () => {
                 </div>
                 <div className="info-item">
                   <label>Consultation Fee:</label>
-                  <span>{doctor.fee ? `₹${doctor.fee}` : 'Not set'}</span>
+                  <span>{doctor.fee > 0 ? `₹${doctor.fee}` : 'Not set'}</span>
                 </div>
               </div>
             </div>
@@ -208,7 +230,7 @@ const DoctorProfile = () => {
                 <FontAwesomeIcon icon={faBuilding} />
                 <div>
                   <strong>Hospital</strong>
-                  <p>{doctor.hospitalName || 'Not assigned'}</p>
+                  <p>{doctor.hospital_name || 'Not assigned'}</p>
                 </div>
               </div>
             </div>

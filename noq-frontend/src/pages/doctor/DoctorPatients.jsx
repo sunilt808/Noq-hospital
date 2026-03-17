@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
-import firebaseDbService from '../../services/firebaseDbService';
+import { useAuth } from '../../context/AuthContext';
+import doctorService from '../../services/doctorService';
 import {
   faArrowLeft, faUserInjured, faSearch, faFilter,
   faBan, faCheckCircle, faExclamationTriangle, faClock,
@@ -17,116 +16,98 @@ import './doctor.css';
 const DoctorPatients = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const { patients: firebasePatients, doctors, loading } = useFirebaseData();
-  const [doctor, setDoctor] = useState(null);
   const [patients, setPatients] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showPatientDetails, setShowPatientDetails] = useState(false);
-  const [showWarnModal, setShowWarnModal] = useState(false);
-  const [showBlockModal, setShowBlockModal] = useState(false);
-  const [actionPatient, setActionPatient] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!authLoading && (!currentUser || String(currentUser.role || '').toLowerCase() !== 'doctor')) {
+    if (!authLoading && (!currentUser || currentUser.role !== 'doctor')) {
       navigate('/login', { replace: true });
       return;
     }
   }, [authLoading, currentUser, navigate]);
 
+  // Load doctor patients
   useEffect(() => {
-    if (!currentUser) return;
-    const doctorData =
-      doctors.find((d) => String(d.id || '') === String(currentUser.id || '')) ||
-      doctors.find((d) => d.email?.toLowerCase() === currentUser.email?.toLowerCase()) ||
-      currentUser;
+    if (authLoading || !currentUser) return;
 
-    if (doctorData) {
-      setDoctor(doctorData);
-    }
-  }, [currentUser, doctors]);
+    const loadPatients = async () => {
+      try {
+        setLoading(true);
+        const data = await doctorService.getDoctorPatients(currentUser.id);
+        setPatients(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Error loading patients:', error);
+        setPatients([]);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  useEffect(() => {
-    setPatients(Array.isArray(firebasePatients) ? firebasePatients : []);
-  }, [firebasePatients]);
+    loadPatients();
+  }, [authLoading, currentUser]);
 
-  const persistPatientUpdate = async (patientId, updater) => {
+  const updatePatientLocal = (patientId, updater) => {
     const existing = patients.find((p) => String(p.id) === String(patientId));
-    if (!existing) return;
+    if (!existing) return null;
     const updatedPatient = updater(existing);
-    await firebaseDbService.upsert('patients', String(patientId), updatedPatient);
     setPatients((prev) => prev.map((p) => (String(p.id) === String(patientId) ? updatedPatient : p)));
+    return updatedPatient;
   };
 
   const filteredPatients = patients.filter(patient => {
-    const matchesSearch = patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         patient.phone.includes(searchTerm);
+    const matchesSearch = (patient.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (patient.phone || '').includes(searchTerm);
     const matchesFilter = filterStatus === 'all' || patient.status === filterStatus;
     return matchesSearch && matchesFilter;
   });
 
   const handleWarnPatient = (patient) => {
-    setActionPatient(patient);
-    setShowWarnModal(true);
+    updatePatientLocal(patient.id, (p) => ({
+      ...p,
+      status: 'warned',
+      blockLevel: 1,
+      missedAppointments: (p.missedAppointments || 0) + 1,
+      warnings: [...(p.warnings || []), `${new Date().toLocaleDateString()}: Warned for 1st miss`]
+    }));
+    alert(`Warning sent to ${patient.name} for missed appointment`);
   };
 
   const handleFinePatient = async (patient) => {
     if (patient.status === 'warned') {
-      await persistPatientUpdate(patient.id, (p) => ({
-          ...p,
-          status: 'fined',
-          blockLevel: 2,
-          fines: (p.fines || 0) + 200,
-          warnings: [...p.warnings, `${new Date().toLocaleDateString()}: Fined ₹200 for 2nd miss`]
+      updatePatientLocal(patient.id, (p) => ({
+        ...p,
+        status: 'fined',
+        blockLevel: 2,
+        fines: (p.fines || 0) + 200,
+        warnings: [...(p.warnings || []), `${new Date().toLocaleDateString()}: Fined ₹200 for 2nd miss`]
       }));
       alert(`Fined ${patient.name} ₹200 for 2nd missed appointment`);
     }
   };
 
   const handleBlockPatient = (patient) => {
-    setActionPatient(patient);
-    setShowBlockModal(true);
+    updatePatientLocal(patient.id, (p) => ({
+      ...p,
+      status: 'blocked',
+      blockLevel: 3,
+      missedAppointments: (p.missedAppointments || 0) + 1,
+      warnings: [...(p.warnings || []), `${new Date().toLocaleDateString()}: Blocked for 3rd miss`]
+    }));
+    alert(`${patient.name} has been blocked from booking appointments`);
   };
 
   const handleUnblockPatient = async (patient) => {
-    await persistPatientUpdate(patient.id, (p) => ({
-        ...p,
-        status: 'active',
-        blockLevel: 0,
-        warnings: []
-      }));
+    updatePatientLocal(patient.id, (p) => ({
+      ...p,
+      status: 'active',
+      blockLevel: 0,
+      warnings: []
+    }));
     alert(`Unblocked ${patient.name}. They can now book appointments.`);
-  };
-
-  const confirmWarnPatient = async () => {
-    if (!actionPatient) return;
-
-    await persistPatientUpdate(actionPatient.id, (p) => ({
-        ...p,
-        status: 'warned',
-        blockLevel: 1,
-        missedAppointments: (p.missedAppointments || 0) + 1,
-        warnings: [...p.warnings, `${new Date().toLocaleDateString()}: Warned for 1st miss`]
-      }));
-    setShowWarnModal(false);
-    setActionPatient(null);
-    alert(`Warning sent to ${actionPatient.name} for 1st missed appointment`);
-  };
-
-  const confirmBlockPatient = async () => {
-    if (!actionPatient) return;
-
-    await persistPatientUpdate(actionPatient.id, (p) => ({
-        ...p,
-        status: 'blocked',
-        blockLevel: 3,
-        missedAppointments: (p.missedAppointments || 0) + 1,
-        warnings: [...p.warnings, `${new Date().toLocaleDateString()}: Blocked for 3rd miss`]
-      }));
-    setShowBlockModal(false);
-    setActionPatient(null);
-    alert(`${actionPatient.name} has been blocked from booking appointments`);
   };
 
   const viewPatientDetails = (patient) => {
