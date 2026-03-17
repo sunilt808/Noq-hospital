@@ -1,8 +1,9 @@
 // Profile.js – Internal CSS version (matches Settings UI/UX)
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useAuth } from "../../context/AuthContext";
+import patientService from "../../services/patientService";
 import {
   faUser,
   faEnvelope,
@@ -21,70 +22,76 @@ import {
 const Profile = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const { patients, appointments, medicalRecords, loading: dataLoading } = useFirebaseData();
   
+  const [patient, setPatient] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [loading, setLoading] = useState(true);
 
-  // Get current patient from Firebase
-  const patient = useMemo(() => {
-    const matchedPatient = patients.find(p =>
-      p.id === currentUser?.id || 
-      p.email?.toLowerCase() === currentUser?.email?.toLowerCase()
-    );
-
-    if (matchedPatient) {
-      return matchedPatient;
-    }
-
-    if (currentUser && String(currentUser?.role || '').toLowerCase() === 'patient') {
-      return currentUser;
-    }
-
-    return null;
-  }, [patients, currentUser]);
-
-  // Verify patient is authenticated
+  // Load patient profile from API
   useEffect(() => {
-    if (!authLoading && (!currentUser || String(currentUser?.role || '').toLowerCase() !== 'patient')) {
+    if (authLoading) return;
+    
+    if (!currentUser || currentUser.role !== 'patient') {
       navigate('/login', { replace: true });
+      return;
     }
-  }, [currentUser, authLoading, navigate]);
 
-  // Set initial edit form
-  useEffect(() => {
-    if (patient) {
-      const nextForm = {
-        ...patient,
-        name: patient.name || patient.fullName || ''
-      };
-
-      setEditForm((prev) => {
-        const prevKeys = Object.keys(prev || {});
-        const nextKeys = Object.keys(nextForm);
-
-        if (
-          prevKeys.length === nextKeys.length &&
-          nextKeys.every((key) => prev?.[key] === nextForm[key])
-        ) {
-          return prev;
+    const loadProfile = async () => {
+      try {
+        setLoading(true);
+        const profileData = await patientService.getMyProfile();
+        if (profileData) {
+          setPatient(profileData);
+          // Initialize edit form with normalized field names
+          setEditForm({
+            full_name: profileData.full_name || profileData.name || '',
+            email: profileData.email || '',
+            phone: profileData.phone || '',
+            hospitalId: profileData.hospital_id || ''
+          });
+        } else {
+          setPatient(currentUser);
+          setEditForm({
+            full_name: currentUser.full_name || currentUser.name || '',
+            email: currentUser.email || '',
+            phone: currentUser.phone || '',
+            hospitalId: currentUser.hospital_id || ''
+          });
         }
+      } catch (error) {
+        console.error('Error loading profile:', error);
+        setPatient(currentUser);
+        setEditForm({
+          full_name: currentUser.full_name || currentUser.name || '',
+          email: currentUser.email || '',
+          phone: currentUser.phone || '',
+          hospitalId: currentUser.hospital_id || ''
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
 
-        return nextForm;
-      });
-    }
-  }, [patient]);
+    loadProfile();
+  }, [authLoading, currentUser, navigate]);
 
   const handleEditToggle = () => {
     if (isEditing) {
-      setEditForm(patient);
+      // Reset form to patient data
+      setEditForm({
+        full_name: patient?.full_name || patient?.name || '',
+        email: patient?.email || '',
+        phone: patient?.phone || '',
+        hospitalId: patient?.hospital_id || ''
+      });
     }
     setIsEditing(!isEditing);
   };
 
   const handleSave = async () => {
-    if (!editForm.name?.trim()) {
+    if (!editForm.full_name?.trim()) {
       setMessage({ type: 'error', text: 'Full name is required.' });
       return;
     }
@@ -100,23 +107,20 @@ const Profile = () => {
     }
 
     try {
-      const normalizedEditForm = {
-        ...editForm,
-        name: editForm.name || '',
-        fullName: editForm.name || '',
-        updatedAt: new Date().toISOString(),
+      const updateData = {
+        full_name: editForm.full_name,
+        email: editForm.email,
+        phone: editForm.phone,
+        hospital_id: editForm.hospitalId
       };
 
-      const profileId = patient?.id || currentUser?.id;
-      if (!profileId) {
-        setMessage({ type: 'error', text: 'Unable to identify profile to update.' });
-        return;
-      }
-
-      await firebaseDbService.upsert("patients", profileId, normalizedEditForm);
+      await patientService.updateProfile(updateData);
 
       // Update local state with saved changes
-      setEditForm(normalizedEditForm);
+      setPatient(prev => ({
+        ...prev,
+        ...updateData
+      }));
       
       setIsEditing(false);
       setMessage({ type: 'success', text: 'Profile updated successfully.' });
@@ -134,38 +138,8 @@ const Profile = () => {
     setEditForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const getPatientAvatar = (patientData) => {
-    if (!patientData) return '';
-    return (
-      patientData.profileImage ||
-      patientData.avatar ||
-      patientData.avatarUrl ||
-      patientData.photoUrl ||
-      patientData.photoURL ||
-      patientData.image ||
-      ''
-    );
-  };
-
-  const patientAvatar = getPatientAvatar(patient);
   const normalizedStatus = String(patient?.status || 'active').toLowerCase();
   const statusLabel = normalizedStatus === 'active' ? 'Active' : normalizedStatus === 'blocked' ? 'Blocked' : normalizedStatus === 'inactive' ? 'Inactive' : normalizedStatus;
-
-  // Calculate stats from Firebase data
-  const stats = useMemo(() => {
-    const patientMedicalRecords = medicalRecords.filter(
-      (record) => record.patientId === patient?.id || record.patientEmail?.toLowerCase() === patient?.email?.toLowerCase()
-    );
-    const patientAppointments = appointments.filter(
-      (appointment) =>
-        appointment.patientId === patient?.id ||
-        appointment.patientEmail?.toLowerCase() === patient?.email?.toLowerCase()
-    );
-    return {
-      medicalRecords: patientMedicalRecords.length,
-      appointments: patientAppointments.length
-    };
-  }, [patient, medicalRecords, appointments]);
 
   const calculateAge = (dob) => {
     if (!dob) return "N/A";
@@ -177,7 +151,7 @@ const Profile = () => {
     return age;
   };
 
-  if (dataLoading || authLoading) {
+  if (loading || authLoading) {
     return (
       <div className="loading-container">
         <div className="loading-spinner"></div>
@@ -637,7 +611,7 @@ const Profile = () => {
                 <div className="info-item">
                   <label>Full Name</label>
                   {isEditing ? (
-                    <input type="text" name="name" value={editForm.name || ""} onChange={handleChange} className="form-input" />
+                    <input type="text" name="full_name" value={editForm.full_name || ""} onChange={handleChange} className="form-input" />
                   ) : (
                     <span>{patient.name}</span>
                   )}

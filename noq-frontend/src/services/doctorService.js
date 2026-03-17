@@ -93,6 +93,12 @@ const doctorService = {
     if (hospitalId) params.append('hospital_id', hospitalId);
     const response = await api.get(`/revenue/by-doctor?${params.toString()}`);
     return response?.data?.doctors || [];
+  },
+
+  // Get prescriptions created by current doctor - returns {success, data: {prescriptions: [...]}}
+  getDoctorPrescriptions: async () => {
+    const response = await api.get('/prescriptions/doctor/my');
+    return response?.data?.prescriptions || [];
   }
 };
 

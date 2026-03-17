@@ -69,11 +69,10 @@ const DoctorAppointments = () => {
 
   // Filter appointments
   const filteredAppointments = appointments.filter(app => {
-    const appDate = app.date || new Date().toISOString().split('T')[0];
+    const appDate = app.appointment_date || new Date().toISOString().split('T')[0];
     const appStatus = app.status || 'scheduled';
-    const patientName = app.patient_name || app.patientName || '';
-    const phone = app.phone || '';
-    const token = app.token || '';
+    const patientName = app.doctor_name || app.patient_id || '';
+    const token = app.token_number || '';
     
     const matchesDate = appDate === selectedDate;
     const matchesStatus = selectedStatus === 'all' || appStatus === selectedStatus;

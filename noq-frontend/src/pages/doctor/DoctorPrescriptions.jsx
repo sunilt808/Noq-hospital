@@ -76,7 +76,7 @@ const DoctorPrescriptions = () => {
     try {
       const payload = {
         patient_id: form.patientId,
-        patient_name: selectedPatient?.name || 'Patient',
+        patient_name: selectedPatient?.full_name || selectedPatient?.name || 'Patient',
         doctor_id: currentUser.id,
         doctor_name: currentUser.name || 'Doctor',
         medicine,

@@ -59,7 +59,7 @@ const DoctorPatients = () => {
   };
 
   const filteredPatients = patients.filter(patient => {
-    const matchesSearch = (patient.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = (patient.full_name || patient.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (patient.phone || '').includes(searchTerm);
     const matchesFilter = filterStatus === 'all' || patient.status === filterStatus;
     return matchesSearch && matchesFilter;
