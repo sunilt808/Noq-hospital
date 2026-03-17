@@ -11,6 +11,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
+import { recordHistory } from '../../../services/historyService';
 
 // Password generation utility function
 const generateStructuredPassword = (doctorName, specialization) => {
@@ -67,6 +68,8 @@ const DoctorCredentials = () => {
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [passwordSequence, setPasswordSequence] = useState({});
+  const hmHospitalId = String(currentUser?.hospitalId || currentUser?.hospital_id || currentUser?.HID || '');
+  const hmName = currentUser?.name || currentUser?.full_name || 'Hospital Manager';
 
   useEffect(() => {
     loadDoctorUsers();
@@ -178,6 +181,18 @@ const DoctorCredentials = () => {
     setNewPassword('');
     setSelectedUser(null);
     setShowConfirm(false);
+
+    recordHistory({
+      action: 'credential_reset',
+      module: 'doctor_credentials',
+      message: `Reset doctor password for ${selectedUser.name}`,
+      actorRole: 'hm',
+      actorName: hmName,
+      actorId: String(currentUser?.id || ''),
+      hospitalId: hmHospitalId,
+      doctorId: String(selectedUser.id || ''),
+      meta: { doctorName: selectedUser.name, doctorEmail: selectedUser.email },
+    });
     
     alert(`Password reset successful for ${selectedUser.name}`);
   };
@@ -191,6 +206,18 @@ const DoctorCredentials = () => {
     await api.delete(`/users/${id}`);
     const updatedUsers = doctorUsers.filter(u => u.id !== id);
     setDoctorUsers(updatedUsers);
+
+    recordHistory({
+      action: 'credential_deleted',
+      module: 'doctor_credentials',
+      message: `Deleted doctor credentials for ${user.name}`,
+      actorRole: 'hm',
+      actorName: hmName,
+      actorId: String(currentUser?.id || ''),
+      hospitalId: hmHospitalId,
+      doctorId: String(id),
+      meta: { doctorName: user.name, doctorEmail: user.email },
+    });
     
     alert(`Credentials deleted for ${user.name}`);
   };
@@ -211,6 +238,18 @@ const DoctorCredentials = () => {
     );
 
     setDoctorUsers(updatedUsers);
+
+    recordHistory({
+      action: `credential_${newStatus === 'active' ? 'enabled' : 'disabled'}`,
+      module: 'doctor_credentials',
+      message: `${newStatus === 'active' ? 'Enabled' : 'Disabled'} login for ${user.name}`,
+      actorRole: 'hm',
+      actorName: hmName,
+      actorId: String(currentUser?.id || ''),
+      hospitalId: hmHospitalId,
+      doctorId: String(id),
+      meta: { doctorName: user.name, doctorEmail: user.email, status: newStatus },
+    });
   };
 
   const copyCredentials = (user) => {
@@ -341,6 +380,17 @@ Password Type: ${user.passwordStructure || 'Standard'}`;
 
     setDoctorUsers(updatedUsers);
 
+    recordHistory({
+      action: 'credential_bulk_disabled',
+      module: 'doctor_credentials',
+      message: `Disabled login for ${selectedUsers.length} doctors`,
+      actorRole: 'hm',
+      actorName: hmName,
+      actorId: String(currentUser?.id || ''),
+      hospitalId: hmHospitalId,
+      meta: { doctorIds: selectedUsers },
+    });
+
     setSelectedUsers([]);
     alert(`Disabled ${selectedUsers.length} doctor accounts`);
   };
@@ -353,6 +403,17 @@ Password Type: ${user.passwordStructure || 'Standard'}`;
     await Promise.all(selectedUsers.map((id) => api.delete(`/users/${id}`)));
     const updatedUsers = doctorUsers.filter(user => !selectedUsers.includes(user.id));
     setDoctorUsers(updatedUsers);
+
+    recordHistory({
+      action: 'credential_bulk_deleted',
+      module: 'doctor_credentials',
+      message: `Deleted credentials for ${selectedUsers.length} doctors`,
+      actorRole: 'hm',
+      actorName: hmName,
+      actorId: String(currentUser?.id || ''),
+      hospitalId: hmHospitalId,
+      meta: { doctorIds: selectedUsers },
+    });
     
     setSelectedUsers([]);
     alert(`Deleted ${selectedUsers.length} doctor credentials`);

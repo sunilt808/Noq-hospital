@@ -9,12 +9,12 @@ import {
   faCheckCircle, faClock, faFileContract,
   faBed // ADDED MISSING IMPORT
 } from '@fortawesome/free-solid-svg-icons';
-import { useAuth } from '../../../context/FirebaseAuthContext';
-import firebaseDbService from '../../../services/firebaseDbService';
+import { useAuth } from '../../../context/AuthContext';
+import api from '../../../services/api';
 
 const HospitalProfile = () => {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, updateUser } = useAuth();
   const resolveHospitalId = (item) => String(item?.id || item?.HID || item?.hospitalId || item?.hospital_id || '');
 
   const [isEditing, setIsEditing] = useState(false);
@@ -45,17 +45,25 @@ const HospitalProfile = () => {
     let active = true;
 
     const loadHospital = async () => {
-      const hospitals = await firebaseDbService.getCollection('hospitals');
+      const currentHospitalId = resolveHospitalId(currentUser);
+      const primary = currentHospitalId
+        ? await api.get(`/hospitals/${encodeURIComponent(currentHospitalId)}`).catch(() => null)
+        : null;
+
+      const hospitals = await api.get('/hospitals?status_filter=all').catch(() => []);
       if (!active) return;
 
-      const currentHospitalId = resolveHospitalId(currentUser);
-      const match = hospitals.find((h) => resolveHospitalId(h) === currentHospitalId)
-        || hospitals.find((h) => String(h.email || '').toLowerCase() === String(currentUser?.email || '').toLowerCase())
+      const hospitalRows = Array.isArray(hospitals) ? hospitals : [];
+      const match = primary
+        || hospitalRows.find((h) => String(h?.id || '') === currentHospitalId)
+        || (!currentHospitalId
+          ? hospitalRows.find((h) => String(h?.email || '').toLowerCase() === String(currentUser?.email || '').toLowerCase())
+          : null)
         || null;
 
       setHospital({
-        HID: resolveHospitalId(match) || currentHospitalId || '',
-        name: match?.hospitalName || match?.hospital_name || match?.name || currentUser?.hospitalName || '',
+        HID: currentHospitalId || resolveHospitalId(match) || '',
+        name: match?.name || match?.hospitalName || match?.hospital_name || currentUser?.hospitalName || '',
         category: match?.category || '',
         type: match?.type || '',
         establishedYear: match?.establishedYear || '',
@@ -72,8 +80,8 @@ const HospitalProfile = () => {
         totalOperationTheatres: match?.totalOperationTheatres || 0,
         accreditation: match?.accreditation || [],
         services: match?.services || [],
-        status: String(match?.status || 'PENDING_APPROVAL').toLowerCase(),
-        lastUpdated: match?.lastUpdated || match?.updatedAt || new Date().toISOString().split('T')[0],
+        status: String(match?.status || 'pending').toLowerCase(),
+        lastUpdated: match?.updated_at?.split?.('T')?.[0] || match?.lastUpdated || match?.updatedAt || new Date().toISOString().split('T')[0],
       });
     };
 
@@ -382,33 +390,18 @@ const HospitalProfile = () => {
       lastUpdated: new Date().toISOString().split('T')[0]
     };
 
-    await firebaseDbService.upsert('hospitals', updated.HID, {
-      id: updated.HID,
-      HID: updated.HID,
-      hospitalName: updated.name,
-      hospital_name: updated.name,
-      category: updated.category,
-      type: updated.type,
-      establishedYear: updated.establishedYear,
-      registrationNumber: updated.registrationNumber,
+    await api.patch(`/hospitals/${encodeURIComponent(updated.HID)}`, {
+      name: updated.name,
       address: updated.address,
       phone: updated.phone,
       email: updated.email,
-      website: updated.website,
-      emergencyContact: updated.emergencyContact,
-      emergency_contact: updated.emergencyContact,
-      ownerName: updated.ownerName,
-      directorName: updated.directorName,
-      totalBeds: Number(updated.totalBeds || 0),
-      totalIcuBeds: Number(updated.totalIcuBeds || 0),
-      totalOperationTheatres: Number(updated.totalOperationTheatres || 0),
-      accreditation: updated.accreditation || [],
-      services: updated.services || [],
-      status: updated.status,
-      lastUpdated: updated.lastUpdated,
+      city: updated.city || '',
+      state: updated.state || '',
+      pincode: updated.pincode || '',
     });
 
     setHospital(updated);
+    updateUser?.({ hospitalName: updated.name });
 
     setIsEditing(false);
     alert('Profile updated successfully!');

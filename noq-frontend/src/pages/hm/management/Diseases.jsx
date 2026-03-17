@@ -3,31 +3,62 @@ import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faFileMedical, faSearch, faPlus, faEdit, faTrash, faBuilding, faArrowLeft, faExclamationCircle, faUpload, faDownload } from '@fortawesome/free-solid-svg-icons';
 import firebaseDbService from '../../../services/firebaseDbService.js';
+import api from '../../../services/api.js';
+import { useAuth } from '../../../context/AuthContext.jsx';
 
 const Diseases = () => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const currentHospitalId = String(currentUser?.hospitalId || currentUser?.hospital_id || currentUser?.HID || '');
 
   const [diseases, setDiseases] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('all');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [formData, setFormData] = useState({ name: '', departmentId: '' });
+  const [formData, setFormData] = useState({ name: '', departmentId: '', doctorId: '' });
 
   useEffect(() => {
     const load = async () => {
-      const [fetchedDiseases, fetchedDepts] = await Promise.all([
+      const [fetchedDiseases, fetchedDepts, fetchedDoctorsRes] = await Promise.all([
         firebaseDbService.getCollection('diseases'),
         firebaseDbService.getCollection('departments'),
+        api.get(`/users?role=doctor${currentHospitalId ? `&hospital_id=${encodeURIComponent(currentHospitalId)}` : ''}`).catch(() => ({ data: { users: [] } })),
       ]);
-      setDiseases(fetchedDiseases || []);
+
+      const normalizedDiseases = (fetchedDiseases || []).map((item) => ({
+        ...item,
+        departmentId: String(item.departmentId || item.department_id || ''),
+        doctorId: String(item.doctorId || item.doctor_id || ''),
+      }));
+      setDiseases(normalizedDiseases);
       setDepartments((fetchedDepts || []).filter(d => d.status === 'active'));
+
+      const backendDoctors = Array.isArray(fetchedDoctorsRes?.data?.data?.users)
+        ? fetchedDoctorsRes.data.data.users
+        : Array.isArray(fetchedDoctorsRes?.data?.users)
+          ? fetchedDoctorsRes.data.users
+          : [];
+      setDoctors(
+        backendDoctors
+          .filter((doctor) => (doctor.status || 'active') === 'active')
+          .map((doctor) => ({
+            id: String(doctor.id || ''),
+            name: doctor.full_name || doctor.name || 'Doctor',
+            departmentId: String(doctor.department_id || doctor.departmentId || ''),
+          }))
+      );
       setLoading(false);
     };
     load();
-  }, []);
+  }, [currentHospitalId]);
+
+  const doctorsForSelectedDepartment = doctors.filter(
+    (doctor) => String(doctor.departmentId || '') === String(formData.departmentId || '')
+  );
 
   const filteredDiseases = diseases.filter(disease => {
     const matchesSearch = disease.name.toLowerCase().includes(search.toLowerCase());
@@ -42,13 +73,23 @@ const Diseases = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.departmentId) {
+    if (!formData.name.trim() || !formData.departmentId || !formData.doctorId) {
       alert('All fields are required');
       return;
     }
 
+    const selectedDoctor = doctors.find((doctor) => String(doctor.id) === String(formData.doctorId));
+    const selectedDepartment = departments.find((department) => String(department.id) === String(formData.departmentId));
+
     if (editing) {
-      const updated = { ...editing, ...formData, departmentId: String(formData.departmentId) };
+      const updated = {
+        ...editing,
+        ...formData,
+        departmentId: String(formData.departmentId),
+        doctorId: String(formData.doctorId),
+        doctorName: selectedDoctor?.name || editing.doctorName || '',
+        departmentName: selectedDepartment?.name || editing.departmentName || '',
+      };
       await firebaseDbService.upsert('diseases', editing.id, updated);
       setDiseases(prev => prev.map(d => d.id === editing.id ? updated : d));
     } else {
@@ -56,6 +97,10 @@ const Diseases = () => {
         id: `DIS-${Date.now()}`,
         name: formData.name.trim(),
         departmentId: String(formData.departmentId),
+        departmentName: selectedDepartment?.name || '',
+        doctorId: String(formData.doctorId),
+        doctorName: selectedDoctor?.name || '',
+        hospitalId: currentHospitalId,
         createdAt: new Date().toISOString(),
       };
       await firebaseDbService.upsert('diseases', newDisease.id, newDisease);
@@ -72,13 +117,17 @@ const Diseases = () => {
   };
 
   const editDisease = (disease) => {
-    setFormData({ name: disease.name, departmentId: String(disease.departmentId) });
+    setFormData({
+      name: disease.name,
+      departmentId: String(disease.departmentId || disease.department_id || ''),
+      doctorId: String(disease.doctorId || disease.doctor_id || ''),
+    });
     setEditing(disease);
     setShowForm(true);
   };
 
   const resetForm = () => {
-    setFormData({ name: '', departmentId: '' });
+    setFormData({ name: '', departmentId: '', doctorId: '' });
     setEditing(null);
     setShowForm(false);
   };
@@ -181,6 +230,7 @@ const Diseases = () => {
                 <tr style={styles.tableHeaderRow}>
                   <th style={styles.tableHeader}>Disease Name</th>
                   <th style={styles.tableHeader}>Department</th>
+                  <th style={styles.tableHeader}>Doctor</th>
                   <th style={styles.tableHeader}>Actions</th>
                 </tr>
               </thead>
@@ -199,6 +249,7 @@ const Diseases = () => {
                         {getDeptName(disease.departmentId)}
                       </span>
                     </td>
+                    <td>{disease.doctorName || '-'}</td>
                     <td>
                       <div style={styles.tableActions}>
                         <button onClick={() => editDisease(disease)} style={styles.tableEditBtn}>
@@ -234,6 +285,21 @@ const Diseases = () => {
                 <select value={formData.departmentId} onChange={(e) => setFormData({ ...formData, departmentId: e.target.value })} required style={styles.formSelect}>
                   <option value="">Select Department</option>
                   {departments.map(dept => <option key={dept.id} value={dept.id}>{dept.name}</option>)}
+                </select>
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.formLabel}>Doctor *</label>
+                <select
+                  value={formData.doctorId}
+                  onChange={(e) => setFormData({ ...formData, doctorId: e.target.value })}
+                  required
+                  style={styles.formSelect}
+                  disabled={!formData.departmentId}
+                >
+                  <option value="">Select Doctor</option>
+                  {doctorsForSelectedDepartment.map((doctor) => (
+                    <option key={doctor.id} value={doctor.id}>{doctor.name}</option>
+                  ))}
                 </select>
               </div>
               <div style={styles.formActions}>

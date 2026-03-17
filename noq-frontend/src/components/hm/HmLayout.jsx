@@ -31,11 +31,14 @@ const HmLayout = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser, logout } = useAuth();
-  const doctors = [];
-  const departments = [];
-  const rooms = [];
-  const users = [];
-  const hospitals = [];
+  
+  // Use Firebase data hook for dynamic data
+  const firebaseData = {};
+  const doctors = firebaseData?.doctors || [];
+  const departments = firebaseData?.departments || [];
+  const rooms = firebaseData?.rooms || [];
+  const users = firebaseData?.users || [];
+  const hospitals = firebaseData?.hospitals || [];
   const loading = false;
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
   
@@ -112,7 +115,7 @@ const HmLayout = ({ children }) => {
     { id: 'rooms', label: 'Rooms', icon: faDoorOpen, path: '/hm/management/rooms', count: stats.rooms },
     { id: 'diseases', label: 'Diseases', icon: faFileMedical, path: '/hm/management/diseases' },
     { id: 'credentials', label: 'Credentials', icon: faKey, path: '/hm/management/credentials', count: stats.credentials },
-    { id: 'queues', label: 'Queues', icon: faUsers, path: '/hm/management/queues' },
+    { id: 'queues', label: 'Queue Monitor', icon: faUsers, path: '/hm/management/queues' },
     { id: 'advanced-bookings', label: 'Advanced Bookings', icon: faCalendarCheck, path: '/hm/management/advanced-bookings' },
     { id: 'revenue', label: 'Revenue', icon: faMoneyBill, path: '/hm/management/revenue' },
     { id: 'feedback', label: 'Feedback', icon: faComments, path: '/hm/management/feedback' },

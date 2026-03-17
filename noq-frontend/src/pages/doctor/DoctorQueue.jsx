@@ -137,6 +137,18 @@ const DoctorQueue = () => {
     }));
   }, [appointments, doctor?.id]);
 
+  const tokenStats = useMemo(() => {
+    const waiting = queue.length;
+    const inConsultation = selectedPatient ? 1 : 0;
+    const completedCount = completed.length;
+    return {
+      waiting,
+      inConsultation,
+      completed: completedCount,
+      issuedToday: waiting + inConsultation + completedCount,
+    };
+  }, [queue.length, selectedPatient, completed.length]);
+
   const updateAppointmentStatus = async (appointmentId, updates) => {
     try {
       const appointment = appointments.find(a => a.id === appointmentId);
@@ -356,26 +368,26 @@ const DoctorQueue = () => {
       <div className="doctor-stats-grid">
         <div className="stat-card blue">
           <FontAwesomeIcon icon={faUsers} className="stat-icon" />
-          <div className="stat-value">{queue.length}</div>
-          <div className="stat-label">Waiting Now</div>
+          <div className="stat-value">{tokenStats.waiting}</div>
+          <div className="stat-label">Waiting Tokens</div>
         </div>
         
         <div className="stat-card green">
           <FontAwesomeIcon icon={faCheckCircle} className="stat-icon" />
-          <div className="stat-value">{completed.length}</div>
-          <div className="stat-label">Completed Today</div>
+          <div className="stat-value">{tokenStats.completed}</div>
+          <div className="stat-label">Completed Tokens</div>
         </div>
         
         <div className="stat-card orange">
           <FontAwesomeIcon icon={faClock} className="stat-icon" />
-          <div className="stat-value">{calculateWaitTime()}</div>
-          <div className="stat-label">Avg Wait Time</div>
+          <div className="stat-value">{tokenStats.inConsultation}</div>
+          <div className="stat-label">In Consultation</div>
         </div>
         
         <div className="stat-card purple">
           <FontAwesomeIcon icon={faUserClock} className="stat-icon" />
-          <div className="stat-value">5</div>
-          <div className="stat-label">Next 30 mins</div>
+          <div className="stat-value">{tokenStats.issuedToday}</div>
+          <div className="stat-label">Tokens Issued Today</div>
         </div>
       </div>
 

@@ -4,12 +4,14 @@ import os
 import logging
 from datetime import datetime, timedelta
 from uuid import uuid4
+from fastapi import Header, HTTPException
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 import hashlib
 import secrets
-from database import User, Doctor
+from database import User, Doctor, Hospital
 from audit import AuditLogger
+from hospital_id_utils import is_valid_hospital_id
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,28 @@ logger = logging.getLogger(__name__)
 JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_MINUTES = int(os.getenv("JWT_EXPIRATION_MINUTES", "1440"))
+
+
+def require_auth(authorization: str = Header(default=None)) -> dict:
+    """FastAPI dependency for Bearer token authentication."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authorization token required")
+
+    token = authorization.replace("Bearer ", "", 1).strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Invalid authorization token")
+
+    try:
+        payload = AuthService.decode_token(token)
+        if not payload or not payload.get("sub"):
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="Authentication failed")
 
 
 class AuthService:
@@ -156,6 +180,16 @@ class UserService:
     ) -> User:
         """Create a new user."""
         try:
+            role_normalized = (role or "").strip().lower()
+            if role_normalized in {"hm", "doctor"}:
+                if not hospital_id:
+                    raise ValueError(f"hospital_id required for {role_normalized} registration")
+                if not is_valid_hospital_id(hospital_id):
+                    raise ValueError("hospital_id must be in format Noq-######")
+                hospital_exists = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+                if not hospital_exists:
+                    raise ValueError(f"Invalid hospital_id: {hospital_id}")
+
             # Check if email already exists
             existing_user = db.query(User).filter(User.email == email.lower().strip()).first()
             if existing_user:

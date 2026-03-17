@@ -126,9 +126,10 @@ const Queues = () => {
 
   const stats = {
     activeQueues: queues.filter(q => q.status === 'active').length,
-    totalWaiting: queues.reduce((sum, q) => sum + q.waiting, 0),
-    totalPatients: tokens.length,
-    completedToday: tokens.filter(t => t.status === 'completed').length
+    waitingTokens: tokens.filter(t => t.status === 'waiting').length,
+    servingTokens: tokens.filter(t => ['calling', 'serving', 'current', 'in_consultation'].includes(t.status)).length,
+    completedTokens: tokens.filter(t => t.status === 'completed').length,
+    totalTokens: tokens.length,
   };
 
   const getStatusIcon = (status) => {
@@ -161,9 +162,9 @@ const Queues = () => {
           <FontAwesomeIcon icon={faArrowLeft} /> Dashboard
         </button>
         <div>
-          <h1 style={styles.title}>Queue Management</h1>
-          <p style={styles.subtitle}>Live token queue monitoring</p>
-          <p style={styles.readOnlyNote}>Read Only - Cannot modify queues</p>
+          <h1 style={styles.title}>Queue Monitor</h1>
+          <p style={styles.subtitle}>Live token stats across doctors</p>
+          <p style={styles.readOnlyNote}>HM view only. Queue actions are handled by doctors.</p>
         </div>
         <div style={styles.refreshControl}>
           <label style={styles.toggleSwitch}>
@@ -186,18 +187,23 @@ const Queues = () => {
         </div>
         <div style={styles.statCard}>
           <FontAwesomeIcon icon={faClock} />
-          <div style={styles.statValue}>{stats.totalWaiting}</div>
-          <div style={styles.statLabel}>Patients Waiting</div>
+          <div style={styles.statValue}>{stats.waitingTokens}</div>
+          <div style={styles.statLabel}>Waiting Tokens</div>
         </div>
         <div style={styles.statCard}>
           <FontAwesomeIcon icon={faUserMd} />
-          <div style={styles.statValue}>{stats.totalPatients}</div>
-          <div style={styles.statLabel}>Today's Patients</div>
+          <div style={styles.statValue}>{stats.servingTokens}</div>
+          <div style={styles.statLabel}>Serving Tokens</div>
         </div>
         <div style={styles.statCard}>
           <FontAwesomeIcon icon={faCheckCircle} />
-          <div style={styles.statValue}>{stats.completedToday}</div>
-          <div style={styles.statLabel}>Completed</div>
+          <div style={styles.statValue}>{stats.completedTokens}</div>
+          <div style={styles.statLabel}>Completed Tokens</div>
+        </div>
+        <div style={styles.statCard}>
+          <FontAwesomeIcon icon={faHourglassHalf} />
+          <div style={styles.statValue}>{stats.totalTokens}</div>
+          <div style={styles.statLabel}>Total Tokens Tracked</div>
         </div>
       </div>
 

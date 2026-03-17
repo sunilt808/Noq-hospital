@@ -382,7 +382,7 @@ const Management = () => {
     { id: 2, title: 'Department Management', desc: 'Manage hospital departments', icon: faBuilding, path: '/hm/management/departments', color: '#10b981', count: stats.departments },
     { id: 3, title: 'Room Management', desc: 'Assign rooms to departments', icon: faDoorOpen, path: '/hm/management/rooms', color: '#f59e0b', count: stats.rooms },
     { id: 4, title: 'Disease Management', desc: 'Map diseases to departments', icon: faFileMedical, path: '/hm/management/diseases', color: '#8b5cf6' },
-    { id: 5, title: 'Queue Management', desc: 'View live token queues', icon: faUsers, path: '/hm/management/queues', color: '#ec4899', count: stats.activeQueues },
+    { id: 5, title: 'Queue Monitor', desc: 'View live token stats', icon: faUsers, path: '/hm/management/queues', color: '#ec4899', count: stats.activeQueues },
     { id: 10, title: 'Advanced Bookings', desc: 'Priority bookings with allocated doctors only', icon: faCalendarAlt, path: '/hm/management/advanced-bookings', color: '#0ea5e9' },
     { id: 6, title: 'Revenue & Payments', desc: 'View hospital revenue', icon: faMoneyBill, path: '/hm/management/revenue', color: '#84cc16', count: `₹${stats.revenueToday.toLocaleString()}` },
     { id: 7, title: 'Patient Feedback', desc: 'Manage ratings & reviews', icon: faComments, path: '/hm/management/feedback', color: '#06b6d4' },
@@ -394,7 +394,7 @@ const Management = () => {
     { label: 'Add New Doctor', path: '/hm/management/doctors', icon: faUserMd },
     { label: 'Create Department', path: '/hm/management/departments', icon: faBuilding },
     { label: 'Add Room', path: '/hm/management/rooms', icon: faDoorOpen },
-    { label: "View Today's Queue", path: '/hm/management/queues', icon: faUsers },
+    { label: 'View Token Monitor', path: '/hm/management/queues', icon: faUsers },
     { label: 'Advanced Bookings', path: '/hm/management/advanced-bookings', icon: faCalendarAlt }
   ];
 

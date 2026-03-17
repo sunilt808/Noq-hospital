@@ -5,11 +5,11 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 from database import get_db, Hospital, User
 from pydantic import BaseModel, EmailStr
-from uuid import uuid4
 from datetime import datetime
 from typing import Optional
 
 from services.auth_service import UserService
+from hospital_id_utils import generate_hospital_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/hospitals", tags=["Hospitals"])
@@ -48,6 +48,16 @@ class HospitalStatusRequest(BaseModel):
     message: str = None
 
 
+class HospitalUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
+
+
 class NotificationRequest(BaseModel):
     title: str
     message: str
@@ -70,7 +80,9 @@ def register_hospital(
                 detail='A hospital with this email already exists'
             )
 
-        hospital_id = str(uuid4())
+        hospital_id = generate_hospital_id()
+        while db.query(Hospital).filter(Hospital.id == hospital_id).first():
+            hospital_id = generate_hospital_id()
         hospital = Hospital(
             id=hospital_id,
             name=req.hospital_name.strip(),
@@ -155,6 +167,20 @@ def list_hospitals(
         )
 
 
+@router.get("/available", response_model=list[HospitalResponse])
+def list_available_hospitals(db: Session = Depends(get_db)):
+    """List hospitals available for selection in frontend forms."""
+    try:
+        hospitals = db.query(Hospital).filter(Hospital.status == "active").all()
+        return hospitals
+    except Exception as e:
+        logger.error(f"Error listing available hospitals: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+
 @router.patch("/{hospital_id}/status")
 def update_hospital_status(
     hospital_id: str,
@@ -222,6 +248,55 @@ def update_hospital_status(
     except Exception as e:
         db.rollback()
         logger.error(f"Error updating hospital status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+
+@router.patch("/{hospital_id}")
+def update_hospital(
+    hospital_id: str,
+    payload: HospitalUpdateRequest,
+    db: Session = Depends(get_db)
+):
+    """Update editable hospital profile fields."""
+    try:
+        hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+        if not hospital:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Hospital not found: {hospital_id}"
+            )
+
+        updates = payload.model_dump(exclude_unset=True)
+        for key, value in updates.items():
+            setattr(hospital, key, value)
+
+        hospital.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(hospital)
+
+        return {
+            "success": True,
+            "message": "Hospital profile updated",
+            "data": {
+                "id": hospital.id,
+                "name": hospital.name,
+                "address": hospital.address,
+                "phone": hospital.phone,
+                "email": hospital.email,
+                "city": hospital.city,
+                "state": hospital.state,
+                "pincode": hospital.pincode,
+                "status": hospital.status,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating hospital {hospital_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -304,6 +379,8 @@ def get_hospital(hospital_id: str, db: Session = Depends(get_db)):
                 detail=f"Hospital not found: {hospital_id}"
             )
         return hospital
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting hospital: {e}")
         raise HTTPException(

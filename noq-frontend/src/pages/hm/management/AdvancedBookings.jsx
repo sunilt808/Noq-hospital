@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCalendarCheck, faHospital, faUserMd, faUsers } from '@fortawesome/free-solid-svg-icons';
 import { advancedBookingService } from '../../../services/advancedBookingService';
-import { useAuth } from '../../../context/FirebaseAuthContext';
+import { useAuth } from '../../../context/AuthContext';
 import firebaseDbService from '../../../services/firebaseDbService';
 
 const AdvancedBookings = () => {

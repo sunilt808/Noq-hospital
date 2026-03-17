@@ -13,7 +13,7 @@ import {
   faClock,
 } from '@fortawesome/free-solid-svg-icons';
 import notificationService from '../../../services/notificationService.js';
-import { useAuth } from '../../../context/FirebaseAuthContext';
+import { useAuth } from '../../../context/AuthContext';
 
 const iconByType = {
   warning: faTriangleExclamation,

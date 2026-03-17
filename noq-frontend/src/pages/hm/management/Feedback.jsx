@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft, faComments, faHospital, faSearch, faStar, faUserMd } from '@fortawesome/free-solid-svg-icons';
-import { useAuth } from '../../../context/FirebaseAuthContext';
+import { useAuth } from '../../../context/AuthContext';
 import firebaseDbService from '../../../services/firebaseDbService';
 
 const Feedback = () => {

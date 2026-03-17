@@ -90,7 +90,7 @@ const BookAppointment = () => {
 
       console.log('📚 BOOKING DATA LOAD:', {
         hospitalsCount: hospitals.length,
-        departmentsCount: departments.length,
+        apiDepartmentsCount: departments.length,
         savedDoctorUsersCount: Array.isArray(savedDoctorUsers) ? savedDoctorUsers.length : 0,
         roomsCount: Array.isArray(rooms) ? rooms.length : 0,
         departmentsCount: Array.isArray(departments) ? departments.length : 0,

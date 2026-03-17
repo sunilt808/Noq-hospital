@@ -42,30 +42,47 @@ const DoctorProfile = () => {
           firebaseDbService.getCollection('tokens'),
         ]);
 
-        const docData = doctorRes?.data || null;
+        const docData = doctorRes?.data || doctorRes || null;
 
-        if (!docData) {
+        if (!docData?.id) {
           navigate('/hm/management/doctors');
           return;
         }
 
-        setDoctor(docData);
-        setFormData({
-          departmentId: docData.departmentId || '',
-          roomId: docData.roomId || '',
+        const normalizedDoctor = {
+          ...docData,
+          name: docData.name || docData.full_name || '',
+          full_name: docData.full_name || docData.name || '',
+          departmentId: String(docData.departmentId || docData.department_id || ''),
+          departmentName: docData.departmentName || docData.department_name || '',
+          roomId: String(docData.roomId || docData.room_id || ''),
+          roomNumber: docData.roomNumber || docData.room_number || docData.roomNo || docData.room_no || '',
+          roomNo: docData.roomNo || docData.room_no || docData.roomNumber || docData.room_number || '',
           shift: docData.shift || 'morning',
           advancedBookingCategory: docData.advancedBookingCategory || docData.advanced_booking_category || 'general',
-          fee: docData.fee || 0,
+          fee: Number(docData.fee || 0),
           status: docData.status || 'active',
+          specialization: docData.specialization || '',
+          license: docData.license || docData.license_number || '',
+        };
+
+        setDoctor(normalizedDoctor);
+        setFormData({
+          departmentId: normalizedDoctor.departmentId || '',
+          roomId: normalizedDoctor.roomId || '',
+          shift: normalizedDoctor.shift || 'morning',
+          advancedBookingCategory: normalizedDoctor.advancedBookingCategory || 'general',
+          fee: normalizedDoctor.fee || 0,
+          status: normalizedDoctor.status || 'active',
         });
 
-        setDepartments(depts);
-        setRooms(rms);
+        setDepartments(Array.isArray(depts) ? depts : []);
+        setRooms(Array.isArray(rms) ? rms : []);
 
         const docAppointments = (allTokens || [])
           .filter((token) =>
-            String(token.doctorId || token.doctor_id) === String(docData.id) ||
-            (token.doctorName || token.doctor_name) === docData.name
+            String(token.doctorId || token.doctor_id) === String(normalizedDoctor.id) ||
+            (token.doctorName || token.doctor_name) === normalizedDoctor.name
           )
           .map((token, idx) => ({
             id: token.id || `APT-${idx}`,
@@ -200,6 +217,15 @@ const DoctorProfile = () => {
       <div className="loading-container">
         <FontAwesomeIcon icon={faSpinner} spin />
         <p>Loading doctor profile...</p>
+      </div>
+    );
+  }
+
+  if (!doctor) {
+    return (
+      <div className="loading-container">
+        <FontAwesomeIcon icon={faExclamationTriangle} />
+        <p>Doctor profile not found.</p>
       </div>
     );
   }

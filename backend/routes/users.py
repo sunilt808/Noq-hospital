@@ -491,16 +491,41 @@ def get_credential_audits(
     limit: int = 200,
     db: Session = Depends(get_db)
 ):
-    """Get credential-related audit logs for HM audit page."""
+    """Get audit logs for HM audit page (credential + core auth/entity actions)."""
     try:
-        query = db.query(AuditLog).filter(
-            AuditLog.action.in_(["CREDENTIAL_CREATED", "CREDENTIAL_UPDATED", "CREDENTIAL_RESET"])
+        actions = [
+            "CREDENTIAL_CREATED",
+            "CREDENTIAL_UPDATED",
+            "CREDENTIAL_RESET",
+            "CREDENTIAL_DELETED",
+            "CREATE",
+            "UPDATE",
+            "DELETE",
+            "LOGIN",
+            "FAILED_LOGIN",
+            "SIGNUP",
+        ]
+
+        max_limit = min(max(limit, 1), 500)
+        rows = (
+            db.query(AuditLog)
+            .filter(AuditLog.action.in_(actions))
+            .order_by(AuditLog.timestamp.desc())
+            .limit(2000)
+            .all()
         )
 
         if hospital_id:
-            query = query.join(User, User.id == AuditLog.entity_id).filter(User.hospital_id == hospital_id)
+            user_ids = {
+                item[0]
+                for item in db.query(User.id).filter(User.hospital_id == hospital_id).all()
+            }
+            rows = [
+                row for row in rows
+                if str(row.entity_id or "") in user_ids or str(row.user_id or "") in user_ids
+            ]
 
-        rows = query.order_by(AuditLog.timestamp.desc()).limit(min(max(limit, 1), 500)).all()
+        rows = rows[:max_limit]
 
         logs = []
         for row in rows:

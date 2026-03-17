@@ -20,12 +20,14 @@ import {
   faPrescriptionBottle,
   faShieldHeart
 } from '@fortawesome/free-solid-svg-icons';
+import { useAuth } from '../../context/AuthContext';
 
 const DoctorLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { currentUser, logout } = useAuth();
   const [notifications, setNotifications] = useState(3);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true); // Start collapsed for more space
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [doctorInfo, setDoctorInfo] = useState({
     name: 'Dr. John Smith',
     specialization: 'Cardiologist',
@@ -35,34 +37,19 @@ const DoctorLayout = () => {
   });
 
   useEffect(() => {
-    // Load doctor info from localStorage
-    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-    const doctorUsers = JSON.parse(localStorage.getItem('doctorUsers') || '[]');
-    const hospitals = JSON.parse(localStorage.getItem('hospitals') || '[]');
-    
+    // Load doctor info from auth context
     if (currentUser && currentUser.role === 'doctor') {
-      const doctor = doctorUsers.find(d => d.email === currentUser.email) || {};
-      const doctors = JSON.parse(localStorage.getItem('doctors') || '[]');
-      const fullDoctor = doctors.find(d => d.email === currentUser.email) || {};
-
-      const doctorHospitalId = String(fullDoctor.hospitalId || fullDoctor.HID || doctor.hospitalId || currentUser.hospitalId || '');
-      const matchedHospital = hospitals.find((item) => String(item.HID || item.id || '') === doctorHospitalId);
-      if (matchedHospital?.accessConfig?.allowDoctorPortal === false) {
-        alert('Doctor portal access is disabled by admin for this hospital.');
-        localStorage.removeItem('currentUser');
-        navigate('/login');
-        return;
-      }
-      
       setDoctorInfo({
-        name: currentUser.name || doctor.name || fullDoctor.name || 'Dr. John Smith',
-        specialization: currentUser.specialization || doctor.specialization || fullDoctor.specialization || 'Doctor',
-        hospitalName: doctor.hospitalName || fullDoctor.hospitalName || 'NOQ Hospital',
-        room: fullDoctor.roomNo ? `Room ${fullDoctor.roomNo}` : (fullDoctor.roomInfo || 'Room 101'),
-        shift: fullDoctor.shift ? `${fullDoctor.shift.charAt(0).toUpperCase() + fullDoctor.shift.slice(1)} Shift` : 'Morning Shift'
+        name: currentUser.full_name || currentUser.name || 'Dr. Doctor',
+        specialization: currentUser.specialization || 'Specialist',
+        hospitalName: currentUser.hospitalName || 'NOQ Hospital',
+        room: currentUser.room_no ? `Room ${currentUser.room_no}` : (currentUser.room || 'Room 101'),
+        shift: currentUser.shift ? `${currentUser.shift.charAt(0).toUpperCase() + currentUser.shift.slice(1)} Shift` : 'Morning Shift'
       });
+    } else if (!currentUser) {
+      navigate('/login');
     }
-  }, []);
+  }, [currentUser, navigate]);
 
   // Internal CSS styles - MORE COMPACT
   const styles = {

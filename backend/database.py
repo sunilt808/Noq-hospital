@@ -3,6 +3,8 @@
 import os
 from datetime import datetime
 from pathlib import Path
+import firebase_admin
+from firebase_admin import credentials, firestore, auth as firebase_auth
 from sqlalchemy import create_engine, Column, String, Integer, DateTime, Boolean, Float, ForeignKey, Text, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -13,6 +15,22 @@ BACKEND_DIR = Path(__file__).resolve().parent
 DEFAULT_SQLITE_PATH = (BACKEND_DIR / "noq_hospital.db").as_posix()
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_SQLITE_PATH}")
 ECHO_SQL = os.getenv("ECHO_SQL", "False").lower() == "true"
+
+# Firebase/Firestore configuration for legacy Firestore-backed routes
+SERVICE_ACCOUNT_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", str(BACKEND_DIR / "serviceAccountKey.json"))
+
+try:
+    if not firebase_admin._apps:
+        if os.path.exists(SERVICE_ACCOUNT_PATH):
+            cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
+            firebase_admin.initialize_app(cred)
+        else:
+            firebase_admin.initialize_app()
+    db = firestore.client()
+    auth = firebase_auth
+except Exception:
+    db = None
+    auth = None
 
 # Create engine
 engine = create_engine(

@@ -13,7 +13,40 @@ const Audit = () => {
   const [search, setSearch] = useState('');
   const [moduleFilter, setModuleFilter] = useState('all');
   const [backendLogs, setBackendLogs] = useState([]);
-  const currentHospitalId = String(currentUser?.hospitalId || currentUser?.hospital_id || currentUser?.HID || '');
+  const [scopedLogs, setScopedLogs] = useState([]);
+  const [resolvedHospitalId, setResolvedHospitalId] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    const hydrateHospitalId = async () => {
+      const localHospitalId = String(currentUser?.hospitalId || currentUser?.hospital_id || currentUser?.HID || '');
+      if (active) {
+        setResolvedHospitalId(localHospitalId);
+      }
+
+      if (!currentUser?.id) return;
+
+      const response = await api.get(`/users/${currentUser.id}`).catch(() => null);
+      if (!active || !response) return;
+
+      const remoteHospitalId = String(
+        response?.hospital_id ||
+        response?.hospitalId ||
+        response?.data?.hospital_id ||
+        response?.data?.hospitalId ||
+        ''
+      );
+
+      if (remoteHospitalId) {
+        setResolvedHospitalId(remoteHospitalId);
+      }
+    };
+
+    hydrateHospitalId();
+    return () => {
+      active = false;
+    };
+  }, [currentUser?.id, currentUser?.hospitalId, currentUser?.hospital_id, currentUser?.HID]);
 
   useEffect(() => {
     pruneHistory();
@@ -30,12 +63,29 @@ const Audit = () => {
     let active = true;
     const loadBackendLogs = async () => {
       const response = await api
-        .get(`/users/audit/credentials${currentHospitalId ? `?hospital_id=${encodeURIComponent(currentHospitalId)}` : ''}`)
-        .catch(() => ({ data: { data: { logs: [] } } }));
+        .get(`/users/audit/credentials${resolvedHospitalId ? `?hospital_id=${encodeURIComponent(resolvedHospitalId)}` : ''}`)
+        .catch(() => ({ success: false, data: { logs: [] } }));
 
       if (!active) return;
 
-      const logs = Array.isArray(response?.data?.data?.logs) ? response.data.data.logs : [];
+      let logs = Array.isArray(response?.data?.logs)
+        ? response.data.logs
+        : Array.isArray(response?.logs)
+          ? response.logs
+          : [];
+
+      if (logs.length === 0 && resolvedHospitalId) {
+        const fallback = await api
+          .get('/users/audit/credentials?limit=200')
+          .catch(() => ({ success: false, data: { logs: [] } }));
+        if (!active) return;
+        logs = Array.isArray(fallback?.data?.logs)
+          ? fallback.data.logs
+          : Array.isArray(fallback?.logs)
+            ? fallback.logs
+            : [];
+      }
+
       setBackendLogs(logs);
     };
 
@@ -43,10 +93,24 @@ const Audit = () => {
     return () => {
       active = false;
     };
-  }, [refreshKey, currentHospitalId]);
+  }, [refreshKey, resolvedHospitalId]);
+
+  useEffect(() => {
+    let active = true;
+    const loadScopedLogs = async () => {
+      const scoped = await getRoleScopedHistory(currentUser);
+      if (!active) return;
+      setScopedLogs(Array.isArray(scoped) ? scoped : []);
+    };
+
+    loadScopedLogs();
+    return () => {
+      active = false;
+    };
+  }, [refreshKey, currentUser]);
 
   const logs = useMemo(() => {
-    const scoped = getRoleScopedHistory(currentUser).map((item) => ({
+    const scoped = scopedLogs.map((item) => ({
       ...item,
       id: `local-${item.id}`,
     }));
@@ -62,7 +126,7 @@ const Audit = () => {
     }));
 
     return [...backendMapped, ...scoped].sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
-  }, [refreshKey, currentUser, backendLogs]);
+  }, [backendLogs, scopedLogs]);
 
   const modules = useMemo(() => ['all', ...new Set(logs.map((item) => item.module || 'general'))], [logs]);
 

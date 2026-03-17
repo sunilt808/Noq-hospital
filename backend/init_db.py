@@ -17,7 +17,7 @@ def seed_hospitals(db):
     """Seed initial hospitals."""
     hospitals_data = [
         {
-            "id": "HOSP-001",
+            "id": "Noq-100001",
             "name": "Apollo Hospital",
             "address": "123 Medical Street",
             "phone": "+91-22-4950-4950",
@@ -27,7 +27,7 @@ def seed_hospitals(db):
             "pincode": "400001",
         },
         {
-            "id": "HOSP-002",
+            "id": "Noq-100002",
             "name": "Max Healthcare",
             "address": "456 Health Lane",
             "phone": "+91-11-4141-4141",
@@ -37,7 +37,7 @@ def seed_hospitals(db):
             "pincode": "110001",
         },
         {
-            "id": "HOSP-003",
+            "id": "Noq-100003",
             "name": "Fortis Hospital",
             "address": "789 Care Avenue",
             "phone": "+91-80-2211-7777",
@@ -61,12 +61,12 @@ def seed_hospitals(db):
 def seed_departments(db):
     """Seed initial departments."""
     departments_data = [
-        {"id": "DEPT-001", "hospital_id": "HOSP-001", "name": "Cardiology", "description": "Heart and cardio-vascular care"},
-        {"id": "DEPT-002", "hospital_id": "HOSP-001", "name": "Neurology", "description": "Nervous system care"},
-        {"id": "DEPT-003", "hospital_id": "HOSP-001", "name": "Orthopedic", "description": "Bone and joint care"},
-        {"id": "DEPT-004", "hospital_id": "HOSP-002", "name": "Cardiology", "description": "Heart and cardio-vascular care"},
-        {"id": "DEPT-005", "hospital_id": "HOSP-002", "name": "General Surgery", "description": "General surgical procedures"},
-        {"id": "DEPT-006", "hospital_id": "HOSP-003", "name": "Pediatrics", "description": "Child care"},
+        {"id": "DEPT-001", "hospital_id": "Noq-100001", "name": "Cardiology", "description": "Heart and cardio-vascular care"},
+        {"id": "DEPT-002", "hospital_id": "Noq-100001", "name": "Neurology", "description": "Nervous system care"},
+        {"id": "DEPT-003", "hospital_id": "Noq-100001", "name": "Orthopedic", "description": "Bone and joint care"},
+        {"id": "DEPT-004", "hospital_id": "Noq-100002", "name": "Cardiology", "description": "Heart and cardio-vascular care"},
+        {"id": "DEPT-005", "hospital_id": "Noq-100002", "name": "General Surgery", "description": "General surgical procedures"},
+        {"id": "DEPT-006", "hospital_id": "Noq-100003", "name": "Pediatrics", "description": "Child care"},
     ]
     
     for d_data in departments_data:
@@ -105,13 +105,13 @@ def seed_hm_users(db):
     hm_users = [
         {
             "email": "hm@apollo.com",
-            "hospital_id": "HOSP-001",
+            "hospital_id": "Noq-100001",
             "full_name": "Apollo Manager",
             "password": "hm@123",
         },
         {
             "email": "hm@max.com",
-            "hospital_id": "HOSP-002",
+            "hospital_id": "Noq-100002",
             "full_name": "Max Manager",
             "password": "hm@123",
         },
