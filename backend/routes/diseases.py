@@ -28,6 +28,8 @@ class StandardResponse(BaseModel):
 def get_diseases(hospital_id: Optional[str] = None, department_id: Optional[str] = None):
     """Get diseases/specialties - PUBLIC endpoint for patient booking."""
     try:
+        if db is None:
+            return StandardResponse(success=True, message="Diseases fetched (fallback).", data={"diseases": [], "count": 0})
         ref = db.collection("diseases")
         if hospital_id:
             ref = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id))
@@ -55,6 +57,9 @@ def create_disease(disease: DiseaseCreate, payload: dict = Depends(auth_service.
     from datetime import datetime
     import uuid
     
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database connection failed.")
+    
     disease_id = f"DIS-{uuid.uuid4().hex[:12].upper()}"
     disease_doc = {
         "id": disease_id,
@@ -78,6 +83,8 @@ def create_disease(disease: DiseaseCreate, payload: dict = Depends(auth_service.
 @router.patch("/{disease_id}", response_model=StandardResponse)
 def update_disease(disease_id: str, updates: dict, payload: dict = Depends(auth_service.require_auth)):
     """Update a disease."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database connection failed.")
     ref = db.collection("diseases").document(disease_id)
     if not ref.get().exists:
         raise HTTPException(status_code=404, detail="Disease not found.")
@@ -97,6 +104,8 @@ def update_disease(disease_id: str, updates: dict, payload: dict = Depends(auth_
 @router.delete("/{disease_id}", response_model=StandardResponse)
 def delete_disease(disease_id: str, payload: dict = Depends(auth_service.require_auth)):
     """Delete a disease."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database connection failed.")
     ref = db.collection("diseases").document(disease_id)
     if not ref.get().exists:
         raise HTTPException(status_code=404, detail="Disease not found.")

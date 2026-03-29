@@ -8,6 +8,7 @@ from database import get_db, Appointment, Doctor, User
 from services.auth_service import require_auth
 from pydantic import BaseModel
 from datetime import datetime
+import uuid
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/appointments", tags=["Appointments"])
@@ -156,4 +157,60 @@ def update_appointment_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
+        )
+
+@router.post("/create")
+def create_appointment(
+    payload: dict,
+    db: Session = Depends(get_db),
+    auth_payload: dict = Depends(require_auth)
+):
+    try:
+        # Extract fees
+        fees_obj = payload.get("fees", {})
+        total_fee = float(fees_obj.get("total", payload.get("fee", 0.0)))
+        
+        # Parse date
+        appt_date_str = payload.get("appointmentDate") or payload.get("appointment_date")
+        appt_date = datetime.utcnow()
+        if appt_date_str:
+            try:
+                appt_date = datetime.strptime(appt_date_str.split('T')[0], "%Y-%m-%d")
+            except:
+                pass
+
+        # Extract token
+        token_obj = payload.get("token", {})
+        token_number = token_obj.get("tokenNumber") or payload.get("tokenNumber") or token_obj.get("id") or str(token_obj)
+        if isinstance(token_number, dict):
+            token_number = token_number.get("id", "")
+        
+        appt_id = payload.get("id") or f"APT-{uuid.uuid4().hex[:8]}"
+
+        new_appt = Appointment(
+            id=appt_id,
+            hospital_id=payload.get("hospitalId", ""),
+            doctor_id=payload.get("doctorId", ""),
+            patient_id=payload.get("patientId", ""),
+            appointment_date=appt_date,
+            appointment_time=payload.get("appointmentTime", ""),
+            appointment_type="regular",
+            doctor_name=payload.get("doctorName", ""),
+            department=payload.get("departmentName") or payload.get("department", ""),
+            disease=payload.get("diseaseName") or payload.get("diseaseId") or payload.get("disease", ""),
+            fee=total_fee,
+            token_number=token_number,
+            status=payload.get("status", "confirmed"),
+            notes=payload.get("notes", "")
+        )
+        db.add(new_appt)
+        db.commit()
+        db.refresh(new_appt)
+        return {"success": True, "message": "Appointment created", "data": _serialize_appointment(new_appt)}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating appointment: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
         )

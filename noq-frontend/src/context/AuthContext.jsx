@@ -1,4 +1,4 @@
-// src/context/AuthContext.jsx - JWT-based Authentication Context with localStorage
+// src/context/AuthContext.jsx (FINAL FIXED)
 
 import React, { createContext, useCallback, useEffect, useState } from 'react';
 import api from '../services/api.js';
@@ -16,22 +16,11 @@ const normalizeUser = (user = {}) => ({
   hospital_id: user.hospital_id || user.hospitalId || '',
 });
 
-const parseAuthResponseData = (responseData = {}) => {
-  const token = responseData?.token || responseData?.access_token || null;
-  const user = responseData?.user
-    ? responseData.user
-    : {
-        id: responseData?.id,
-        email: responseData?.email,
-        full_name: responseData?.full_name,
-        name: responseData?.name || responseData?.full_name,
-        phone: responseData?.phone,
-        role: responseData?.role,
-        hospital_id: responseData?.hospital_id,
-      };
-
-  return { user, token };
-};
+// ✅ FIXED PARSER (expects backend "data")
+const parseAuthResponseData = (data = {}) => ({
+  token: data?.token || null,
+  user: data,
+});
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
@@ -39,34 +28,27 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Initialize auth from localStorage on mount
+  // INIT
   useEffect(() => {
-    const initializeAuth = () => {
-      try {
-        const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
-        const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
+    try {
+      const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
+      const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
 
-        if (storedUser && storedToken) {
-          const user = JSON.parse(storedUser);
-          setCurrentUser(normalizeUser(user));
-          setToken(storedToken);
-          console.log('✓ Auth restored from localStorage');
-        }
-      } catch (err) {
-        console.error('Auth initialization failed:', err);
-        setError(err.message);
-        // Clear corrupted storage
-        localStorage.removeItem(STORAGE_KEYS.USER);
-        localStorage.removeItem(STORAGE_KEYS.TOKEN);
-      } finally {
-        setLoading(false);
+      if (storedUser && storedToken) {
+        setCurrentUser(normalizeUser(JSON.parse(storedUser)));
+        setToken(storedToken);
+        api.setAuthToken(storedToken);
+        console.log('✓ Auth restored from localStorage');
       }
-    };
-
-    initializeAuth();
+    } catch (err) {
+      console.error('Auth init error:', err);
+      localStorage.clear();
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Login function
+  // LOGIN
   const login = useCallback(async (email, password, role = 'patient') => {
     try {
       setLoading(true);
@@ -78,37 +60,29 @@ export const AuthProvider = ({ children }) => {
         role,
       });
 
-      if (!response.success) {
-        throw new Error(response.message || 'Login failed');
-      }
+      // ✅ FIX: use response.data
+      const { user, token } = parseAuthResponseData(response.data);
 
-      const { user, token: newToken } = parseAuthResponseData(response.data);
+      if (!token) throw new Error('No token received');
 
-      if (!user?.email || !newToken) {
-        throw new Error('Invalid login response from server');
-      }
-
-      // Store in localStorage
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
-      localStorage.setItem(STORAGE_KEYS.TOKEN, newToken);
+      localStorage.setItem(STORAGE_KEYS.TOKEN, token);
 
-      // Update state
+      api.setAuthToken(token);
+
       setCurrentUser(normalizeUser(user));
-      setToken(newToken);
+      setToken(token);
 
-      console.log('✓ User logged in:', user.email);
-      return { success: true, user, token: newToken };
+      return { success: true, token };
     } catch (err) {
-      const errorMsg = err.message || 'Login failed';
-      setError(errorMsg);
-      console.error('Login error:', err);
-      return { success: false, error: errorMsg };
+      setError(err.message);
+      return { success: false, error: err.message };
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Signup function
+  // SIGNUP
   const signup = useCallback(async (email, password, fullName, phone = '', role = 'patient') => {
     try {
       setLoading(true);
@@ -122,101 +96,77 @@ export const AuthProvider = ({ children }) => {
         role,
       });
 
-      if (!response.success) {
-        throw new Error(response.message || 'Signup failed');
-      }
+      // ✅ FIX: use response.data
+      const { user, token } = parseAuthResponseData(response.data);
 
-      const { user, token: newToken } = parseAuthResponseData(response.data);
+      if (!token) throw new Error('No token received');
 
-      if (!user?.email || !newToken) {
-        throw new Error('Invalid signup response from server');
-      }
-
-      // Store in localStorage
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
-      localStorage.setItem(STORAGE_KEYS.TOKEN, newToken);
+      localStorage.setItem(STORAGE_KEYS.TOKEN, token);
 
-      // Update state
+      api.setAuthToken(token);
+
       setCurrentUser(normalizeUser(user));
-      setToken(newToken);
+      setToken(token);
 
-      console.log('✓ User signed up:', user.email);
-      return { success: true, user, token: newToken };
+      return { success: true };
     } catch (err) {
-      const errorMsg = err.message || 'Signup failed';
-      setError(errorMsg);
-      console.error('Signup error:', err);
-      return { success: false, error: errorMsg };
+      setError(err.message);
+      return { success: false, error: err.message };
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Logout function
-  const logout = useCallback(async () => {
-    try {
-      // Clear localStorage
-      localStorage.removeItem(STORAGE_KEYS.USER);
-      localStorage.removeItem(STORAGE_KEYS.TOKEN);
-
-      // Clear state
-      setCurrentUser(null);
-      setToken(null);
-
-      console.log('✓ User logged out');
-      return { success: true };
-    } catch (err) {
-      console.error('Logout error:', err);
-      return { success: false, error: err.message };
-    }
+  // LOGOUT
+  const logout = useCallback(() => {
+    localStorage.clear();
+    setCurrentUser(null);
+    setToken(null);
+    api.setAuthToken(null);
   }, []);
 
-  // Update user function
-  const updateUser = useCallback((userData) => {
-    try {
-      const updated = normalizeUser({ ...currentUser, ...userData });
-      setCurrentUser(updated);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updated));
-      return { success: true };
-    } catch (err) {
-      console.error('Update user error:', err);
-      return { success: false, error: err.message };
-    }
+  const updateUser = useCallback((data) => {
+    const updated = normalizeUser({ ...currentUser, ...data });
+    setCurrentUser(updated);
+    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updated));
   }, [currentUser]);
 
-  // Check if user is authenticated
-  const isAuthenticated = !!currentUser && !!token;
+  const isAuthenticated = !!token;
 
-  // Check if user has a specific role
-  const hasRole = useCallback((role) => {
-    if (!currentUser) return false;
-    if (Array.isArray(role)) {
-      return role.includes(currentUser.role);
-    }
-    return currentUser.role === role;
-  }, [currentUser]);
+  const hasRole = useCallback(
+    (role) => {
+      if (!currentUser) return false;
+      return Array.isArray(role)
+        ? role.includes(currentUser.role)
+        : currentUser.role === role;
+    },
+    [currentUser]
+  );
 
-  const value = {
-    currentUser,
-    token,
-    loading,
-    error,
-    isAuthenticated,
-    hasRole,
-    login,
-    signup,
-    logout,
-    updateUser,
-    setError,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{
+        currentUser,
+        token,
+        loading,
+        error,
+        isAuthenticated,
+        hasRole,
+        login,
+        signup,
+        logout,
+        updateUser,
+        setError,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = () => {
-  const context = React.useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-  };
+  const ctx = React.useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
+};

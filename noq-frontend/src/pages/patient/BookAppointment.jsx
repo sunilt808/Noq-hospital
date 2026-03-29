@@ -177,7 +177,7 @@ const BookAppointment = () => {
 
           return {
             id: doctor.id || doctor.DID || `DOC-${Math.random().toString(36).slice(2, 8)}`,
-            name: doctor.name || doctor.fullName || doctor.username || 'Doctor',
+            name: doctor.name || doctor.full_name || doctor.fullName || doctor.username || 'Doctor',
             specialization: specializationCandidates[0] || 'General Medicine',
             specializationCandidates,
             departmentName: doctor.departmentName || doctor.department_name || getDepartmentNameById(departmentId) || '',
@@ -966,6 +966,33 @@ const BookAppointment = () => {
       try {
         await api.post('/appointments/create', confirmedAppointment);
         console.log('✅ Appointment saved to backend API');
+
+        // 🔥 Save to Firebase "bills" collection for legacy hm/Revenue.jsx compatibility
+        try {
+          const { default: fbs } = await import('../../services/firebaseDbService.js');
+          const billId = `BILL-${confirmedAppointment.id || Date.now()}`;
+          await fbs.upsert('bills', billId, {
+            id: billId,
+            appointmentId: confirmedAppointment.id || '',
+            patientId: confirmedAppointment.patientId || '',
+            patient: confirmedAppointment.patientName || 'Unknown Patient',
+            patientName: confirmedAppointment.patientName || 'Unknown Patient',
+            doctorId: confirmedAppointment.doctorId || '',
+            doctor: confirmedAppointment.doctorName || 'Unknown Doctor',
+            doctorName: confirmedAppointment.doctorName || 'Unknown Doctor',
+            hospitalId: confirmedAppointment.hospitalId || '',
+            hospital: confirmedAppointment.hospitalName || 'Unknown Hospital',
+            amount: Number(amountTotal || 0),
+            status: 'paid',
+            paymentStatus: 'paid',
+            category: confirmedAppointment.departmentName || confirmedAppointment.specialization || 'Consultation',
+            date: now.toISOString(),
+            createdAt: now.toISOString()
+          });
+          console.log('✅ Bill saved to Firebase for revenue tracking');
+        } catch (fbErr) {
+          console.error('Failed to save bill to Firebase:', fbErr);
+        }
       } catch (apiError) {
         console.error('❌ Failed to save appointment:', apiError);
         throw new Error('Failed to save appointment');

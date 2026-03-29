@@ -193,6 +193,13 @@ class Appointment(Base):
     doctor_id = Column(String, ForeignKey("doctors.id"), nullable=False)
     patient_id = Column(String, ForeignKey("users.id"), nullable=False)
     appointment_date = Column(DateTime, nullable=False)
+    appointment_time = Column(String)
+    appointment_type = Column(String, default="regular")
+    doctor_name = Column(String)
+    department = Column(String)
+    disease = Column(String)
+    fee = Column(Float, default=0.0)
+    token_number = Column(String)
     status = Column(String, default="scheduled")  # scheduled, completed, cancelled
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -324,6 +331,23 @@ def _ensure_hospitals_schema():
             if not _sqlite_column_exists(connection, "hospitals", column_name):
                 connection.execute(text(f"ALTER TABLE hospitals ADD COLUMN {column_name} {column_sql}"))
 
+def _ensure_appointments_schema():
+    if "sqlite" not in DATABASE_URL:
+        return
+    with engine.begin() as connection:
+        appt_columns = {
+            "appointment_time": "TEXT",
+            "appointment_type": "TEXT DEFAULT 'regular'",
+            "doctor_name": "TEXT",
+            "department": "TEXT",
+            "disease": "TEXT",
+            "fee": "FLOAT DEFAULT 0.0",
+            "token_number": "TEXT",
+        }
+        for column_name, column_sql in appt_columns.items():
+            if not _sqlite_column_exists(connection, "appointments", column_name):
+                connection.execute(text(f"ALTER TABLE appointments ADD COLUMN {column_name} {column_sql}"))
+
 
 def get_db():
     """Get database session - used as dependency in FastAPI."""
@@ -340,3 +364,4 @@ def init_db():
     _ensure_rooms_schema()
     _ensure_users_schema()
     _ensure_hospitals_schema()
+    _ensure_appointments_schema()
