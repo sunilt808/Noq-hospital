@@ -3,12 +3,12 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCheckCircle, faClock, faHospital, faNotesMedical, faUser, faUserMd } from '@fortawesome/free-solid-svg-icons';
 import { recordHistory } from '../../services/historyService';
 import { advancedBookingService } from '../../services/advancedBookingService';
-import { useAuth } from '../../context/FirebaseAuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
+import { useAuth } from '../../context/AuthContext';
+import useApiData from '../../hooks/useApiData';
 
 const DoctorAdvancedBookings = () => {
   const { currentUser } = useAuth();
-  const { doctors } = useFirebaseData();
+  const { doctors } = useApiData();
   const [doctorId, setDoctorId] = useState('');
   const [bookings, setBookings] = useState([]);
 

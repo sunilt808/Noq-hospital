@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 export default function HMDashboard() {
   const { currentUser, logout } = useAuth();
-  const { data: firebaseData, loading: dataLoading } = useFirebaseData();
+  const { data: apiData, loading: dataLoading } = useApiData();
   const navigate = useNavigate();
   const [stats, setStats] = useState({
     hospitals: 0,
@@ -22,18 +22,18 @@ export default function HMDashboard() {
     setLoading(dataLoading);
   }, [currentUser, dataLoading, navigate]);
 
-  // Calculate stats from Firebase data
+  // Calculate stats from API data
   useEffect(() => {
-    if (currentUser?.hospital_id && firebaseData) {
-      const hospitalDoctors = firebaseData.doctors?.filter(
+    if (currentUser?.hospital_id && apiData) {
+      const hospitalDoctors = apiData.doctors?.filter(
         d => d.hospital_id === currentUser.hospital_id
       ) || [];
       
-      const hospitalDepartments = firebaseData.departments?.filter(
+      const hospitalDepartments = apiData.departments?.filter(
         d => d.hospital_id === currentUser.hospital_id
       ) || [];
       
-      const todayAppointments = firebaseData.appointments?.filter(
+      const todayAppointments = apiData.appointments?.filter(
         a => a.hospital_id === currentUser.hospital_id && 
         a.appointment_date?.split('T')[0] === new Date().toISOString().split('T')[0]
       ) || [];
@@ -45,7 +45,7 @@ export default function HMDashboard() {
         todayAppointments: todayAppointments.length
       });
     }
-  }, [firebaseData, currentUser?.hospital_id]);
+  }, [apiData, currentUser?.hospital_id]);
 
   const handleLogout = async () => {
     await logout();

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import * as Icons from '@fortawesome/free-solid-svg-icons';
 import notificationService from '../../services/notificationService';
+import api from '../../services/api.js';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -21,12 +22,17 @@ const Dashboard = () => {
 
     const loadDashboardData = async () => {
       try {
-        const [hospitals, users, bills, reviews] = await Promise.all([
-          firebaseDbService.getCollection('hospitals'),
-          firebaseDbService.getCollection('users'),
-          firebaseDbService.getCollection('bills'),
-          firebaseDbService.getCollection('reviews'),
+        const [hospitalsRes, usersRes, billsRes, reviewsRes] = await Promise.all([
+          api.get('/hospitals'),
+          api.get('/users?role=hm'),
+          api.get('/bills'),
+          api.get('/reviews'),
         ]);
+
+        const hospitals = hospitalsRes.data?.hospitals || [];
+        const users = usersRes.data?.users || [];
+        const bills = billsRes.data?.bills || [];
+        const reviews = reviewsRes.data?.reviews || [];
 
         if (!active) return;
 

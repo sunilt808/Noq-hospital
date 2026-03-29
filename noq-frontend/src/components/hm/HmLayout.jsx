@@ -32,13 +32,13 @@ const HmLayout = ({ children }) => {
   const location = useLocation();
   const { currentUser, logout } = useAuth();
   
-  // Use Firebase data hook for dynamic data
-  const firebaseData = {};
-  const doctors = firebaseData?.doctors || [];
-  const departments = firebaseData?.departments || [];
-  const rooms = firebaseData?.rooms || [];
-  const users = firebaseData?.users || [];
-  const hospitals = firebaseData?.hospitals || [];
+  // Use api data hook for dynamic data
+  const apiData = {};
+  const doctors = apiData?.doctors || [];
+  const departments = apiData?.departments || [];
+  const rooms = apiData?.rooms || [];
+  const users = apiData?.users || [];
+  const hospitals = apiData?.hospitals || [];
   const loading = false;
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
   

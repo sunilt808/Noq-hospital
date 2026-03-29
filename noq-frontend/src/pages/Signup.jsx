@@ -72,7 +72,6 @@ const Signup = () => {
     const newErrors = {};
 
     if (!formData.fullName.trim()) newErrors.fullName = 'Full name is required';
-    if (!formData.dob) newErrors.dob = 'Date of birth is required';
     if (!formData.gender) newErrors.gender = 'Please select a gender';
     
     if (!formData.email.trim()) {

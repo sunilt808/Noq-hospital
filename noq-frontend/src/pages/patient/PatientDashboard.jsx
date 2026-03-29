@@ -340,8 +340,8 @@ const PatientDashboard = () => {
   const cancelAppointment = async (appointmentId) => {
     if (window.confirm('Are you sure you want to cancel this appointment?')) {
       try {
-        // Update appointment status to cancelled in Firebase
-        await firebaseDbService.upsert('appointments', appointmentId, { 
+        // Update appointment status to cancelled in API
+        await apiDbService.upsert('appointments', appointmentId, { 
           ...appointments.find(a => a.id === appointmentId),
           status: 'cancelled'
         });

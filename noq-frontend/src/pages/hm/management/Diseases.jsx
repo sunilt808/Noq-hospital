@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faFileMedical, faSearch, faPlus, faEdit, faTrash, faBuilding, faArrowLeft, faExclamationCircle, faUpload, faDownload } from '@fortawesome/free-solid-svg-icons';
-import firebaseDbService from '../../../services/firebaseDbService.js';
+import apiDbService from '../../../services/apiDbService.js';
 import api from '../../../services/api.js';
 import { useAuth } from '../../../context/AuthContext.jsx';
 
@@ -24,8 +24,8 @@ const Diseases = () => {
   useEffect(() => {
     const load = async () => {
       const [fetchedDiseases, fetchedDepts, fetchedDoctorsRes] = await Promise.all([
-        firebaseDbService.getCollection('diseases'),
-        firebaseDbService.getCollection('departments'),
+        apiDbService.getCollection('diseases'),
+        apiDbService.getCollection('departments'),
         api.get(`/users?role=doctor${currentHospitalId ? `&hospital_id=${encodeURIComponent(currentHospitalId)}` : ''}`).catch(() => ({ data: { users: [] } })),
       ]);
 
@@ -90,7 +90,7 @@ const Diseases = () => {
         doctorName: selectedDoctor?.name || editing.doctorName || '',
         departmentName: selectedDepartment?.name || editing.departmentName || '',
       };
-      await firebaseDbService.upsert('diseases', editing.id, updated);
+      await apiDbService.upsert('diseases', editing.id, updated);
       setDiseases(prev => prev.map(d => d.id === editing.id ? updated : d));
     } else {
       const newDisease = {
@@ -103,7 +103,7 @@ const Diseases = () => {
         hospitalId: currentHospitalId,
         createdAt: new Date().toISOString(),
       };
-      await firebaseDbService.upsert('diseases', newDisease.id, newDisease);
+      await apiDbService.upsert('diseases', newDisease.id, newDisease);
       setDiseases(prev => [...prev, newDisease]);
     }
     resetForm();
@@ -112,7 +112,7 @@ const Diseases = () => {
   const deleteDisease = async (id) => {
     const disease = diseases.find(d => d.id === id);
     if (!disease || !window.confirm(`Delete disease "${disease.name}"?`)) return;
-    await firebaseDbService.remove('diseases', id);
+    await apiDbService.remove('diseases', id);
     setDiseases(prev => prev.filter(d => d.id !== id));
   };
 
@@ -152,7 +152,7 @@ const Diseases = () => {
         if (Array.isArray(imported)) {
           for (const item of imported) {
             const entry = { ...item, id: item.id || `DIS-${Date.now()}-${Math.random()}`, departmentId: String(item.departmentId || '') };
-            await firebaseDbService.upsert('diseases', entry.id, entry);
+            await apiDbService.upsert('diseases', entry.id, entry);
           }
           setDiseases(imported);
           alert(`${imported.length} diseases imported`);

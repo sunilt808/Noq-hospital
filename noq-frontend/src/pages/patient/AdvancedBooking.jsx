@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useAuth } from '../../context/AuthContext';
-import useFirebaseData from '../../hooks/useFirebaseData';
+import useApiData from '../../hooks/useApiData';
 import {
   faChevronLeft,
   faPersonPregnant,
@@ -122,7 +122,7 @@ const AdvancedBooking = () => {
     rooms,
     advancedBookings,
     loading,
-  } = useFirebaseData();
+  } = useApiData();
   const [myBookings, setMyBookings] = useState([]);
 
   const [form, setForm] = useState({

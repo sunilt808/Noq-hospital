@@ -12,7 +12,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../../context/AuthContext';
 import revenueService from '../../../services/revenueService';
-import firebaseDbService from '../../../services/firebaseDbService';
+import apiDbService from '../../../services/apiDbService';
 
 const Revenue = () => {
   const navigate = useNavigate();
@@ -26,8 +26,8 @@ const Revenue = () => {
     const loadData = async () => {
       try {
         const [hospitalRows, billRows] = await Promise.all([
-          firebaseDbService.getCollection('hospitals'),
-          firebaseDbService.getCollection('bills'),
+          apiDbService.getCollection('hospitals'),
+          apiDbService.getCollection('bills'),
         ]);
         if (!active) return;
         setHospitals(Array.isArray(hospitalRows) ? hospitalRows : []);

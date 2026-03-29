@@ -1,11 +1,11 @@
 /**
- * localStorage to Firebase Migration Helper
+ * localStorage to api Migration Helper
  * This provides drop-in replacements for common localStorage patterns
  * Used during refactoring phase to ease migration
  */
 
-import { useAuth } from '../context/FirebaseAuthContext';
-import useFirebaseData from './useF irebaseData';
+import { useAuth } from '../context/AuthContext';
+import useApiData from './useF irebaseData';
 
 /**
  * Replaces: const user = JSON.parse(localStorage.getItem('currentUser'))
@@ -18,18 +18,18 @@ export const getCurrentUserFromAuth = (useAuthHook) => {
 
 /**
  * Replaces: localStorage.setItem('key', JSON.stringify(data))
- * Use:      await firebaseDbService.upsert('collection', id, data)
+ * Use:      await apiDbService.upsert('collection', id, data)
  */
-export const saveToFirebase = async (filebaseDbService, collection, id, data) => {
+export const saveToapi = async (filebaseDbService, collection, id, data) => {
   return await filebaseDbService.upsert(collection, id, data);
 };
 
 /**
  * Replaces: JSON.parse(localStorage.getItem('doctors') || '[]')
- * Use:      Use useFirebaseData hook's doctors array
+ * Use:      Use useApiData hook's doctors array
  */
-export const getFirebaseCollection = (useFirebaseDataHook, collectionName) => {
-  const { [collectionName]: collection } = useFirebaseDataHook ? useFirebaseDataHook() : { [collectionName]: [] };
+export const getapiCollection = (useApiDataHook, collectionName) => {
+  const { [collectionName]: collection } = useApiDataHook ? useApiDataHook() : { [collectionName]: [] };
   return collection || [];
 };
 
@@ -46,7 +46,7 @@ export const getFirebaseCollection = (useFirebaseDataHook, collectionName) => {
  *
  * NEW:
  * const { currentUser } = useAuth();
- * const { doctors } = useFirebaseData();
+ * const { doctors } = useApiData();
  * // No useState needed - data comes from hook
  */
 
@@ -64,13 +64,13 @@ export const getFirebaseCollection = (useFirebaseDataHook, collectionName) => {
  * NEW:
  * const handleSave = async () => {
  *   const data = { id: 1, name: 'John' };
- *   await firebaseDbService.upsert('users', data.id, data);
- *   // Data auto-refreshes in useFirebaseData hook
+ *   await apiDbService.upsert('users', data.id, data);
+ *   // Data auto-refreshes in useApiData hook
  * };
  */
 
 export default {
   getCurrentUserFromAuth,
-  saveToFirebase,
-  getFirebaseCollection,
+  saveToapi,
+  getapiCollection,
 };

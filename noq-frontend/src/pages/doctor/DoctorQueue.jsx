@@ -16,7 +16,7 @@ import './doctor.css';
 const DoctorQueue = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const { appointments, patients, doctors, loading } = useFirebaseData();
+  const { appointments, patients, doctors, loading } = useApiData();
   
   const [isOnBreak, setIsOnBreak] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -47,7 +47,7 @@ const DoctorQueue = () => {
     return appointment?.time || '';
   };
 
-  // Get current doctor from Firebase data
+  // Get current doctor from API data
   const doctor = useMemo(() => {
     return doctors.find(d => 
       d.id === currentUser?.id || 
@@ -68,14 +68,14 @@ const DoctorQueue = () => {
     }
   }, [currentUser, authLoading, navigate]);
 
-  // Update doctor presence status in Firebase
+  // Update doctor presence status in API
   useEffect(() => {
     if (!doctor?.id) return;
 
     const updatePresence = async () => {
       try {
         const presenceId = 'doc_' + doctor.id;
-        await firebaseDbService.upsert('doctorPresence', presenceId, {
+        await apiDbService.upsert('doctorPresence', presenceId, {
           doctorId: String(doctor.id),
           doctorName: doctor.name || 'Doctor',
           status: isOnBreak ? 'on_break' : selectedPatient ? 'in_consultation' : 'available',
@@ -91,7 +91,7 @@ const DoctorQueue = () => {
     updatePresence();
   }, [doctor?.id, isOnBreak, selectedPatient]);
 
-  // Calculate queue and completed appointments from Firebase data
+  // Calculate queue and completed appointments from API data
   const queue = useMemo(() => {
     const doctorAppts = appointments.filter(apt => 
       apt.doctorId === doctor?.id && ['waiting', 'pending', 'confirmed'].includes(apt.status)
@@ -154,7 +154,7 @@ const DoctorQueue = () => {
       const appointment = appointments.find(a => a.id === appointmentId);
       if (!appointment) return;
       
-      await firebaseDbService.upsert('appointments', appointmentId, {
+      await apiDbService.upsert('appointments', appointmentId, {
         ...appointment,
         ...updates
       });
@@ -278,7 +278,7 @@ const DoctorQueue = () => {
 
     try {
       const newApptId = 'apt_' + Date.now();
-      await firebaseDbService.upsert('appointments', newApptId, {
+      await apiDbService.upsert('appointments', newApptId, {
         id: newApptId,
         doctorId: doctor.id,
         patientName: newPatient.name,

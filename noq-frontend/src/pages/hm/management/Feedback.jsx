@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft, faComments, faHospital, faSearch, faStar, faUserMd } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../../context/AuthContext';
-import firebaseDbService from '../../../services/firebaseDbService';
+import apiDbService from '../../../services/apiDbService';
 
 const Feedback = () => {
   const navigate = useNavigate();
@@ -19,8 +19,8 @@ const Feedback = () => {
     const loadData = async () => {
       try {
         const [hospitalRows, reviewRows] = await Promise.all([
-          firebaseDbService.getCollection('hospitals'),
-          firebaseDbService.getCollection('reviews'),
+          apiDbService.getCollection('hospitals'),
+          apiDbService.getCollection('reviews'),
         ]);
         if (!active) return;
         setHospitals(Array.isArray(hospitalRows) ? hospitalRows : []);

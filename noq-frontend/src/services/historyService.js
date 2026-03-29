@@ -1,4 +1,4 @@
-import firebaseDbService from './firebaseDbService.js';
+import apiDbService from './apiDbService.js';
 
 const COLLECTION_NAME = 'activityHistory';
 const MAX_DAYS = 30;
@@ -15,16 +15,16 @@ const isWithinWindow = (timestamp) => {
 
 export const pruneHistory = async () => {
   try {
-    const history = await firebaseDbService.getCollection(COLLECTION_NAME);
+    const history = await apiDbService.getCollection(COLLECTION_NAME);
     const pruned = toArray(history).filter((item) => isWithinWindow(item.timestamp));
     
-    // Remove old entries from Firebase
+    // Remove old entries
     const idsToDelete = toArray(history)
       .filter((item) => !isWithinWindow(item.timestamp))
       .map((item) => item.id);
     
     for (const id of idsToDelete) {
-      await firebaseDbService.deleteDocument(COLLECTION_NAME, id);
+      await apiDbService.deleteDocument(COLLECTION_NAME, id);
     }
     
     return pruned;
@@ -55,7 +55,7 @@ export const recordHistory = async (entry) => {
       meta: entry?.meta || {},
     };
 
-    await firebaseDbService.upsert(COLLECTION_NAME, item.id, item);
+    await apiDbService.upsert(COLLECTION_NAME, item.id, item);
     return item;
   } catch (error) {
     console.error('Failed to record history:', error);
@@ -78,7 +78,7 @@ export const clearHistoryByIds = async (ids = []) => {
     if (idSet.size === 0) return await pruneHistory();
 
     for (const id of Array.from(idSet)) {
-      await firebaseDbService.deleteDocument(COLLECTION_NAME, id);
+      await apiDbService.deleteDocument(COLLECTION_NAME, id);
     }
     
     return await pruneHistory();

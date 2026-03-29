@@ -372,7 +372,7 @@ const PatientBilling = () => {
 
       const updatedBill = updatedBills.find((bill) => String(bill.id) === String(selectedBill.id));
       if (updatedBill) {
-        await firebaseDbService.upsert('bills', selectedBill.id, updatedBill);
+        await apiDbService.upsert('bills', selectedBill.id, updatedBill);
       }
       
       // Update totals

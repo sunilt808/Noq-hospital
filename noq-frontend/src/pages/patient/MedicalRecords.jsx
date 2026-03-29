@@ -220,7 +220,7 @@ const MedicalRecords = () => {
     };
 
     try {
-      await firebaseDbService.upsert('medicalRecords', newRecord.id, newRecord);
+      await apiDbService.upsert('medicalRecords', newRecord.id, newRecord);
       const updatedRecords = [...records, newRecord];
       setRecords(updatedRecords);
       setFilteredRecords(filterRecords(updatedRecords, activeTab));

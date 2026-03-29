@@ -14,8 +14,8 @@ const Revenue = () => {
     const loadRevenueData = async () => {
       try {
         const [billRows, reviewRows] = await Promise.all([
-          firebaseDbService.getCollection('bills'),
-          firebaseDbService.getCollection('reviews'),
+          apiDbService.getCollection('bills'),
+          apiDbService.getCollection('reviews'),
         ]);
 
         if (!active) return;

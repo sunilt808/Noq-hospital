@@ -1,14 +1,19 @@
-// components/AdminLayout.jsx - Firebase-only (no localStorage)
+// components/AdminLayout.jsx - API-only (no localStorage)
 import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import * as Icons from '@fortawesome/free-solid-svg-icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import useApiData from '../hooks/useApiData';
 
 const AdminLayout = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser, logout } = useAuth();
+  const { hospitals, reviews } = useApiData();
+  
+  const pendingApprovalsCount = hospitals?.filter?.(h => String(h.status || '').toLowerCase() === 'pending')?.length || null;
+  const reviewsCount = reviews?.length || null;
   
   const [darkMode, setDarkMode] = useState(() => {
     try {
@@ -42,7 +47,7 @@ const AdminLayout = ({ children }) => {
     setSearchTerm('');
   };
 
-  // Logout function - uses Firebase auth context
+  // Logout function - uses auth context
   const handleLogout = async () => {
     if (window.confirm('Are you sure you want to logout?')) {
       await logout();
@@ -50,7 +55,7 @@ const AdminLayout = ({ children }) => {
     }
   };
 
-  // Get admin info from Firebase auth context
+  // Get admin info from auth context
   const adminEmail = currentUser?.email || 'admin@system.com';
   const adminName = currentUser?.name || adminEmail.split('@')[0];
   const adminInitial = (adminName.charAt(0) || 'A').toUpperCase();
@@ -58,10 +63,10 @@ const AdminLayout = ({ children }) => {
   // Menu items
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Icons.faTachometerAlt, path: '/admin/dashboard', badge: null },
-    { id: 'hm-approvals', label: 'HM Approvals', icon: Icons.faUserCheck, path: '/admin/hm-approvals', badge: 5 },
+    { id: 'hm-approvals', label: 'HM Approvals', icon: Icons.faUserCheck, path: '/admin/hm-approvals', badge: pendingApprovalsCount },
     { id: 'hospitals', label: 'Hospitals', icon: Icons.faHospital, path: '/admin/hospitals', badge: null },
     { id: 'revenue', label: 'Revenue', icon: Icons.faChartLine, path: '/admin/revenue', badge: null },
-    { id: 'reviews', label: 'Reviews', icon: Icons.faStar, path: '/admin/reviews', badge: 12 },
+    { id: 'reviews', label: 'Reviews', icon: Icons.faStar, path: '/admin/reviews', badge: reviewsCount },
     { id: 'profile', label: 'Profile', icon: Icons.faUser, path: '/admin/profile', badge: null },
     { id: 'settings', label: 'Settings', icon: Icons.faCog, path: '/admin/settings', badge: null },
   ];

@@ -131,7 +131,7 @@ const Settings = () => {
     }
 
     try {
-      await firebaseDbService.upsert('patients', patient.id, {
+      await apiDbService.upsert('patients', patient.id, {
         ...patient,
         password: passwordForm.newPassword,
         updatedAt: new Date().toISOString(),

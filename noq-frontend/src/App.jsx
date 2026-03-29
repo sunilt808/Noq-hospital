@@ -20,7 +20,7 @@ import "./App.css";
 /* ===================== ROLE-BASED PROTECTED ROUTE COMPONENTS ===================== */
 
 /**
- * Admin Route: Check Firebase auth + admin role + 24-hour session limit
+ * Admin Route: Check auth + admin role + 24-hour session limit
  */
 const ProtectedAdminRoute = ({ children }) => {
   const { currentUser, token, loading } = useAuth();
@@ -46,7 +46,7 @@ const ProtectedAdminRoute = ({ children }) => {
 };
 
 /**
- * HM Route: Check Firebase auth + HM role + approval status
+ * HM Route: Check auth + HM role + approval status
  */
 const ProtectedHmRoute = ({ children }) => {
   const { currentUser, token, loading } = useAuth();
@@ -74,7 +74,7 @@ const ProtectedHmRoute = ({ children }) => {
 };
 
 /**
- * Doctor Route: Check Firebase auth + doctor role + status
+ * Doctor Route: Check auth + doctor role + status
  */
 const ProtectedDoctorRoute = ({ children }) => {
   const { currentUser, token, loading } = useAuth();
@@ -99,7 +99,7 @@ const ProtectedDoctorRoute = ({ children }) => {
 };
 
 /**
- * Patient Route: Check Firebase auth + patient role + status
+ * Patient Route: Check auth + patient role + status
  */
 const ProtectedPatientRoute = ({ children }) => {
   const { currentUser, token, loading } = useAuth();

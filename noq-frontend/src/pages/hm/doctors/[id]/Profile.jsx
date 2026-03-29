@@ -9,7 +9,7 @@ import {
   faToggleOn, faToggleOff, faExclamationTriangle,
   faCalendarAlt, faHistory
 } from '@fortawesome/free-solid-svg-icons';
-import firebaseDbService from '../../../../services/firebaseDbService.js';
+import apiDbService from '../../../../services/apiDbService.js';
 import api from '../../../../services/api.js';
 
 const DoctorProfile = () => {
@@ -37,9 +37,9 @@ const DoctorProfile = () => {
       try {
         const [doctorRes, depts, rms, allTokens] = await Promise.all([
           api.get(`/users/${id}`).catch(() => null),
-          firebaseDbService.getCollection('departments'),
-          firebaseDbService.getCollection('rooms'),
-          firebaseDbService.getCollection('tokens'),
+          apiDbService.getCollection('departments'),
+          apiDbService.getCollection('rooms'),
+          apiDbService.getCollection('tokens'),
         ]);
 
         const docData = doctorRes?.data || doctorRes || null;
@@ -176,12 +176,12 @@ const DoctorProfile = () => {
 
       // Free old room
       if (doctor.roomId && String(doctor.roomId) !== String(formData.roomId)) {
-        await firebaseDbService.upsert('rooms', doctor.roomId, { status: 'available', updatedAt: new Date().toISOString() });
+        await apiDbService.upsert('rooms', doctor.roomId, { status: 'available', updatedAt: new Date().toISOString() });
         setRooms(prev => prev.map(r => String(r.id) === String(doctor.roomId) ? { ...r, status: 'available' } : r));
       }
       // Occupy new room
       if (formData.roomId) {
-        await firebaseDbService.upsert('rooms', formData.roomId, { status: 'occupied', updatedAt: new Date().toISOString() });
+        await apiDbService.upsert('rooms', formData.roomId, { status: 'occupied', updatedAt: new Date().toISOString() });
         setRooms(prev => prev.map(r => String(r.id) === String(formData.roomId) ? { ...r, status: 'occupied' } : r));
       }
 

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 export default function HMDepartments() {
   const { currentUser, token } = useAuth();
-  const { data: allDepartments, loading: dataLoading } = useFirebaseData();
+  const { data: allDepartments, loading: dataLoading } = useApiData();
   const navigate = useNavigate();
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,7 +22,7 @@ export default function HMDepartments() {
     }
   }, [currentUser, navigate]);
 
-  // Filter departments for this hospital from Firebase data
+  // Filter departments for this hospital from API data
   useEffect(() => {
     if (allDepartments?.departments && currentUser?.hospital_id) {
       const hospitalDepts = allDepartments.departments.filter(
@@ -54,7 +54,7 @@ export default function HMDepartments() {
       if (response.ok) {
         setFormData({ department_name: '', description: '', floor_number: '' });
         setShowAddForm(false);
-        // Data will auto-update via useFirebaseData hook
+        // Data will auto-update via useApiData hook
       }
     } catch (error) {
       console.error('Error creating department:', error);

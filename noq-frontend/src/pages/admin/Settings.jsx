@@ -53,7 +53,7 @@ const Settings = () => {
     let active = true;
 
     const loadAdminSettings = async () => {
-      const doc = await firebaseDbService.getDocument('admin_settings', settingsDocId);
+      const doc = await apiDbService.getDocument('admin_settings', settingsDocId);
       if (!active) return;
 
       const loadedSettings = doc?.settings || DEFAULT_SETTINGS;
@@ -87,7 +87,7 @@ const Settings = () => {
   }, [settings, security, profile]);
 
   const persistSettings = async (message) => {
-    await firebaseDbService.upsert('admin_settings', settingsDocId, {
+    await apiDbService.upsert('admin_settings', settingsDocId, {
       settings,
       security,
       profile,

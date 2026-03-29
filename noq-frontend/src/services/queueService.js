@@ -91,19 +91,19 @@ export const tokenService = {
       const data = await api.get(`/tokens/${queueId}`);
       if (data?.success) {
         const tokens = data?.data?.tokens || [];
-        // Sync to Firebase
+        // sync to API
         for (const token of tokens) {
-          await firebaseDbService.upsert('tokens', token.id, token);
+          await apiDbService.upsert('tokens', token.id, token);
         }
         return tokens;
       }
     } catch (error) {
-      console.warn('API fetch failed, using Firebase:', error);
+      console.warn('API fetch failed, using api:', error);
     }
 
-    // Firebase fallback
-    const firebaseTokens = await getTokensFromFirebase();
-    return firebaseTokens.filter((t) => String(t.queueId) === String(queueId));
+    // API fallback
+    const apiTokens = await getDataFromApi();
+    return apiTokens.filter((t) => String(t.queueId) === String(queueId));
   },
 
   // Create a new token
@@ -111,17 +111,17 @@ export const tokenService = {
     try {
       const data = await api.post('/tokens/create', payload);
       if (data?.success) {
-        // Sync to Firebase
+        // sync to API
         const token = data.data;
-        await firebaseDbService.upsert('tokens', token.id, token);
+        await apiDbService.upsert('tokens', token.id, token);
         return token;
       }
     } catch (error) {
-      console.warn('API create failed, using Firebase:', error);
+      console.warn('API create failed, using api:', error);
     }
 
-    // Firebase fallback
-    const allTokens = await getTokensFromFirebase();
+    // API fallback
+    const allTokens = await getDataFromApi();
     const queueTokens = allTokens.filter(
       (t) => String(t.queueId) === String(payload.queueId)
     );
@@ -136,7 +136,7 @@ export const tokenService = {
       status: 'waiting',
       createdAt: new Date().toISOString(),
     };
-    await firebaseDbService.upsert('tokens', newToken.id, newToken);
+    await apiDbService.upsert('tokens', newToken.id, newToken);
     return newToken;
   },
 
@@ -145,22 +145,22 @@ export const tokenService = {
     try {
       const data = await api.post(`/tokens/${tokenId}/call`, {});
       if (data?.success) {
-        // Sync to Firebase
+        // sync to API
         const token = data.data;
-        await firebaseDbService.upsert('tokens', token.id, token);
+        await apiDbService.upsert('tokens', token.id, token);
         return token;
       }
     } catch (error) {
-      console.warn('API call failed, using Firebase:', error);
+      console.warn('API call failed, using api:', error);
     }
 
-    // Firebase fallback
+    // API fallback
     const updatedToken = {
       status: 'calling',
       calledAt: new Date().toISOString(),
     };
-    await firebaseDbService.upsert('tokens', tokenId, updatedToken);
-    return await firebaseDbService.getDocument('tokens', tokenId);
+    await apiDbService.upsert('tokens', tokenId, updatedToken);
+    return await apiDbService.getDocument('tokens', tokenId);
   },
 
   // Complete consultation
@@ -168,22 +168,22 @@ export const tokenService = {
     try {
       const data = await api.post(`/tokens/${tokenId}/complete`, {});
       if (data?.success) {
-        // Sync to Firebase
+        // sync to API
         const token = data.data;
-        await firebaseDbService.upsert('tokens', token.id, token);
+        await apiDbService.upsert('tokens', token.id, token);
         return token;
       }
     } catch (error) {
-      console.warn('API complete failed, using Firebase:', error);
+      console.warn('API complete failed, using api:', error);
     }
 
-    // Firebase fallback
+    // API fallback
     const updatedToken = {
       status: 'completed',
       completedAt: new Date().toISOString(),
     };
-    await firebaseDbService.upsert('tokens', tokenId, updatedToken);
-    return await firebaseDbService.getDocument('tokens', tokenId);
+    await apiDbService.upsert('tokens', tokenId, updatedToken);
+    return await apiDbService.getDocument('tokens', tokenId);
   },
 
   // Cancel token
@@ -191,22 +191,22 @@ export const tokenService = {
     try {
       const data = await api.post(`/tokens/${tokenId}/cancel`, {});
       if (data?.success) {
-        // Sync to Firebase
+        // sync to API
         const token = data.data;
-        await firebaseDbService.upsert('tokens', token.id, token);
+        await apiDbService.upsert('tokens', token.id, token);
         return token;
       }
     } catch (error) {
-      console.warn('API cancel failed, using Firebase:', error);
+      console.warn('API cancel failed, using api:', error);
     }
 
-    // Firebase fallback
+    // API fallback
     const updatedToken = {
       status: 'cancelled',
       cancelledAt: new Date().toISOString(),
     };
-    await firebaseDbService.upsert('tokens', tokenId, updatedToken);
-    return await firebaseDbService.getDocument('tokens', tokenId);
+    await apiDbService.upsert('tokens', tokenId, updatedToken);
+    return await apiDbService.getDocument('tokens', tokenId);
   },
 };
 

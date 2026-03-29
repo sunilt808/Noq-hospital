@@ -967,9 +967,9 @@ const BookAppointment = () => {
         await api.post('/appointments/create', confirmedAppointment);
         console.log('✅ Appointment saved to backend API');
 
-        // 🔥 Save to Firebase "bills" collection for legacy hm/Revenue.jsx compatibility
+        // 🔥 Save to api "bills" collection for legacy hm/Revenue.jsx compatibility
         try {
-          const { default: fbs } = await import('../../services/firebaseDbService.js');
+          const { default: fbs } = await import('../../services/apiDbService.js');
           const billId = `BILL-${confirmedAppointment.id || Date.now()}`;
           await fbs.upsert('bills', billId, {
             id: billId,
@@ -989,9 +989,9 @@ const BookAppointment = () => {
             date: now.toISOString(),
             createdAt: now.toISOString()
           });
-          console.log('✅ Bill saved to Firebase for revenue tracking');
+          console.log('✅ Bill saved to api for revenue tracking');
         } catch (fbErr) {
-          console.error('Failed to save bill to Firebase:', fbErr);
+          console.error('Failed to save bill to api:', fbErr);
         }
       } catch (apiError) {
         console.error('❌ Failed to save appointment:', apiError);

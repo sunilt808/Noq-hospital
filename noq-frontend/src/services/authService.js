@@ -93,10 +93,10 @@ const loginPatient = async ({ email, password }) => {
 };
 
 export const authService = {
-  login: async ({ role, email, password, otp, hospitalId, _generatedOtp, firebaseIdToken }) => {
-    if (firebaseIdToken) {
-      const res = await api.post('/auth/firebase-login', {
-        id_token: firebaseIdToken,
+  login: async ({ role, email, password, otp, hospitalId, _generatedOtp, apiIdToken }) => {
+    if (apiIdToken) {
+      const res = await api.post('/auth/api-login', {
+        id_token: apiIdToken,
         role,
         hospital_id: hospitalId || null,
       });
@@ -110,7 +110,7 @@ export const authService = {
         return { user, token: res.data.token };
       }
 
-      throw new Error('Firebase login failed.');
+      throw new Error('api login failed.');
     }
 
     switch (role) {
@@ -143,7 +143,7 @@ export const authService = {
     } = payload;
 
     if (!fullName?.trim()) throw new Error('Name is required.');
-    if (!dob) throw new Error('DOB is required.');
+    if (role === 'hm' && !dob) throw new Error('DOB is required for Hospital Managers.');
     if (!gender) throw new Error('Gender is required.');
     if (!email?.trim()) throw new Error('Email is required.');
     if (!phone?.trim()) throw new Error('Phone number is required.');

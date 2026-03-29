@@ -3,7 +3,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCalendarCheck, faHospital, faUserMd, faUsers } from '@fortawesome/free-solid-svg-icons';
 import { advancedBookingService } from '../../../services/advancedBookingService';
 import { useAuth } from '../../../context/AuthContext';
-import firebaseDbService from '../../../services/firebaseDbService';
+import apiDbService from '../../../services/apiDbService';
 
 const AdvancedBookings = () => {
   const { currentUser } = useAuth();
@@ -13,8 +13,8 @@ const AdvancedBookings = () => {
 
   const load = async () => {
     const [hospitals, doctors] = await Promise.all([
-      firebaseDbService.getCollection('hospitals'),
-      firebaseDbService.getCollection('users'),
+      apiDbService.getCollection('hospitals'),
+      apiDbService.getCollection('users'),
     ]);
 
     const matchedHospital =

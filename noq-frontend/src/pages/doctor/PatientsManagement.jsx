@@ -17,7 +17,7 @@ import './doctor.css';
 const PatientsManagement = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const { doctors, patients: firebasePatients, loading } = useFirebaseData();
+  const { doctors, patients: apiPatients, loading } = useApiData();
   const [doctor, setDoctor] = useState(null);
   const [patients, setPatients] = useState([]);
   const [blockedPatients, setBlockedPatients] = useState([]);
@@ -62,20 +62,20 @@ const PatientsManagement = () => {
   }, [currentUser, doctors]);
 
   useEffect(() => {
-    updatePatientsData(Array.isArray(firebasePatients) ? firebasePatients : []);
-  }, [firebasePatients]);
+    updatePatientsData(Array.isArray(apiPatients) ? apiPatients : []);
+  }, [apiPatients]);
 
-  const loadPatientsData = () => updatePatientsData(Array.isArray(firebasePatients) ? firebasePatients : []);
+  const loadPatientsData = () => updatePatientsData(Array.isArray(apiPatients) ? apiPatients : []);
 
   const persistPatientUpdate = async (patientId, updater) => {
-    const existing = (Array.isArray(firebasePatients) ? firebasePatients : []).find(
+    const existing = (Array.isArray(apiPatients) ? apiPatients : []).find(
       (p) => String(p.id || '') === String(patientId)
     );
     if (!existing) return;
     const updatedPatient = updater(existing);
-    await firebaseDbService.upsert('patients', String(patientId), updatedPatient);
+    await apiDbService.upsert('patients', String(patientId), updatedPatient);
     updatePatientsData(
-      (Array.isArray(firebasePatients) ? firebasePatients : []).map((p) =>
+      (Array.isArray(apiPatients) ? apiPatients : []).map((p) =>
         String(p.id || '') === String(patientId) ? updatedPatient : p
       )
     );

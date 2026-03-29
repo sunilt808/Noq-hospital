@@ -1,5 +1,5 @@
 import api from './api.js';
-import firebaseDbService from './firebaseDbService.js';
+import apiDbService from './apiDbService.js';
 
 const COLLECTION_NAME = 'advancedBookings';
 
@@ -55,7 +55,7 @@ const toApiPayload = (item = {}) => ({
 });
 
 export const advancedBookingService = {
-  // Create booking in Firebase (primary source of truth)
+  // Create booking in API 
   create: async (booking) => {
     const normalized = normalizeBooking(booking);
 
@@ -63,14 +63,14 @@ export const advancedBookingService = {
       const res = await api.post('/advanced-bookings/create', toApiPayload(normalized));
       if (res?.success) {
         const created = normalizeBooking(res.data);
-        await firebaseDbService.upsert(COLLECTION_NAME, created.id, created);
+        await apiDbService.upsert(COLLECTION_NAME, created.id, created);
         return created;
       }
     } catch (error) {
-      console.warn('API create failed, using Firebase directly:', error);
+      console.warn('API create failed, using API fallback:', error);
     }
 
-    // Firebase fallback
+    // API fallback
     const localItem = {
       ...normalized,
       id: normalized.id || `AB-${Date.now()}`,
@@ -78,56 +78,56 @@ export const advancedBookingService = {
       updatedAt: normalized.updatedAt || new Date().toISOString(),
     };
 
-    await firebaseDbService.upsert(COLLECTION_NAME, localItem.id, localItem);
+    await apiDbService.upsert(COLLECTION_NAME, localItem.id, localItem);
     return localItem;
   },
 
-  // Get user's bookings from Firebase
+  // Get user's bookings from API
   getMine: async (fallbackFilter = () => true) => {
     try {
       const res = await api.get('/advanced-bookings/mine');
       if (res?.success) {
         const list = (res?.data?.bookings || []).map(normalizeBooking);
-        // Sync to Firebase
+        // sync to API
         for (const item of list) {
-          await firebaseDbService.upsert(COLLECTION_NAME, item.id, item);
+          await apiDbService.upsert(COLLECTION_NAME, item.id, item);
         }
         return list;
       }
     } catch (error) {
-      console.warn('API fetch failed, using Firebase:', error);
+      console.warn('API fetch failed, using api:', error);
     }
 
-    // Firebase fallback
+    // API fallback
     try {
-      const all = await firebaseDbService.getCollection(COLLECTION_NAME);
+      const all = await apiDbService.getCollection(COLLECTION_NAME);
       return (all || []).filter(fallbackFilter).map(normalizeBooking);
     } catch (error) {
-      console.error('Failed to get bookings from Firebase:', error);
+      console.error('Failed to get bookings from API:', error);
       return [];
     }
   },
 
-  // Update booking status in Firebase
+  // Update booking status in API
   updateStatus: async (bookingId, status) => {
     try {
       const res = await api.patch(`/advanced-bookings/${bookingId}/status`, { status });
       if (res?.success) {
         const updated = normalizeBooking(res.data);
-        await firebaseDbService.upsert(COLLECTION_NAME, bookingId, updated);
+        await apiDbService.upsert(COLLECTION_NAME, bookingId, updated);
         return updated;
       }
     } catch (error) {
-      console.warn('API update failed, using Firebase:', error);
+      console.warn('API update failed, using api:', error);
     }
 
-    // Firebase fallback
+    // API fallback
     const updated = {
       status,
       updatedAt: new Date().toISOString(),
     };
-    await firebaseDbService.upsert(COLLECTION_NAME, bookingId, updated);
-    return await firebaseDbService.getDocument(COLLECTION_NAME, bookingId);
+    await apiDbService.upsert(COLLECTION_NAME, bookingId, updated);
+    return await apiDbService.getDocument(COLLECTION_NAME, bookingId);
   },
 };
 
