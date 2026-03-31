@@ -84,7 +84,7 @@ async def create_disease(disease: DiseaseCreate, payload: dict = Depends(auth_se
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.patch("/{disease_id}", response_model=StandardResponse)
+@router.put("/{disease_id}", response_model=StandardResponse)
 async def update_disease(disease_id: str, updates: dict, payload: dict = Depends(auth_service.require_auth)):
     """Update a disease in MongoDB."""
     try:

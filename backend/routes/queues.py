@@ -37,7 +37,7 @@ async def get_queue(queue_id: str, payload: dict = Depends(auth_service.require_
     return StandardResponse(success=True, message="Queue fetched.", data={"queue": queue})
 
 
-@router.post("", response_model=StandardResponse, status_code=201)
+@router.post("/create", response_model=StandardResponse, status_code=201)
 async def create_queue(queue: QueueCreate, payload: dict = Depends(auth_service.require_auth)):
     """Create a new queue in MongoDB."""
     new_queue = await queue_service.create_queue(queue.model_dump())

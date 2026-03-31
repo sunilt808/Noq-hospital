@@ -25,7 +25,7 @@ const patientService = {
 
   // Create new appointment
   createAppointment: async (appointmentData) => {
-    const response = await api.post('/appointments/', appointmentData);
+    const response = await api.post('/appointments', appointmentData);
     return response || null;
   },
 

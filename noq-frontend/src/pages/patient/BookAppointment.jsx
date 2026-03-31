@@ -964,8 +964,7 @@ const BookAppointment = () => {
 
       // Save to backend API
       try {
-        await api.post('/appointments/create', confirmedAppointment);
-        console.log('✅ Appointment saved to backend API');
+        await api.post('/appointments', confirmedAppointment);
 
         // 🔥 Save to api "bills" collection for legacy hm/Revenue.jsx compatibility
         try {

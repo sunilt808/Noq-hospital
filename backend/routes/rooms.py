@@ -125,8 +125,8 @@ async def create_room(payload: RoomCreate, request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.patch("/{room_id}")
-async def patch_room(room_id: str, payload: RoomUpdate, request: Request):
+@router.put("/{room_id}")
+async def update_room(room_id: str, payload: RoomUpdate, request: Request):
     """Patch a room in MongoDB."""
     try:
         if mongodb is None: raise HTTPException(status_code=500, detail="DB Error")

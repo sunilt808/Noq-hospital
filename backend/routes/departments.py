@@ -93,8 +93,8 @@ async def create_department(payload: DepartmentCreate, request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.patch("/{department_id}")
-async def patch_department(department_id: str, payload: DepartmentUpdate, request: Request):
+@router.put("/{department_id}")
+async def update_department(department_id: str, payload: DepartmentUpdate, request: Request):
     """Update a department in MongoDB."""
     try:
         if mongodb is None: raise HTTPException(status_code=500, detail="DB Error")

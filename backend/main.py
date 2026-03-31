@@ -113,7 +113,7 @@ def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "database": "sqlite",
+        "database": "mongodb",
         "api": "running",
         "version": "1.0.0"
     }

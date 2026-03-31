@@ -150,7 +150,7 @@ async def update_appointment_status(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/create")
+@router.post("")
 async def create_appointment(
     payload: dict,
     request: Request,
