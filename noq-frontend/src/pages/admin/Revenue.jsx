@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import * as Icons from '@fortawesome/free-solid-svg-icons';
+import apiDbService from '../../services/apiDbService';
 
 const Revenue = () => {
   const [timeRange, setTimeRange] = useState('monthly');
@@ -38,8 +39,12 @@ const Revenue = () => {
     };
   }, []);
 
-  const { revenueData, hospitalPerformance } = useMemo(() => {
+  const { revenueData, hospitalPerformance, distribution } = useMemo(() => {
     const paidBills = bills.filter((bill) => String(bill.status || '').toLowerCase() === 'paid');
+
+    let totalDoctorShare = 0;
+    let totalHmShare = 0;
+    let totalAdminShare = 0;
 
     const monthMap = new Map();
     const yearMap = new Map();
@@ -51,6 +56,10 @@ const Revenue = () => {
       const hospitalName = bill.hospital || bill.hospitalName || 'Unknown Hospital';
       const hospitalId = String(bill.hospitalId || bill.HID || hospitalName);
       const patientId = String(bill.patientId || '');
+
+      totalDoctorShare += amount * 0.15;
+      totalHmShare += amount * 0.80;
+      totalAdminShare += amount * 0.05;
 
       const monthKey = `${when.getFullYear()}-${String(when.getMonth() + 1).padStart(2, '0')}`;
       monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + amount);
@@ -108,6 +117,12 @@ const Revenue = () => {
     return {
       revenueData: { monthly, yearly },
       hospitalPerformance,
+      distribution: {
+        totalCollected: totalDoctorShare + totalHmShare + totalAdminShare,
+        doctorShare: totalDoctorShare,
+        hmShare: totalHmShare,
+        adminShare: totalAdminShare
+      }
     };
   }, [bills, reviews]);
 
@@ -216,7 +231,6 @@ const Revenue = () => {
       <div style={styles.header}>
         <h1 style={styles.title}>Revenue Analytics</h1>
       </div>
-
       <div style={styles.filterTabs}>
         {['monthly', 'yearly'].map(range => (
           <button
@@ -230,6 +244,61 @@ const Revenue = () => {
             {range.charAt(0).toUpperCase() + range.slice(1)}
           </button>
         ))}
+      </div>
+      
+      {/* Distribution Summary */}
+      <div style={{ ...styles.grid, marginBottom: '30px' }}>
+        <div style={{ ...styles.card, borderLeft: '4px solid #4f46e5' }}>
+          <div style={styles.cardHeader}>
+            <div style={styles.cardTitle}>
+              <FontAwesomeIcon icon={Icons.faWallet} style={{ color: '#4f46e5' }} />
+              <span>Patient Payments</span>
+            </div>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: '700', color: '#0f172a' }}>
+            ₹{Number(distribution?.totalCollected || 0).toLocaleString()}
+          </div>
+          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '5px' }}>Total amount paid by patients</div>
+        </div>
+
+        <div style={{ ...styles.card, borderLeft: '4px solid #10b981' }}>
+          <div style={styles.cardHeader}>
+            <div style={styles.cardTitle}>
+              <FontAwesomeIcon icon={Icons.faStethoscope} style={{ color: '#10b981' }} />
+              <span>Doctor Earnings (70%)</span>
+            </div>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: '700', color: '#0f172a' }}>
+            ₹{Number(distribution?.doctorShare || 0).toLocaleString()}
+          </div>
+          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '5px' }}>Total share for consulting doctors</div>
+        </div>
+
+        <div style={{ ...styles.card, borderLeft: '4px solid #f59e0b' }}>
+          <div style={styles.cardHeader}>
+            <div style={styles.cardTitle}>
+              <FontAwesomeIcon icon={Icons.faHospital} style={{ color: '#f59e0b' }} />
+              <span>Hospital Revenue (20%)</span>
+            </div>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: '700', color: '#0f172a' }}>
+            ₹{Number(distribution?.hmShare || 0).toLocaleString()}
+          </div>
+          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '5px' }}>Total share for hospitals/clinics</div>
+        </div>
+
+        <div style={{ ...styles.card, borderLeft: '4px solid #ef4444' }}>
+          <div style={styles.cardHeader}>
+            <div style={styles.cardTitle}>
+              <FontAwesomeIcon icon={Icons.faCogs} style={{ color: '#ef4444' }} />
+              <span>Admin Fee (10%)</span>
+            </div>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: '700', color: '#0f172a' }}>
+            ₹{Number(distribution?.adminShare || 0).toLocaleString()}
+          </div>
+          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '5px' }}>Platform maintenance charge</div>
+        </div>
       </div>
 
       <div style={styles.chartsGrid}>

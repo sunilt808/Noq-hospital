@@ -15,10 +15,11 @@ const API_ENDPOINTS = {
   queues: '/queues',
   tokens: '/queues/tokens',
   history: '/history',
-  bills: '/billing/bills',
+  bills: '/bills',
   medicalRecords: '/medical-records',
   doctorPresence: '/users/presence',
   advancedBooking: '/advanced-booking',
+  admin_settings: '/settings',
 };
 
 /**

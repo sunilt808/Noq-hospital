@@ -21,6 +21,7 @@ from routes import (
     revenue,
     advanced_bookings,
     bills,
+    settings,
 )
 from database import init_db
 
@@ -134,4 +135,5 @@ app.include_router(prescriptions.router)
 app.include_router(revenue.router)
 app.include_router(advanced_bookings.router)
 app.include_router(bills.router)
+app.include_router(settings.router)
 

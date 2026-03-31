@@ -39,7 +39,9 @@ class HospitalResponse(BaseModel):
     services: Optional[List[str]] = None
     last_updated: Optional[str] = None
     status: str
-
+    hm_name: Optional[str] = None
+    hm_email: Optional[str] = None
+    hm_phone: Optional[str] = None
 
 class HospitalRegisterRequest(BaseModel):
     hospital_name: str
@@ -52,11 +54,9 @@ class HospitalRegisterRequest(BaseModel):
     category: str
     address: str = None
 
-
 class HospitalStatusRequest(BaseModel):
     status: str
     message: str = None
-
 
 class HospitalUpdateRequest(BaseModel):
     name: Optional[str] = None
@@ -81,7 +81,6 @@ class HospitalUpdateRequest(BaseModel):
     services: Optional[List[str]] = None
     last_updated: Optional[str] = None
 
-
 class NotificationRequest(BaseModel):
     title: str
     message: str
@@ -89,13 +88,24 @@ class NotificationRequest(BaseModel):
     target_role: str = None
     type: str = 'info'
 
-
-def _serialize_hospital(h: dict) -> dict:
-    h["id"] = h.get("_id", h.get("id"))
+async def _serialize_hospital(h: dict) -> dict:
+    if "_id" in h: h["id"] = str(h["_id"])
+    elif "id" in h: h["id"] = str(h["id"])
+    else: h["id"] = "UNKNOWN"
+    
     if "created_at" in h and isinstance(h["created_at"], datetime):
         h["created_at"] = h["created_at"].isoformat()
     if "updated_at" in h and isinstance(h["updated_at"], datetime):
         h["updated_at"] = h["updated_at"].isoformat()
+    
+    # Fetch HM info
+    if mongodb is not None:
+        hm = await mongodb.users.find_one({"hospital_id": h["id"], "role": "hm"})
+        if hm:
+            h["hm_name"] = hm.get("full_name") or hm.get("name")
+            h["hm_email"] = hm.get("email")
+            h["hm_phone"] = hm.get("phone")
+            
     return h
 
 
@@ -105,9 +115,16 @@ async def register_hospital(req: HospitalRegisterRequest):
     try:
         if mongodb is None: raise HTTPException(status_code=500, detail="DB Error")
 
+        # Allow re-registration if the existing registration was deleted
         existing_h = await mongodb.hospitals.find_one({"email": req.email.lower().strip()})
-        if existing_h:
-            raise HTTPException(status_code=400, detail='A hospital with this email already exists')
+        if existing_h and existing_h.get("status") != 'deleted':
+            raise HTTPException(status_code=400, detail='A hospital with this email already exists and is active or pending')
+        
+        # If deleted, we can safely overwrite/replace it or delete the old one first
+        if existing_h and existing_h.get("status") == 'deleted':
+             await mongodb.hospitals.delete_one({"_id": existing_h["_id"]})
+             # Also clean up any associated users with this email that were deleted
+             await mongodb.users.delete_many({"email": req.email.lower().strip(), "status": "deleted"})
 
         hospital_id = generate_hospital_id()
         while await mongodb.hospitals.find_one({"_id": hospital_id}):
@@ -176,7 +193,13 @@ async def list_hospitals(status_filter: str = "active"):
             
         cursor = mongodb.hospitals.find(query)
         hospitals = await cursor.to_list(length=1000)
-        return [_serialize_hospital(h) for h in hospitals]
+        
+        results = []
+        for h in hospitals:
+            serialized = await _serialize_hospital(h)
+            results.append(serialized)
+            
+        return results
     except Exception as e:
         logger.error(f"Error listing hospitals: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -189,13 +212,19 @@ async def list_available_hospitals():
         if mongodb is None: return []
         cursor = mongodb.hospitals.find({"status": "active"})
         hospitals = await cursor.to_list(length=1000)
-        return [_serialize_hospital(h) for h in hospitals]
+        
+        results = []
+        for h in hospitals:
+            serialized = await _serialize_hospital(h)
+            results.append(serialized)
+            
+        return results
     except Exception as e:
         logger.error(f"Error listing available hospitals: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.patch("/{hospital_id}/status")
+@router.put("/{hospital_id}/status")
 async def update_hospital_status(hospital_id: str, payload: HospitalStatusRequest):
     """Update hospital status and sync HM user status in MongoDB."""
     try:
@@ -241,7 +270,7 @@ async def update_hospital_status(hospital_id: str, payload: HospitalStatusReques
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.patch("/{hospital_id}")
+@router.put("/{hospital_id}")
 async def update_hospital(hospital_id: str, payload: HospitalUpdateRequest):
     """Update hospital profile in MongoDB."""
     try:
@@ -257,7 +286,7 @@ async def update_hospital(hospital_id: str, payload: HospitalUpdateRequest):
         return {
             "success": True,
             "message": "Hospital profile updated",
-            "data": _serialize_hospital(updated_hospital)
+            "data": await _serialize_hospital(updated_hospital)
         }
     except Exception as e:
         logger.error(f"Error updating hospital {hospital_id}: {e}")
@@ -276,21 +305,45 @@ async def send_hospital_notification(payload: NotificationRequest):
 
 @router.delete('/{hospital_id}')
 async def delete_hospital(hospital_id: str):
-    """Soft-delete hospital in MongoDB."""
+    """Soft-delete hospital and any associated orphaned HM records in MongoDB."""
     try:
+        logger.info(f"Attempting to delete hospital with ID: {hospital_id}")
         if mongodb is None: raise HTTPException(status_code=500, detail="DB Error")
-        await mongodb.hospitals.update_one(
+        
+        # 1. Update Hospital Status (if exists)
+        hospital_update = await mongodb.hospitals.update_one(
             {"_id": hospital_id},
             {"$set": {"status": 'deleted', "updated_at": datetime.utcnow()}}
         )
-        await mongodb.users.update_many(
-            {"hospital_id": hospital_id, "role": "hm"},
-            {"$set": {"status": 'inactive', "updated_at": datetime.utcnow()}}
+        
+        # 2. Update linked Users (HM or others)
+        user_update = await mongodb.users.update_many(
+            {"hospital_id": hospital_id},
+            {"$set": {"status": 'deleted', "updated_at": datetime.utcnow()}}
         )
-        return {'success': True, 'message': 'Hospital deleted successfully'}
+        
+        # Success if we found something in either collection
+        found_in_db = (hospital_update.matched_count > 0) or (user_update.matched_count > 0)
+        
+        if not found_in_db:
+            logger.warning(f"No records found in any collection for hospital ID: {hospital_id}")
+            raise HTTPException(status_code=404, detail=f"No registration found for ID {hospital_id}")
+            
+        logger.info(f"Delete successful for {hospital_id}. Hospital table: {hospital_update.matched_count}, User table: {user_update.matched_count}")
+        
+        return {
+            'success': True,
+            'message': 'Registration request deleted successfully.',
+            'data': {
+                'hospital_id': hospital_id,
+                'hospital_matched': hospital_update.matched_count,
+                'users_deleted': user_update.matched_count
+            }
+        }
     except Exception as e:
-        logger.error(f"Error deleting hospital: {e}")
-        raise HTTPException(status_code=500, detail='Internal server error')
+        logger.error(f"Error deleting registration {hospital_id}: {e}")
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{hospital_id}", response_model=HospitalResponse)
@@ -301,7 +354,11 @@ async def get_hospital(hospital_id: str):
         hospital = await mongodb.hospitals.find_one({"_id": hospital_id})
         if not hospital:
             raise HTTPException(status_code=404, detail="Hospital not found")
-        return _serialize_hospital(hospital)
+        return await _serialize_hospital(hospital)
+    except Exception as e:
+        logger.error(f"Error getting hospital: {e}")
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail="Internal server error")
     except Exception as e:
         logger.error(f"Error getting hospital: {e}")
         if isinstance(e, HTTPException): raise e

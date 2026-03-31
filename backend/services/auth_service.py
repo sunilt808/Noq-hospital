@@ -193,7 +193,8 @@ class UserService:
             # Check if email already exists
             existing_user = await mongodb.users.find_one({"email": email.lower().strip()})
             if existing_user:
-                if existing_user.get("status") == "inactive" and existing_user.get("role") == role:
+                # Allow reactivation if 'inactive' OR 'deleted'
+                if (existing_user.get("status") in {"inactive", "deleted"}) and existing_user.get("role") == role:
                     updated_data = {
                         "password_hash": AuthService.hash_password(password),
                         "full_name": full_name,

@@ -25,26 +25,14 @@ async def init_mongo():
     print("Seeding hospitals...")
     hospitals_data = [
         {
-            "_id": "Noq-100001",
-            "name": "Apollo Hospital",
-            "address": "123 Medical Street",
-            "phone": "+91-22-4950-4950",
-            "email": "apollo@hospitalsol.com",
-            "city": "Mumbai",
-            "state": "Maharashtra",
-            "pincode": "400001",
-            "status": "active",
-            "created_at": datetime.utcnow()
-        },
-        {
-            "_id": "Noq-100002",
-            "name": "Max Healthcare",
-            "address": "456 Health Lane",
-            "phone": "+91-11-4141-4141",
-            "email": "info@maxhealthcare.com",
-            "city": "Delhi",
-            "state": "Delhi",
-            "pincode": "110001",
+            "_id": "Noq-100003",
+            "name": "Fortis Hospital",
+            "address": "789 Care Avenue",
+            "phone": "+91-80-2211-7777",
+            "email": "fortis@healthcare.com",
+            "city": "Bangalore",
+            "state": "Karnataka",
+            "pincode": "560001",
             "status": "active",
             "created_at": datetime.utcnow()
         },
@@ -86,28 +74,6 @@ async def init_mongo():
             "password_hash": hash_password("admin@123"),
             "full_name": "Admin User",
             "role": "admin",
-            "status": "active",
-            "created_at": datetime.utcnow()
-        },
-        {
-            "_id": str(uuid4()),
-            "email": "hm@apollo.com",
-            "hospital_id": "Noq-100001",
-            "hospital_name": "Apollo Hospital",
-            "full_name": "Apollo Manager",
-            "password_hash": hash_password("hm@123"),
-            "role": "hm",
-            "status": "active",
-            "created_at": datetime.utcnow()
-        },
-        {
-            "_id": str(uuid4()),
-            "email": "hm@max.com",
-            "hospital_id": "Noq-100002",
-            "hospital_name": "Max Healthcare",
-            "full_name": "Max Manager",
-            "password_hash": hash_password("hm@123"),
-            "role": "hm",
             "status": "active",
             "created_at": datetime.utcnow()
         },

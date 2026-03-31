@@ -42,7 +42,7 @@ const Hospitals = () => {
   }, []);
 
   const getHospitalId = (hospital) => String(
-    hospital?.id || hospital?.HID || hospital?.hospitalId || hospital?.hospital_id || ''
+    hospital?.id || hospital?.HID || hospital?.hospitalId || hospital?.hospital_id || 'UNKNOWN'
   );
 
   const updateHospital = (hospitalId, updater) => {
@@ -60,7 +60,8 @@ const Hospitals = () => {
     try {
       const hospitalId = getHospitalId(hospital);
       const payloadStatus = nextStatus === 'suspended' ? 'SUSPENDED' : 'ACTIVE';
-      const res = await api.patch(`/hospitals/${hospitalId}/status`, { status: payloadStatus, message: '' });
+      const res = await api.put(`/hospitals/${hospitalId}/status`, { status: payloadStatus, message: '' });
+      alert(`Hospital ${payloadStatus.toLowerCase()} successfully (Database Connected)`);
       const updatedFromApi = res?.data || {};
       updateHospital(hospitalId, (item) => ({
         ...item,
@@ -108,7 +109,10 @@ const Hospitals = () => {
 
   const deleteHospital = async (hospital) => {
     const hospitalId = getHospitalId(hospital);
-    if (!hospitalId) return;
+    if (!hospitalId || hospitalId === 'UNKNOWN') {
+      alert("Error: Missing Hospital ID. Cannot perform database action.");
+      return;
+    }
 
     const confirmed = window.confirm(
       `Delete ${hospital.hospital_name || hospital.hospitalName || hospital.name || 'this hospital'}?`
@@ -117,6 +121,7 @@ const Hospitals = () => {
 
     try {
       await api.delete(`/hospitals/${hospitalId}`);
+      alert(`Hospital deleted successfully (Database Connected)`);
       setHospitals((prev) => prev.filter((item) => getHospitalId(item) !== hospitalId));
 
       recordHistory({

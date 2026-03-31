@@ -17,24 +17,14 @@ def seed_hospitals(db):
     """Seed initial hospitals."""
     hospitals_data = [
         {
-            "id": "Noq-100001",
-            "name": "Apollo Hospital",
-            "address": "123 Medical Street",
-            "phone": "+91-22-4950-4950",
-            "email": "apollo@hospitalsol.com",
-            "city": "Mumbai",
-            "state": "Maharashtra",
-            "pincode": "400001",
-        },
-        {
-            "id": "Noq-100002",
-            "name": "Max Healthcare",
-            "address": "456 Health Lane",
-            "phone": "+91-11-4141-4141",
-            "email": "info@maxhealthcare.com",
-            "city": "Delhi",
-            "state": "Delhi",
-            "pincode": "110001",
+            "id": "Noq-100003",
+            "name": "Fortis Hospital",
+            "address": "789 Care Avenue",
+            "phone": "+91-80-2211-7777",
+            "email": "fortis@healthcare.com",
+            "city": "Bangalore",
+            "state": "Karnataka",
+            "pincode": "560001",
         },
         {
             "id": "Noq-100003",
@@ -61,11 +51,6 @@ def seed_hospitals(db):
 def seed_departments(db):
     """Seed initial departments."""
     departments_data = [
-        {"id": "DEPT-001", "hospital_id": "Noq-100001", "name": "Cardiology", "description": "Heart and cardio-vascular care"},
-        {"id": "DEPT-002", "hospital_id": "Noq-100001", "name": "Neurology", "description": "Nervous system care"},
-        {"id": "DEPT-003", "hospital_id": "Noq-100001", "name": "Orthopedic", "description": "Bone and joint care"},
-        {"id": "DEPT-004", "hospital_id": "Noq-100002", "name": "Cardiology", "description": "Heart and cardio-vascular care"},
-        {"id": "DEPT-005", "hospital_id": "Noq-100002", "name": "General Surgery", "description": "General surgical procedures"},
         {"id": "DEPT-006", "hospital_id": "Noq-100003", "name": "Pediatrics", "description": "Child care"},
     ]
     
@@ -102,20 +87,7 @@ def seed_admin_user(db):
 
 def seed_hm_users(db):
     """Seed Hospital Manager users."""
-    hm_users = [
-        {
-            "email": "hm@apollo.com",
-            "hospital_id": "Noq-100001",
-            "full_name": "Apollo Manager",
-            "password": "hm@123",
-        },
-        {
-            "email": "hm@max.com",
-            "hospital_id": "Noq-100002",
-            "full_name": "Max Manager",
-            "password": "hm@123",
-        },
-    ]
+    hm_users = []
     
     for user_data in hm_users:
         existing = db.query(User).filter(User.email == user_data["email"]).first()
@@ -164,8 +136,6 @@ def init_database():
             
             print("Test Credentials:")
             print("  Admin: admin@noq.com / admin@123")
-            print("  HM (Apollo): hm@apollo.com / hm@123")
-            print("  HM (Max): hm@max.com / hm@123")
             print()
             
         finally:

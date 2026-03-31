@@ -114,7 +114,7 @@ async def get_appointment(appointment_id: str, auth_payload: dict = Depends(requ
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.patch("/{appointment_id}")
+@router.put("/{appointment_id}")
 async def update_appointment_status(
     appointment_id: str,
     update: AppointmentStatusUpdate,
@@ -142,6 +142,12 @@ async def update_appointment_status(
             ip_address=client_ip,
         )
         
+        if update.status == "completed":
+            updated_appt = await mongodb.appointments.find_one({"_id": appointment_id})
+            if updated_appt:
+                from .revenue import record_revenue_distribution
+                await record_revenue_distribution(updated_appt)
+
         updated_appt = await mongodb.appointments.find_one({"_id": appointment_id})
         return _serialize_appointment(updated_appt)
     except Exception as e:

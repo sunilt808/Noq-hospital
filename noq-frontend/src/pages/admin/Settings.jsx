@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import * as Icons from '@fortawesome/free-solid-svg-icons';
+import apiDbService from '../../services/apiDbService';
 import { useAuth } from '../../context/AuthContext';
 
 const DEFAULT_SETTINGS = {

@@ -101,13 +101,36 @@ const HMApprovals = () => {
     };
   }, []);
 
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editFormData, setEditFormData] = useState({ name: '', email: '', phone: '', hospital: '' });
+
   const handleAction = async (id, action) => {
+    if (!id || id === 'UNKNOWN') {
+      alert("Error: Missing Hospital ID. Cannot perform database action.");
+      return;
+    }
+    const target = hmRequests.find(h => h.id === id);
+    if (!target) return;
+
+    if (action === 'edit') {
+      setCurrentHm(target);
+      setEditFormData({
+        name: target.name,
+        email: target.email,
+        phone: target.phone,
+        hospital: target.hospital
+      });
+      setShowEditModal(true);
+      return;
+    }
+
     if (action === 'deleted') {
       const confirmed = window.confirm('Delete this hospital manager request? This action will remove it from approvals.');
       if (!confirmed) return;
 
       try {
         await api.delete(`/hospitals/${id}`);
+        alert('HM Request deleted successfully (Database Connected)');
         await fetchHmApprovals();
       } catch (err) {
         alert(err?.message || 'Unable to delete HM request.');
@@ -116,7 +139,7 @@ const HMApprovals = () => {
     }
 
     if (action === 'rejected' || action === 'suspended' || action === 'warned') {
-      setCurrentHm(hmRequests.find(hm => hm.id === id));
+      setCurrentHm(target);
       setActionType(action);
       setShowMessageModal(true);
       return;
@@ -124,13 +147,34 @@ const HMApprovals = () => {
 
     try {
       const status = action === 'approved' ? 'APPROVED' : action === 'rejected' ? 'REJECTED' : 'SUSPENDED';
-      await api.patch(`/hospitals/${id}/status`, { status, message: '' });
+      await api.put(`/hospitals/${id}/status`, { status, message: '' });
+      alert(`HM Request ${action === 'approved' ? 'approved' : action} successfully (Database Connected)`);
       await fetchHmApprovals();
     } catch (err) {
       alert(err?.message || 'Unable to update HM status.');
     }
   };
 
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      // Update Hospital Name via PUT /hospitals/{id}
+      await api.put(`/hospitals/${currentHm.id}`, {
+        name: editFormData.hospital,
+        email: editFormData.email,
+        phone: editFormData.phone
+      });
+      
+      // Update HM User details if possible (full_name) via PATCH /users/{id}
+      // Note: we'd need the hm_user_id here. For now update the hospital.
+      
+      alert('Hospital details updated successfully (Database Connected)');
+      setShowEditModal(false);
+      await fetchHmApprovals();
+    } catch (err) {
+      alert(err?.message || 'Failed to update hospital details');
+    }
+  };
   const handleMessageSubmit = async () => {
     if (!adminMessage.trim() || !currentHm?.id) return;
 
@@ -145,7 +189,7 @@ const HMApprovals = () => {
         });
       } else {
         const status = actionType === 'rejected' ? 'REJECTED' : 'SUSPENDED';
-        await api.patch(`/hospitals/${currentHm.id}/status`, {
+        await api.put(`/hospitals/${currentHm.id}/status`, {
           status,
           message: adminMessage.trim(),
         });
@@ -547,6 +591,54 @@ const HMApprovals = () => {
                 Submit
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showEditModal && currentHm && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent}>
+            <h3 style={styles.modalTitle}>Edit Hospital Profile</h3>
+            <form onSubmit={handleEditSubmit}>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '13px', marginBottom: '4px' }}>Hospital Name</label>
+                <input
+                  style={styles.search}
+                  value={editFormData.hospital}
+                  onChange={(e) => setEditFormData({ ...editFormData, hospital: e.target.value })}
+                  required
+                />
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '13px', marginBottom: '4px' }}>Manager Name</label>
+                <input
+                  style={styles.search}
+                  value={editFormData.name}
+                  onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '13px', marginBottom: '4px' }}>Email</label>
+                <input
+                  style={styles.search}
+                  value={editFormData.email}
+                  disabled
+                />
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '13px', marginBottom: '4px' }}>Phone</label>
+                <input
+                  style={styles.search}
+                  value={editFormData.phone}
+                  onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+                />
+              </div>
+              <div style={styles.modalButtons}>
+                <button type="button" style={styles.cancelBtn} onClick={() => setShowEditModal(false)}>Cancel</button>
+                <button type="submit" style={styles.submitBtn}>Update DB</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
