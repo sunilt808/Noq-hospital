@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { recordHistory } from '../../services/historyService';
 import { useAuth } from '../../context/AuthContext';
+import useApiData from '../../hooks/useApiData';
+import api from '../../services/api';
 import doctorService from '../../services/doctorService';
 import {
   faArrowLeft, faUsers, faClock, faUserInjured,
@@ -68,74 +71,71 @@ const DoctorQueue = () => {
     }
   }, [currentUser, authLoading, navigate]);
 
-  // Update doctor presence status in API
+  // Update doctor presence status - fire-and-forget, graceful failure
   useEffect(() => {
     if (!doctor?.id) return;
-
     const updatePresence = async () => {
       try {
-        const presenceId = 'doc_' + doctor.id;
-        await apiDbService.upsert('doctorPresence', presenceId, {
-          doctorId: String(doctor.id),
-          doctorName: doctor.name || 'Doctor',
-          status: isOnBreak ? 'on_break' : selectedPatient ? 'in_consultation' : 'available',
-          currentPatientId: selectedPatient?.id || null,
-          currentPatientName: selectedPatient?.patient || null,
-          updatedAt: new Date().toISOString(),
+        await api.put('/users/me', {
+          presence_status: isOnBreak ? 'on_break' : selectedPatient ? 'in_consultation' : 'available',
         });
       } catch (error) {
-        console.error('Error updating doctor presence:', error);
+        // Presence update is non-critical, ignore errors
       }
     };
-    
     updatePresence();
   }, [doctor?.id, isOnBreak, selectedPatient]);
 
   // Calculate queue and completed appointments from API data
   const queue = useMemo(() => {
-    const doctorAppts = appointments.filter(apt => 
-      apt.doctorId === doctor?.id && ['waiting', 'pending', 'confirmed'].includes(apt.status)
-    );
+    const doctorAppts = appointments.filter(apt => {
+      const dId = apt.doctor_id || apt.doctorId || '';
+      const status = String(apt.status || '').toLowerCase();
+      return String(dId) === String(currentUser?.id || '') && ['waiting', 'pending', 'confirmed', 'in_consultation'].includes(status);
+    });
     
     return doctorAppts.map(apt => {
+      const pId = apt.patient_id || apt.patientId || '';
       const patient = patients.find(
         p =>
-          String(p.id || '') === String(apt.patientId || '') ||
-          p.email?.toLowerCase() === apt.patientEmail?.toLowerCase()
+          String(p.id || '') === String(pId) ||
+          p.email?.toLowerCase() === (apt.patientEmail || apt.patient_email || '').toLowerCase()
       );
       return {
-        id: apt.id,
-        appointmentId: apt.id,
-        patientId: apt.patientId || patient?.id || null,
-        patientEmail: apt.patientEmail || patient?.email || '',
-        token: getTokenLabel(apt.token || apt.queueToken || ''),
-        patient: apt.patientName || patient?.name || 'Patient',
-        phone: apt.phone || apt.patientPhone || patient?.phone || '',
+        id: apt.id || apt._id,
+        appointmentId: apt.id || apt._id,
+        patientId: pId || patient?.id || null,
+        patientEmail: apt.patient_email || apt.patientEmail || patient?.email || '',
+        token: getTokenLabel(apt.token || apt.token_number || apt.tokenNumber || ''),
+        patient: apt.patient_name || apt.patientName || patient?.name || 'Patient',
+        phone: apt.phone || apt.patient_phone || apt.patientPhone || patient?.phone || '',
         time: getAppointmentTime(apt),
-        type: apt.type || 'regular',
+        type: apt.type || apt.appointment_type || 'regular',
         priority: apt.priority || 'normal',
         status: apt.status,
-        notes: apt.notes || apt.diseaseName || apt.reason || '',
-        arrivalTime: apt.arrivalTime || getAppointmentTime(apt) || '',
+        notes: apt.notes || apt.disease || apt.disease_name || '',
+        arrivalTime: apt.arrival_time || apt.arrivalTime || getAppointmentTime(apt) || '',
       };
     });
-  }, [appointments, doctor?.id, patients]);
+  }, [appointments, currentUser?.id, patients]);
 
   const completed = useMemo(() => {
-    const doctorAppts = appointments.filter(apt => 
-      apt.doctorId === doctor?.id && apt.status === 'completed'
-    );
+    const doctorAppts = appointments.filter(apt => {
+      const dId = apt.doctor_id || apt.doctorId || '';
+      const status = String(apt.status || '').toLowerCase();
+      return String(dId) === String(currentUser?.id || '') && status === 'completed';
+    });
     
     return doctorAppts.map(apt => ({
-      id: apt.id,
-      token: getTokenLabel(apt.token || apt.queueToken || ''),
-      patient: apt.patientName || 'Patient',
+      id: apt.id || apt._id,
+      token: getTokenLabel(apt.token || apt.token_number || apt.tokenNumber || ''),
+      patient: apt.patient_name || apt.patientName || 'Patient',
       time: getAppointmentTime(apt),
-      type: apt.type || 'regular',
+      type: apt.type || apt.appointment_type || 'regular',
       status: 'completed',
-      completionTime: apt.completionTime || ''
+      completionTime: apt.completion_time || apt.completionTime || ''
     }));
-  }, [appointments, doctor?.id]);
+  }, [appointments, currentUser?.id]);
 
   const tokenStats = useMemo(() => {
     const waiting = queue.length;
@@ -151,13 +151,7 @@ const DoctorQueue = () => {
 
   const updateAppointmentStatus = async (appointmentId, updates) => {
     try {
-      const appointment = appointments.find(a => a.id === appointmentId);
-      if (!appointment) return;
-      
-      await apiDbService.upsert('appointments', appointmentId, {
-        ...appointment,
-        ...updates
-      });
+      await api.put(`/appointments/${appointmentId}`, updates);
     } catch (error) {
       console.error('Error updating appointment:', error);
       alert('Failed to update appointment');
@@ -198,7 +192,7 @@ const DoctorQueue = () => {
         module: 'queue',
         message: `Started consultation with ${patient.patient} (Token: ${patient.token})`,
         doctorId: String(doctor?.id || ''),
-        hospitalId: String(doctor?.hospitalId || ''),
+        hospitalId: String(currentUser?.hospital_id || ''),
         patientId: String(patient.patientId || ''),
         meta: { token: patient.token, patientName: patient.patient },
       });
@@ -227,7 +221,7 @@ const DoctorQueue = () => {
         module: 'queue',
         message: `Completed consultation with ${selectedPatient.patient} (Token: ${selectedPatient.token})`,
         doctorId: String(doctor?.id || ''),
-        hospitalId: String(doctor?.hospitalId || ''),
+        hospitalId: String(currentUser?.hospital_id || ''),
         patientId: String(selectedPatient.patientId || ''),
         meta: { token: selectedPatient.token, patientName: selectedPatient.patient, completionTime },
       });
@@ -254,7 +248,7 @@ const DoctorQueue = () => {
           module: 'queue',
           message: `Skipped patient ${patient.patient} (Token: ${patient.token}) to end of queue`,
           doctorId: String(doctor?.id || ''),
-          hospitalId: String(doctor?.hospitalId || ''),
+          hospitalId: String(currentUser?.hospital_id || ''),
           patientId: String(patient.patientId || ''),
           meta: { token: patient.token, patientName: patient.patient },
         });
@@ -277,21 +271,24 @@ const DoctorQueue = () => {
     }
 
     try {
-      const newApptId = 'apt_' + Date.now();
-      await apiDbService.upsert('appointments', newApptId, {
+      const newApptId = `APT-${Date.now()}`;
+      await api.post('/appointments', {
         id: newApptId,
         doctorId: doctor.id,
+        doctor_id: doctor.id,
+        doctor_name: doctor.name || doctor.full_name || '',
         patientName: newPatient.name,
+        patient_name: newPatient.name,
+        patient_id: newApptId, // walk-in, no registered patient
         patientPhone: newPatient.phone,
-        token: newPatient.token,
+        token: { tokenNumber: newPatient.token },
         phone: newPatient.phone,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        type: newPatient.type,
+        appointment_time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        appointment_type: newPatient.type,
         priority: newPatient.priority,
         status: 'waiting',
         notes: 'Walk-in patient',
-        arrivalTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        createdAt: new Date().toISOString()
+        hospital_id: currentUser?.hospital_id || currentUser?.hospitalId || '',
       });
       
       setNewPatient({ name: '', token: '', type: 'regular', priority: 'normal', phone: '' });
@@ -442,6 +439,13 @@ const DoctorQueue = () => {
                 </div>
                 
                 <div className="consultation-actions">
+                  <button 
+                    className="complete-btn"
+                    onClick={() => navigate(`/doctor/prescriptions?patientId=${selectedPatient.patientId}&appointmentId=${selectedPatient.appointmentId}`)}
+                    style={{ background: '#3b82f6', marginBottom: '10px' }}
+                  >
+                    <FontAwesomeIcon icon={faStethoscope} /> Write Prescription
+                  </button>
                   <button 
                     className="complete-btn"
                     onClick={handleCompleteConsultation}

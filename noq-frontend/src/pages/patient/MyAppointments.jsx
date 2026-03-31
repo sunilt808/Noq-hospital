@@ -14,6 +14,15 @@ import reviewService from '../../services/reviewService';
 const MyAppointments = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
+
+  // Helper to determine doctor live status display
+  const getDoctorLiveStatus = (appointment) => {
+    const isLive = appointment?.doctor_live || appointment?.isLive || false;
+    if (isLive) {
+      return { text: 'Online', color: '#065f46', bg: '#d1fae5' };
+    }
+    return { text: 'Away', color: '#991b1b', bg: '#fee2e2' };
+  };
   
   const [appointments, setAppointments] = useState([]);
   const [userReviews, setUserReviews] = useState([]);
@@ -62,7 +71,7 @@ const MyAppointments = () => {
       const isCompleted = ['completed', 'visited', 'done', 'closed'].includes(status);
       const notReviewed = !reviewedIds.has(String(apt.id || ''));
       return isCompleted && notReviewed;
-    }).sort((a, b) => new Date(b.appointment_date || b.date) - new Date(a.appointment_date || a.date));
+    }).sort((a, b) => new Date(b.appointment_date || b.appointmentDate || b.date) - new Date(a.appointment_date || a.appointmentDate || a.date));
   }, [appointments, userReviews]);
 
   // Split appointments into upcoming and past
@@ -74,17 +83,17 @@ const MyAppointments = () => {
     const now = new Date();
     const upcoming = appointments
       .filter((apt) => {
-        const aptDate = new Date(apt.appointment_date || apt.date);
+        const aptDate = new Date(apt.appointment_date || apt.appointmentDate || apt.date);
         return !Number.isNaN(aptDate.getTime()) && aptDate >= now;
       })
-      .sort((a, b) => new Date(a.appointment_date || a.date) - new Date(b.appointment_date || b.date));
+      .sort((a, b) => new Date(a.appointment_date || a.appointmentDate || a.date) - new Date(b.appointment_date || b.appointmentDate || b.date));
 
     const past = appointments
       .filter((apt) => {
-        const aptDate = new Date(apt.appointment_date || apt.date);
+        const aptDate = new Date(apt.appointment_date || apt.appointmentDate || apt.date);
         return Number.isNaN(aptDate.getTime()) || aptDate < now;
       })
-      .sort((a, b) => new Date(b.appointment_date || b.date) - new Date(a.appointment_date || a.date));
+      .sort((a, b) => new Date(b.appointment_date || b.appointmentDate || b.date) - new Date(a.appointment_date || a.appointmentDate || a.date));
 
     return { upcomingAppointments: upcoming, pastAppointments: past };
   }, [appointments]);
@@ -161,10 +170,10 @@ const MyAppointments = () => {
   const reviewedAppointmentIds = useMemo(() => {
     return new Set(
       userReviews
-        .filter((item) => item.patientId === patient?.id)
-        .map((item) => String(item.appointmentId || ''))
+        .filter((item) => String(item.patient_id || item.patientId || '') === String(currentUser?.id || ''))
+        .map((item) => String(item.appointment_id || item.appointmentId || ''))
     );
-  }, [userReviews, patient?.id]);
+  }, [userReviews, currentUser?.id]);
 
   const copyTokenToClipboard = (tokenNumber) => {
     navigator.clipboard.writeText(tokenNumber);
@@ -256,13 +265,13 @@ const MyAppointments = () => {
                   <strong>Token:</strong> {app.token?.tokenNumber || 'N/A'}
                 </p>
                 <p style={styles.cardText}>
-                  <strong>Hospital:</strong> {app.hospitalName || 'N/A'}
+                  <strong>Hospital:</strong> {app.hospital_name || app.hospitalName || 'N/A'}
                 </p>
                 <p style={styles.cardText}>
-                  <strong>Doctor:</strong> {app.doctorName || 'N/A'}
+                  <strong>Doctor:</strong> {app.doctor_name || app.doctorName || 'N/A'}
                 </p>
                 <p style={styles.cardText}>
-                  <strong>Date:</strong> {app.appointmentDate || app.token?.date || 'N/A'}
+                  <strong>Date:</strong> {app.appointment_date || app.appointmentDate || app.token?.date || 'N/A'}
                 </p>
                 <p style={styles.cardText}>
                   <strong>Status:</strong>{' '}
@@ -332,8 +341,8 @@ const MyAppointments = () => {
               </button>
             </div>
             <div style={styles.modalBody}>
-              <p style={styles.cardText}><strong>Doctor:</strong> {reviewTarget.doctorName || 'N/A'}</p>
-              <p style={styles.cardText}><strong>Hospital:</strong> {reviewTarget.hospitalName || 'N/A'}</p>
+              <p style={styles.cardText}><strong>Doctor:</strong> {reviewTarget.doctor_name || reviewTarget.doctorName || 'N/A'}</p>
+              <p style={styles.cardText}><strong>Hospital:</strong> {reviewTarget.hospital_name || reviewTarget.hospitalName || 'N/A'}</p>
 
               <div style={{ marginTop: 12 }}>
                 <label style={styles.tokenLabel}>Doctor Rating</label>

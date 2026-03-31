@@ -24,10 +24,16 @@ const Profile = () => {
   const { currentUser, loading: authLoading } = useAuth();
   
   const [patient, setPatient] = useState(null);
+  const [patientAvatar, setPatientAvatar] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [message, setMessage] = useState({ type: '', text: '' });
   const [loading, setLoading] = useState(true);
+  
+  const [stats, setStats] = useState({
+    medicalRecords: 0,
+    appointments: 0
+  });
 
   // Load patient profile from API
   useEffect(() => {
@@ -41,34 +47,32 @@ const Profile = () => {
     const loadProfile = async () => {
       try {
         setLoading(true);
-        const profileData = await patientService.getMyProfile();
+        const [profileData, appointmentsData, recordsData] = await Promise.all([
+          patientService.getMyProfile(),
+          patientService.getMyAppointments(),
+          patientService.getMedicalRecords()
+        ]);
+
         if (profileData) {
           setPatient(profileData);
-          // Initialize edit form with normalized field names
           setEditForm({
             full_name: profileData.full_name || profileData.name || '',
             email: profileData.email || '',
             phone: profileData.phone || '',
+            dob: profileData.dob || profileData.date_of_birth || '',
+            gender: profileData.gender || '',
+            bloodGroup: profileData.bloodGroup || profileData.blood_group || '',
+            address: profileData.address || '',
             hospitalId: profileData.hospital_id || ''
           });
-        } else {
-          setPatient(currentUser);
-          setEditForm({
-            full_name: currentUser.full_name || currentUser.name || '',
-            email: currentUser.email || '',
-            phone: currentUser.phone || '',
-            hospitalId: currentUser.hospital_id || ''
-          });
         }
+        
+        setStats({
+          appointments: Array.isArray(appointmentsData) ? appointmentsData.length : 0,
+          medicalRecords: Array.isArray(recordsData) ? recordsData.length : 0
+        });
       } catch (error) {
         console.error('Error loading profile:', error);
-        setPatient(currentUser);
-        setEditForm({
-          full_name: currentUser.full_name || currentUser.name || '',
-          email: currentUser.email || '',
-          phone: currentUser.phone || '',
-          hospitalId: currentUser.hospital_id || ''
-        });
       } finally {
         setLoading(false);
       }
@@ -84,6 +88,10 @@ const Profile = () => {
         full_name: patient?.full_name || patient?.name || '',
         email: patient?.email || '',
         phone: patient?.phone || '',
+        dob: patient?.dob || patient?.date_of_birth || '',
+        gender: patient?.gender || '',
+        bloodGroup: patient?.bloodGroup || patient?.blood_group || '',
+        address: patient?.address || '',
         hospitalId: patient?.hospital_id || ''
       });
     }
@@ -111,6 +119,10 @@ const Profile = () => {
         full_name: editForm.full_name,
         email: editForm.email,
         phone: editForm.phone,
+        dob: editForm.dob,
+        gender: editForm.gender,
+        blood_group: editForm.bloodGroup,
+        address: editForm.address,
         hospital_id: editForm.hospitalId
       };
 
@@ -119,7 +131,8 @@ const Profile = () => {
       // Update local state with saved changes
       setPatient(prev => ({
         ...prev,
-        ...updateData
+        ...updateData,
+        bloodGroup: editForm.bloodGroup // keep camelCase for display
       }));
       
       setIsEditing(false);
@@ -140,6 +153,9 @@ const Profile = () => {
 
   const normalizedStatus = String(patient?.status || 'active').toLowerCase();
   const statusLabel = normalizedStatus === 'active' ? 'Active' : normalizedStatus === 'blocked' ? 'Blocked' : normalizedStatus === 'inactive' ? 'Inactive' : normalizedStatus;
+  // Derive display name — backend returns full_name
+  const displayName = patient?.full_name || patient?.name || 'Patient';
+  const avatarLetter = displayName.charAt(0).toUpperCase();
 
   const calculateAge = (dob) => {
     if (!dob) return "N/A";
@@ -563,7 +579,7 @@ const Profile = () => {
               {patientAvatar ? (
                 <img src={patientAvatar} alt="Profile" className="avatar-image" />
               ) : (
-                patient.name ? patient.name.charAt(0).toUpperCase() : "P"
+                avatarLetter
               )}
             </div>
             <button className="avatar-upload">
@@ -571,7 +587,7 @@ const Profile = () => {
             </button>
           </div>
           <div className="profile-info">
-            <h2>{patient.name}</h2>
+            <h2>{displayName}</h2>
             <p className="patient-id">Patient ID: {patient.id || "N/A"}</p>
             <div className="profile-status">
               <span className={`status-badge ${normalizedStatus === 'active' ? 'active' : 'inactive'}`}>{statusLabel}</span>
@@ -613,7 +629,7 @@ const Profile = () => {
                   {isEditing ? (
                     <input type="text" name="full_name" value={editForm.full_name || ""} onChange={handleChange} className="form-input" />
                   ) : (
-                    <span>{patient.name}</span>
+                    <span>{displayName}</span>
                   )}
                 </div>
                 <div className="info-item">
@@ -650,7 +666,7 @@ const Profile = () => {
                       <option>O+</option> <option>O-</option> <option>AB+</option> <option>AB-</option>
                     </select>
                   ) : (
-                    <span>{patient.bloodGroup || "Not specified"}</span>
+                    <span>{patient.bloodGroup || patient.blood_group || "Not specified"}</span>
                   )}
                 </div>
               </div>
@@ -708,7 +724,7 @@ const Profile = () => {
               </div>
               <div className="health-stat">
                 <FontAwesomeIcon icon={faDroplet} />
-                <div><h4>Blood Group</h4><p>{patient.bloodGroup || "Not specified"}</p></div>
+                <div><h4>Blood Group</h4><p>{patient.bloodGroup || patient.blood_group || "Not specified"}</p></div>
               </div>
             </div>
           </div>

@@ -87,18 +87,11 @@ const MedicalRecords = () => {
   }, [authLoading, currentUser, navigate]);
 
   const patient = useMemo(() => {
-    const matchedPatient = allPatients.find((p) => p.email?.toLowerCase() === currentUser?.email?.toLowerCase());
-
-    if (matchedPatient) {
-      return matchedPatient;
-    }
-
     if (currentUser && String(currentUser.role || '').toLowerCase() === 'patient') {
-      return currentUser;
+      return { ...currentUser, name: currentUser.full_name || currentUser.name || 'Patient' };
     }
-
     return null;
-  }, [allPatients, currentUser]);
+  }, [currentUser]);
 
   // Record categories
   const categories = [
@@ -122,51 +115,13 @@ const MedicalRecords = () => {
   }, [authLoading, currentUser, navigate]);
 
   useEffect(() => {
-    if (patient?.id) {
-      loadMedicalRecords(patient.id);
+    if (records.length > 0) {
+      setFilteredRecords(filterRecords(records, activeTab));
     }
-  }, [patient?.id, patient?.email, allMedicalRecords, prescriptions, activeTab]);
+  }, [records, activeTab]);
 
-  // Load medical records
-  const loadMedicalRecords = (patientId) => {
-    setLoading(true);
-    const patientEmail = String(patient?.email || '').toLowerCase();
-
-    const patientRecords = allMedicalRecords.filter((record) =>
-      String(record.patientId || '') === String(patientId) ||
-      String(record.patientEmail || '').toLowerCase() === patientEmail
-    );
-
-    const patientPrescriptions = prescriptions
-      .filter(
-        (item) =>
-          String(item.patientId || '') === String(patientId) ||
-          String(item.patientEmail || '').toLowerCase() === patientEmail
-      )
-      .map((item) => ({
-        id: `RX-${item.id || Date.now()}`,
-        title: item.medicine || 'Prescription',
-        category: 'prescription',
-        doctor: item.doctorName || item.doctor || 'Doctor',
-        hospital: item.hospitalName || item.hospital || 'Hospital',
-        date: (item.date || item.createdAt || new Date().toISOString()).split('T')[0],
-        type: 'pdf',
-        size: 'Prescription',
-        description: item.prescription || item.notes || 'Doctor prescription',
-        tags: ['Prescription', item.status || 'active'].filter(Boolean),
-        uploadedBy: item.doctorName || 'Doctor',
-        confidential: false,
-        patientId: String(item.patientId || ''),
-        source: 'doctor-prescription',
-      }));
-
-    const mergedRecords = [...patientRecords, ...patientPrescriptions]
-      .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-
-    setRecords(mergedRecords);
-    setFilteredRecords(filterRecords(mergedRecords, activeTab));
-    setLoading(false);
-  };
+  // This legacy loadMedicalRecords function is kept as a stub to avoid any reference errors
+  const loadMedicalRecords = () => {};
 
   // Filter records
   const filterRecords = (recs, tab) => {
@@ -201,35 +156,31 @@ const MedicalRecords = () => {
     setFilteredRecords(filtered);
   };
 
-  // Upload new record
+  // Upload new record — save locally (no backend endpoint for file upload yet)
   const handleUpload = async (file) => {
+    if (!patient) return;
     const newRecord = {
       id: `mr_${Date.now()}`,
       title: file.name,
       category: selectedCategory || 'consultation',
       doctor: 'Self Uploaded',
-      hospital: patient?.hospital || 'Self',
+      hospital: 'Self',
       date: new Date().toISOString().split('T')[0],
       type: file.type.includes('pdf') ? 'pdf' : 'image',
       size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
       description: 'Uploaded by patient',
       tags: ['Self-Upload'],
-      uploadedBy: patient?.name,
+      uploadedBy: patient?.name || 'Patient',
       confidential: false,
+      sharedWith: [],
       patientId: patient.id
     };
 
-    try {
-      await apiDbService.upsert('medicalRecords', newRecord.id, newRecord);
-      const updatedRecords = [...records, newRecord];
-      setRecords(updatedRecords);
-      setFilteredRecords(filterRecords(updatedRecords, activeTab));
-      setShowUploadModal(false);
-      alert('Record uploaded successfully!');
-    } catch (error) {
-      console.error('Error uploading record:', error);
-      alert('Failed to upload record.');
-    }
+    const updatedRecords = [...records, newRecord];
+    setRecords(updatedRecords);
+    setFilteredRecords(filterRecords(updatedRecords, activeTab));
+    setShowUploadModal(false);
+    alert('Record added locally. Cloud upload coming soon.');
   };
 
   // Download record
@@ -275,7 +226,7 @@ const MedicalRecords = () => {
     });
   };
 
-  if (authLoading || dataLoading || !patient) {
+  if (authLoading || loading) {
     return (
       <div className="loading-container">
         <div className="loading-spinner"></div>
@@ -593,7 +544,7 @@ const MedicalRecords = () => {
                   <div className="access-info">
                     <p><strong>Uploaded by:</strong> {selectedRecord.uploadedBy}</p>
                     <p><strong>Confidential:</strong> {selectedRecord.confidential ? 'Yes' : 'No'}</p>
-                    {selectedRecord.sharedWith.length > 0 && (
+                    {(selectedRecord.sharedWith?.length ?? 0) > 0 && (
                       <p><strong>Shared with:</strong> {selectedRecord.sharedWith.join(', ')}</p>
                     )}
                   </div>

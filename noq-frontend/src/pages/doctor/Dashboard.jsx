@@ -107,20 +107,32 @@ const DoctorDashboard = () => {
         // Load queue
         const queueData = appointments
           .filter(a => ['waiting', 'pending', 'confirmed'].includes(a.status))
-          .map(a => ({
-            id: a.id,
-            token: a.token || `T${String(Math.random()).slice(-3)}`,
-            patient: a.patient_name || 'Patient',
-            patientId: a.patient_id || a.id,
-            time: a.time || new Date().toLocaleTimeString(),
-            status: a.status,
-            type: a.type || 'regular',
-            priority: a.priority || 'normal',
-            absentCount: 0,
-            isBlocked: false,
-            history: [],
-            reason: a.notes || a.reason || ''
-          }));
+          .map(a => {
+            let tokenLabel = '';
+            if (typeof a.token === 'object') {
+              tokenLabel = a.token.tokenNumber || a.token.id || '';
+            } else {
+              tokenLabel = a.token || a.token_number || '';
+            }
+            if (!tokenLabel) {
+               tokenLabel = `T${String(Math.random()).slice(-3)}`;
+            }
+
+            return {
+              id: a.id,
+              token: tokenLabel,
+              patient: a.patient_name || a.patientName || 'Patient',
+              patientId: a.patient_id || a.id,
+              time: a.time || new Date().toLocaleTimeString(),
+              status: a.status,
+              type: a.type || 'regular',
+              priority: a.priority || 'normal',
+              absentCount: 0,
+              isBlocked: false,
+              history: [],
+              reason: a.notes || a.reason || ''
+            };
+          });
         
         setQueue(queueData);
         if (queueData.length > 0) {
@@ -232,7 +244,8 @@ const DoctorDashboard = () => {
         patient_id: currentPatient.patientId,
         patient_name: currentPatient.patient,
         doctor_id: currentUser.id,
-        doctor_name: currentUser.name,
+        doctor_name: currentUser.name || currentUser.full_name || 'Doctor',
+        appointment_id: currentPatient.id,
         prescription: cleanedPrescription,
         date: new Date().toISOString()
       });
@@ -444,7 +457,7 @@ const DoctorDashboard = () => {
                   </button>
                   <button 
                     className="prescription-btn"
-                    onClick={() => navigate('/doctor/prescriptions')}
+                    onClick={() => navigate(`/doctor/prescriptions?patientId=${currentPatient.patientId}&appointmentId=${currentPatient.id}`)}
                   >
                     <FontAwesomeIcon icon={faPrescriptionBottle} /> Prescription
                   </button>
@@ -501,14 +514,13 @@ const DoctorDashboard = () => {
                         {patient.patient.split(' ').map(n => n[0]).join('')}
                       </div>
                       <div className="queue-info">
-                        <div className="queue-item-header">
+                        <div className="patient-info">
                           <span className="queue-token">{patient.token}</span>
-                          <span className="queue-patient">{patient.patient}</span>
-                          {patient.priority === 'urgent' && (
-                            <span className="priority-dot urgent"></span>
-                          )}
+                          <div className="patient-details">
+                            <span className="patient-name">{patient.patient}</span>
+                            <span className="patient-reason">{patient.reason}</span>
+                          </div>
                         </div>
-                        <span className="queue-reason">{patient.reason}</span>
                       </div>
                     </div>
                     <div className="queue-item-right">

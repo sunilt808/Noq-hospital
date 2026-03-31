@@ -95,7 +95,7 @@ export const advancedBookingService = {
         return list;
       }
     } catch (error) {
-      console.warn('API fetch failed, using api:', error);
+      console.warn('API fetch failed, using local storage fallback:', error);
     }
 
     // API fallback

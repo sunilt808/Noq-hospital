@@ -182,17 +182,17 @@ const PatientDashboard = () => {
     const now = new Date();
     const upcoming = patientAppointments
       .filter((apt) => {
-        const aptDate = new Date(apt.appointmentDate || apt.date);
+        const aptDate = new Date(apt.appointmentDate || apt.date || apt.appointment_date);
         return !Number.isNaN(aptDate.getTime()) && aptDate >= now;
       })
-      .sort((a, b) => new Date(a.appointmentDate || a.date) - new Date(b.appointmentDate || b.date));
+      .sort((a, b) => new Date(a.appointmentDate || a.date || b.appointment_date) - new Date(b.appointmentDate || b.date || b.appointment_date));
 
     const past = patientAppointments
       .filter((apt) => {
-        const aptDate = new Date(apt.appointmentDate || apt.date);
+        const aptDate = new Date(apt.appointmentDate || apt.date || apt.appointment_date);
         return Number.isNaN(aptDate.getTime()) || aptDate < now;
       })
-      .sort((a, b) => new Date(b.appointmentDate || b.date) - new Date(a.appointmentDate || a.date));
+      .sort((a, b) => new Date(b.appointmentDate || b.date || b.appointment_date) - new Date(a.appointmentDate || a.date || a.appointment_date));
 
     return { upcomingAppointments: upcoming, pastAppointments: past };
   }, [patientAppointments]);
@@ -340,15 +340,15 @@ const PatientDashboard = () => {
   const cancelAppointment = async (appointmentId) => {
     if (window.confirm('Are you sure you want to cancel this appointment?')) {
       try {
-        // Update appointment status to cancelled in API
-        await apiDbService.upsert('appointments', appointmentId, { 
-          ...appointments.find(a => a.id === appointmentId),
-          status: 'cancelled'
-        });
+        await patientService.cancelAppointment(appointmentId);
+        // Optimistically update local state so UI reflects the cancellation immediately
+        setAppointments(prev =>
+          prev.map(a => a.id === appointmentId ? { ...a, status: 'cancelled' } : a)
+        );
         alert('Appointment cancelled successfully.');
       } catch (error) {
         console.error('Error cancelling appointment:', error);
-        alert('Failed to cancel appointment.');
+        alert('Failed to cancel appointment. Please try again.');
       }
     }
   };

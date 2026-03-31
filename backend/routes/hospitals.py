@@ -97,6 +97,11 @@ async def _serialize_hospital(h: dict) -> dict:
         h["created_at"] = h["created_at"].isoformat()
     if "updated_at" in h and isinstance(h["updated_at"], datetime):
         h["updated_at"] = h["updated_at"].isoformat()
+
+    # Ensure numeric capacity fields always have integer defaults (never None)
+    h["total_beds"] = int(h.get("total_beds") or 0)
+    h["total_icu_beds"] = int(h.get("total_icu_beds") or 0)
+    h["total_operation_theatres"] = int(h.get("total_operation_theatres") or 0)
     
     # Fetch HM info
     if mongodb is not None:
@@ -282,10 +287,17 @@ async def update_hospital(hospital_id: str, payload: HospitalUpdateRequest):
         if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="Hospital not found")
 
+        # Sync with HM Users if director_name changed
+        if "director_name" in updates:
+            await mongodb.users.update_many(
+                {"hospital_id": hospital_id, "role": "hm"},
+                {"$set": {"full_name": updates["director_name"], "updated_at": datetime.utcnow()}}
+            )
+
         updated_hospital = await mongodb.hospitals.find_one({"_id": hospital_id})
         return {
             "success": True,
-            "message": "Hospital profile updated",
+            "message": "Hospital profile updated and synced",
             "data": await _serialize_hospital(updated_hospital)
         }
     except Exception as e:

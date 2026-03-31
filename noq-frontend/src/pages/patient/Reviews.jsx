@@ -12,6 +12,7 @@ const Reviews = () => {
   const { currentUser, loading: authLoading } = useAuth();
   const [appointments, setAppointments] = useState([]);
   const [reviews, setReviews] = useState([]);
+  const [publicReviews, setPublicReviews] = useState([]);
   const [selectedHospitalId, setSelectedHospitalId] = useState('');
   const [form, setForm] = useState({ doctorRating: 5, hospitalRating: 5, comment: '' });
   const [isLoading, setIsLoading] = useState(false);
@@ -19,7 +20,7 @@ const Reviews = () => {
   // Load appointments and reviews from API
   useEffect(() => {
     if (authLoading) return;
-    
+
     if (!currentUser || currentUser.role !== 'patient') {
       navigate('/login', { replace: true });
       return;
@@ -28,17 +29,20 @@ const Reviews = () => {
     const loadData = async () => {
       try {
         setIsLoading(true);
-        const [appointmentsData, reviewsData] = await Promise.all([
+        const [appointmentsData, reviewsData, publicData] = await Promise.all([
           patientService.getMyAppointments(),
-          patientService.getMyReviews()
+          patientService.getMyReviews(),
+          patientService.getAllReviews()
         ]);
-        
+
         setAppointments(Array.isArray(appointmentsData) ? appointmentsData : []);
         setReviews(Array.isArray(reviewsData) ? reviewsData : []);
+        setPublicReviews(Array.isArray(publicData) ? publicData : (publicData?.data?.reviews || []));
       } catch (error) {
         console.error('Error loading data:', error);
         setAppointments([]);
         setReviews([]);
+        setPublicReviews([]);
       } finally {
         setIsLoading(false);
       }
@@ -61,7 +65,7 @@ const Reviews = () => {
     completed.forEach((item) => {
       const appointmentId = String(item?.id || '');
       if (!appointmentId) return;
-      
+
       const hospitalId = String(item?.hospital_id || item?.HID || '');
       if (!hospitalId) return;
 
@@ -84,6 +88,8 @@ const Reviews = () => {
 
     return Array.from(map.values()).sort((a, b) => new Date(b.lastVisitAt) - new Date(a.lastVisitAt));
   }, [appointments, reviews]);
+
+  const myReviews = useMemo(() => reviews || [], [reviews]);
 
   const selectedHospital = eligibleHospitals.find((item) => item.hospitalId === selectedHospitalId) || null;
 
@@ -115,11 +121,11 @@ const Reviews = () => {
       };
 
       await patientService.submitReview(reviewData);
-      
+
       // Reload reviews
       const updatedReviews = await patientService.getMyReviews();
       setReviews(Array.isArray(updatedReviews) ? updatedReviews : []);
-      
+
       setSelectedHospitalId('');
       setForm({ doctorRating: 5, hospitalRating: 5, comment: '' });
       alert('Review submitted successfully!');
@@ -214,7 +220,7 @@ const Reviews = () => {
               />
             </div>
 
-            <button style={{ ...styles.submit, marginTop: 12 }} type="button" onClick={submitReview}>
+            <button style={{ ...styles.submit, marginTop: 12 }} type="button" onClick={handleSubmitReview}>
               <FontAwesomeIcon icon={faStar} /> Submit Review
             </button>
           </>

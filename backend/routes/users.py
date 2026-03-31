@@ -41,6 +41,12 @@ class UserResponse(BaseModel):
     promotion_label: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    # Patient profile fields
+    dob: Optional[str] = None
+    gender: Optional[str] = None
+    blood_group: Optional[str] = None
+    address: Optional[str] = None
+    presence_status: Optional[str] = None
 
 
 class CreateUserRequest(BaseModel):
@@ -71,8 +77,10 @@ class CreateUserRequest(BaseModel):
 class UpdateUserRequest(BaseModel):
     full_name: str = None
     name: str = None
+    email: str = None
     phone: str = None
     status: str = None
+    hospital_id: str = None
     hospital_name: str = None
     specialization: str = None
     department_id: str = None
@@ -88,6 +96,13 @@ class UpdateUserRequest(BaseModel):
     qualifications: str = None
     category: str = None
     promotion_label: str = None
+    # Patient profile fields
+    dob: str = None
+    gender: str = None
+    blood_group: str = None
+    address: str = None
+    # Presence/status fields
+    presence_status: str = None
 
 
 class ResetCredentialsRequest(BaseModel):
@@ -99,6 +114,11 @@ def _serialize_user(user: dict) -> dict:
     for field in ["created_at", "updated_at"]:
         if field in user and isinstance(user[field], datetime):
             user[field] = user[field].isoformat()
+    # Ensure full_name is always set (fallback to name)
+    if not user.get("full_name") and user.get("name"):
+        user["full_name"] = user["name"]
+    elif not user.get("full_name"):
+        user["full_name"] = "User"
     return user
 
 
@@ -171,6 +191,29 @@ async def update_current_user(
         return UserResponse(**_serialize_user(updated_user))
     except Exception as e:
         logger.error(f"Error updating user profile: {e}")
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.put("/me")
+async def put_current_user(
+    req: UpdateUserRequest,
+    auth_payload: dict = Depends(require_auth)
+):
+    """PUT update for current user — used by doctor presence/status updates."""
+    try:
+        user_id = auth_payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        updates = req.model_dump(exclude_unset=True)
+        if "name" in updates:
+            updates["full_name"] = updates.pop("name")
+        
+        updated_user = await UserService.update_user(user_id, **updates)
+        return {"success": True, "user": _serialize_user(updated_user)}
+    except Exception as e:
+        logger.error(f"Error updating user (PUT /me): {e}")
         if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail="Internal server error")
 

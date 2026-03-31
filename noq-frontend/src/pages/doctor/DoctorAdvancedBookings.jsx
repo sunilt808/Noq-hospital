@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCheckCircle, faClock, faHospital, faNotesMedical, faUser, faUserMd } from '@fortawesome/free-solid-svg-icons';
+import { faCheckCircle, faClock, faHospital, faNotesMedical, faUser, faUserMd, faPrescriptionBottle } from '@fortawesome/free-solid-svg-icons';
+import { useNavigate } from 'react-router-dom';
 import { recordHistory } from '../../services/historyService';
 import { advancedBookingService } from '../../services/advancedBookingService';
 import { useAuth } from '../../context/AuthContext';
 import useApiData from '../../hooks/useApiData';
 
 const DoctorAdvancedBookings = () => {
+  const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { doctors } = useApiData();
   const [doctorId, setDoctorId] = useState('');
@@ -28,6 +30,9 @@ const DoctorAdvancedBookings = () => {
           .filter((item) => ['allocated', 'in_consultation', 'completed'].includes(String(item.status || '').toLowerCase()))
           .sort((a, b) => new Date(a.appointmentDate || 0) - new Date(b.appointmentDate || 0));
         setBookings(scoped);
+      })
+      .catch((error) => {
+        console.warn('API fetch failed, using local storage fallback:', error);
       });
   };
 
@@ -120,6 +125,12 @@ const DoctorAdvancedBookings = () => {
               <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button style={{ ...styles.btn, background: '#0ea5e9' }} onClick={() => updateStatus(item.id, 'in_consultation')}>
                   Start Consultation
+                </button>
+                <button 
+                  style={{ ...styles.btn, background: '#8b5cf6' }} 
+                  onClick={() => navigate(`/doctor/prescriptions?patientId=${item.patientId}&appointmentId=${item.id}`)}
+                >
+                  <FontAwesomeIcon icon={faPrescriptionBottle} /> Prescription
                 </button>
                 <button style={{ ...styles.btn, background: '#16a34a' }} onClick={() => updateStatus(item.id, 'completed')}>
                   <FontAwesomeIcon icon={faCheckCircle} /> Mark Completed

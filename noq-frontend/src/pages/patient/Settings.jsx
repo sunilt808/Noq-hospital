@@ -79,21 +79,17 @@ const Settings = () => {
 
   // Load settings and profile
   useEffect(() => {
-    if (authLoading || dataLoading) return;
+    if (authLoading) return;
     if (!currentUser) {
       setLoading(false);
       return;
     }
-
-    const currentPatient = allPatients.find(
-      (item) => String(item.id) === String(currentUser?.id) || item.email?.toLowerCase() === currentUser?.email?.toLowerCase()
-    );
-
-    setPatient(currentPatient || null);
+    // Derive patient directly from currentUser — no need to match against allPatients
+    setPatient({ ...currentUser, name: currentUser.full_name || currentUser.name || 'Patient' });
     const saved = sessionStorage.getItem(getSettingsKey(currentUser));
     setSettings(saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings);
     setLoading(false);
-  }, [currentUser, allPatients, authLoading, dataLoading]);
+  }, [currentUser, authLoading]);
 
   // Save settings whenever they change
   const handleSaveSettings = () => {
@@ -113,14 +109,6 @@ const Settings = () => {
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
-    if (!patient) {
-      setMessage({ type: 'error', text: 'Patient account not found.' });
-      return;
-    }
-    if (patient.password !== passwordForm.currentPassword) {
-      setMessage({ type: 'error', text: 'Current password is incorrect.' });
-      return;
-    }
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
       setMessage({ type: 'error', text: 'New passwords do not match.' });
       return;
@@ -129,31 +117,24 @@ const Settings = () => {
       setMessage({ type: 'error', text: 'Password must be at least 6 characters.' });
       return;
     }
-
     try {
-      await apiDbService.upsert('patients', patient.id, {
-        ...patient,
-        password: passwordForm.newPassword,
-        updatedAt: new Date().toISOString(),
+      await patientService.updateProfile({
+        current_password: passwordForm.currentPassword,
+        new_password: passwordForm.newPassword,
       });
-      setPatient((prev) => (prev ? { ...prev, password: passwordForm.newPassword } : prev));
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setMessage({ type: 'success', text: 'Password changed successfully.' });
     } catch (error) {
-      setMessage({ type: 'error', text: 'Unable to update password right now.' });
+      setMessage({ type: 'error', text: error?.message || 'Unable to update password right now.' });
     }
   };
 
   const handleExportData = () => {
-    const exportPatient = patient || null;
-    if (exportPatient) {
+    if (patient) {
       const bundle = {
-        profile: exportPatient,
+        profile: patient,
         settings,
-        appointments: appointments.filter((item) => String(item.patientId || '') === String(exportPatient.id)),
-        bills: bills.filter((item) => String(item.patientId || '') === String(exportPatient.id)),
-        prescriptions: prescriptions.filter((item) => String(item.patientId || '') === String(exportPatient.id)),
-        medicalRecords: medicalRecords.filter((item) => String(item.patientId || '') === String(exportPatient.id)),
+        exportedAt: new Date().toISOString(),
       };
       const dataStr = JSON.stringify(bundle, null, 2);
       const blob = new Blob([dataStr], { type: 'application/json' });

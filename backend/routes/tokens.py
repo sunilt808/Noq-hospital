@@ -12,12 +12,16 @@ router = APIRouter(prefix="/tokens", tags=["Tokens"])
 
 
 class TokenCreate(BaseModel):
-    queueId: str
-    patientId: str
-    patientName: str
-    patientEmail: Optional[str] = None
-    hospitalId: str
-    departmentId: Optional[str] = None
+    queue_id: str
+    patient_id: str
+    patient_name: str
+    patient_email: Optional[str] = None
+    patient_phone: Optional[str] = None
+    hospital_id: str
+    department_id: Optional[str] = None
+    appointment_type: Optional[str] = "regular"
+    priority: Optional[str] = "normal"
+    notes: Optional[str] = ""
 
 
 class StandardResponse(BaseModel):
@@ -40,7 +44,7 @@ async def get_my_tokens(payload: dict = Depends(auth_service.require_auth)):
     try:
         if mongodb is None: return StandardResponse(success=False, message="DB Error")
         user_id = payload.get("sub")
-        cursor = mongodb.tokens.find({"patientId": user_id})
+        cursor = mongodb.tokens.find({"patient_id": user_id})
         tokens = await cursor.to_list(length=1000)
         
         return StandardResponse(
@@ -62,12 +66,16 @@ async def create_token(token_data: TokenCreate):
         token_doc = {
             "_id": token_id,
             "id": token_id,
-            "queueId": token_data.queueId,
-            "patientId": token_data.patientId,
-            "patientName": token_data.patientName,
-            "patientEmail": token_data.patientEmail or "",
-            "hospitalId": token_data.hospitalId,
-            "departmentId": token_data.departmentId or "",
+            "queue_id": token_data.queue_id,
+            "patient_id": token_data.patient_id,
+            "patient_name": token_data.patient_name,
+            "patient_email": token_data.patient_email or "",
+            "patient_phone": token_data.patient_phone or "",
+            "hospital_id": token_data.hospital_id,
+            "department_id": token_data.department_id or "",
+            "appointment_type": token_data.appointment_type or "regular",
+            "priority": token_data.priority or "normal",
+            "notes": token_data.notes or "",
             "status": "waiting",
             "created_at": datetime.utcnow(),
         }
@@ -87,7 +95,7 @@ async def get_queue_tokens(queue_id: str):
     """Get tokens for a specific queue from MongoDB."""
     try:
         if mongodb is None: return StandardResponse(success=False, message="DB Error")
-        cursor = mongodb.tokens.find({"queueId": queue_id}).sort("created_at", 1)
+        cursor = mongodb.tokens.find({"queue_id": queue_id}).sort("created_at", 1)
         tokens = await cursor.to_list(length=1000)
         
         return StandardResponse(

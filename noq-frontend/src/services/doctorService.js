@@ -22,14 +22,16 @@ const doctorService = {
     return response?.data?.users || [];
   },
 
-  // Get doctor appointments - /appointments/ returns array directly
+  // Get doctor appointments - /appointments/my returns {appointments:[...]} for the authenticated user
   getDoctorAppointments: async (doctorUserId = null, filters = {}) => {
-    const params = new URLSearchParams();
-    if (doctorUserId) params.append('doctor_user_id', doctorUserId);
-    if (filters.date) params.append('date', filters.date);
-    if (filters.status) params.append('status', filters.status);
-    const response = await api.get(`/appointments/?${params.toString()}`);
-    return Array.isArray(response) ? response : (response?.data || []);
+    const response = await api.get('/appointments/my');
+    const appts = response?.appointments || (Array.isArray(response) ? response : []);
+    // Apply optional filters
+    return appts.filter(a => {
+      if (filters.status && a.status !== filters.status) return false;
+      if (filters.date && (a.appointment_date || '').split('T')[0] !== filters.date) return false;
+      return true;
+    });
   },
 
   // Get doctor patients - /users returns {success, data: {users: [...]}}
@@ -61,9 +63,9 @@ const doctorService = {
     return response?.data?.queues || response?.queues || [];
   },
 
-  // Update appointment status - PATCH /appointments/{id} returns flat appointment object
+  // Update appointment status - backend only has PUT /appointments/{id}
   updateAppointmentStatus: async (appointmentId, newStatus) => {
-    const response = await api.patch(`/appointments/${appointmentId}`, {
+    const response = await api.put(`/appointments/${appointmentId}`, {
       status: newStatus
     });
     return response || null;
@@ -93,12 +95,6 @@ const doctorService = {
     if (hospitalId) params.append('hospital_id', hospitalId);
     const response = await api.get(`/revenue/by-doctor?${params.toString()}`);
     return response?.data?.doctors || [];
-  },
-
-  // Get prescriptions created by current doctor - returns {success, data: {prescriptions: [...]}}
-  getDoctorPrescriptions: async () => {
-    const response = await api.get('/prescriptions/doctor/my');
-    return response?.data?.prescriptions || [];
   }
 };
 

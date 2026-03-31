@@ -18,7 +18,8 @@ const API_ENDPOINTS = {
   bills: '/bills',
   medicalRecords: '/medical-records',
   doctorPresence: '/users/presence',
-  advancedBooking: '/advanced-booking',
+  advancedBooking: '/advanced-bookings',
+  advancedBookings: '/advanced-bookings',
   admin_settings: '/settings',
 };
 

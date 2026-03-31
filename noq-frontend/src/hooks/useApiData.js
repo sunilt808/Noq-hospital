@@ -61,23 +61,23 @@ const useApiData = () => {
       ] = await Promise.all([
         fetchSafe(async () => {
           const res = await api.get('/hospitals/available');
-          return res?.data?.hospitals || [];
+          return res?.hospitals || res?.data?.hospitals || res || [];
         }),
         fetchSafe(async () => {
           const res = await api.get('/users?limit=1000');
-          return res?.data?.users || res?.data?.data?.users || [];
+          return res?.users || res?.data?.users || res || [];
         }),
         fetchSafe(async () => {
           const res = await api.get('/departments');
-          return res?.data?.departments || [];
+          return res?.departments || res?.data?.departments || res || [];
         }),
         fetchSafe(async () => {
           const res = await api.get('/diseases');
-          return res?.data?.diseases || [];
+          return res?.diseases || res?.data?.diseases || res || [];
         }),
         fetchSafe(async () => {
           const res = await api.get('/appointments/my');
-          return res?.data?.appointments || [];
+          return res?.appointments || res?.data?.appointments || res || [];
         }),
       ]);
 

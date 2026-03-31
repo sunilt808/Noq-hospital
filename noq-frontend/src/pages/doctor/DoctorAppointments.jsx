@@ -19,7 +19,7 @@ const DoctorAppointments = () => {
   const { currentUser, loading: authLoading } = useAuth();
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -38,7 +38,7 @@ const DoctorAppointments = () => {
   // Load appointments
   useEffect(() => {
     if (authLoading) return;
-    
+
     if (!currentUser || currentUser.role !== 'doctor') {
       navigate('/login', { replace: true });
       return;
@@ -69,16 +69,18 @@ const DoctorAppointments = () => {
 
   // Filter appointments
   const filteredAppointments = appointments.filter(app => {
-    const appDate = app.appointment_date || new Date().toISOString().split('T')[0];
+    const appDate = app.appointment_date || app.date || new Date().toISOString().split('T')[0];
     const appStatus = app.status || 'scheduled';
-    const patientName = app.doctor_name || app.patient_id || '';
-    const token = app.token_number || '';
-    
-    const matchesDate = appDate === selectedDate;
+    const patientNameStr = app.patientName || app.patient_name || app.patient_id || '';
+    const phoneStr = app.phone || app.patientPhone || '';
+    const tokenObj = app.token_number || app.token || '';
+    const tokenStr = (typeof tokenObj === 'object' ? tokenObj?.tokenNumber : tokenObj) || '';
+
+    const matchesDate = appDate.startsWith(selectedDate);
     const matchesStatus = selectedStatus === 'all' || appStatus === selectedStatus;
-    const matchesSearch = patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         phone.includes(searchTerm) ||
-                         token.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = patientNameStr.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      phoneStr.includes(searchTerm) ||
+      tokenStr.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesDate && matchesStatus && matchesSearch;
   });
 
@@ -94,7 +96,7 @@ const DoctorAppointments = () => {
 
   // Get status color and icon
   const getStatusInfo = (status) => {
-    switch(status) {
+    switch (status) {
       case 'confirmed':
         return { color: '#10b981', icon: faCheckCircle, label: 'Confirmed' };
       case 'pending':
@@ -108,7 +110,7 @@ const DoctorAppointments = () => {
 
   // Get type color
   const getTypeColor = (type) => {
-    switch(type) {
+    switch (type) {
       case 'consultation': return '#3b82f6';
       case 'follow-up': return '#8b5cf6';
       case 'emergency': return '#ef4444';
@@ -134,7 +136,7 @@ const DoctorAppointments = () => {
         meta: { patientName: app?.patient_name, time: app?.time, date: app?.date },
       });
       // Update local state
-      setAppointments(prev => prev.map(apt => apt.id === appointmentId ? {...apt, status: 'confirmed'} : apt));
+      setAppointments(prev => prev.map(apt => apt.id === appointmentId ? { ...apt, status: 'confirmed' } : apt));
       alert('Appointment confirmed successfully');
     } catch (error) {
       console.error('Error confirming appointment:', error);
@@ -157,12 +159,23 @@ const DoctorAppointments = () => {
           meta: { patientName: app?.patient_name, time: app?.time, date: app?.date },
         });
         // Update local state
-        setAppointments(prev => prev.map(apt => apt.id === appointmentId ? {...apt, status: 'cancelled'} : apt));
+        setAppointments(prev => prev.map(apt => apt.id === appointmentId ? { ...apt, status: 'cancelled' } : apt));
         alert('Appointment cancelled');
       } catch (error) {
         console.error('Error cancelling appointment:', error);
         alert('Failed to cancel appointment');
       }
+    }
+  };
+
+  const handleCompleteAppointment = async (appointmentId) => {
+    try {
+      await doctorService.updateAppointmentStatus(appointmentId, 'completed');
+      setAppointments(prev => prev.map(apt => apt.id === appointmentId ? { ...apt, status: 'completed' } : apt));
+      alert('Appointment marked as completed');
+    } catch (error) {
+      console.error('Error completing appointment:', error);
+      alert('Failed to complete appointment');
     }
   };
 
@@ -219,11 +232,11 @@ const DoctorAppointments = () => {
         notes: newAppointment.notes,
         doctor_id: currentUser.id
       };
-      
+
       // Add to local state
       const appointmentWithId = { ...newApp, id: `apt_${Date.now()}` };
       setAppointments(prev => [...prev, appointmentWithId]);
-      
+
       setNewAppointment({
         patientName: '',
         phone: '',
@@ -289,9 +302,9 @@ const DoctorAppointments = () => {
 
   // Calculate available time slots
   const getAvailableSlots = () => {
-    const bookedSlots = doctorAppointments
+    const bookedSlots = appointments
       .filter(app => app.date === selectedDate && app.status !== 'cancelled')
-      .map(app => app.time);
+      .map(app => app.time || app.appointment_time);
 
     return timeSlots.filter(slot => !bookedSlots.includes(slot));
   };
@@ -304,13 +317,13 @@ const DoctorAppointments = () => {
 
   // Calculate appointment statistics
   const appointmentStats = {
-    total: doctorAppointments.filter(app => app.date === selectedDate).length,
-    confirmed: doctorAppointments.filter(app => app.date === selectedDate && app.status === 'confirmed').length,
-    pending: doctorAppointments.filter(app => app.date === selectedDate && app.status === 'pending').length,
-    cancelled: doctorAppointments.filter(app => app.date === selectedDate && app.status === 'cancelled').length
+    total: appointments.filter(app => (app.appointment_date || app.date || '').startsWith(selectedDate)).length,
+    confirmed: appointments.filter(app => (app.appointment_date || app.date || '').startsWith(selectedDate) && app.status === 'confirmed').length,
+    pending: appointments.filter(app => (app.appointment_date || app.date || '').startsWith(selectedDate) && app.status === 'pending').length,
+    cancelled: appointments.filter(app => (app.appointment_date || app.date || '').startsWith(selectedDate) && app.status === 'cancelled').length
   };
 
-  if (loading || authLoading || !doctor) {
+  if (loading || authLoading || !currentUser) {
     return (
       <div className="doctor-loading">
         <div className="loading-spinner"></div>
@@ -324,7 +337,7 @@ const DoctorAppointments = () => {
       {/* Header */}
       <header className="doctor-header">
         <div className="doctor-header-left">
-          <button 
+          <button
             className="doctor-btn doctor-btn-secondary"
             onClick={() => navigate('/doctor/dashboard')}
           >
@@ -337,9 +350,9 @@ const DoctorAppointments = () => {
             </p>
           </div>
         </div>
-        
+
         <div className="doctor-header-right">
-          <button 
+          <button
             className="doctor-btn doctor-btn-primary"
             onClick={() => setShowAddModal(true)}
           >
@@ -355,19 +368,19 @@ const DoctorAppointments = () => {
           <div className="stat-value">{appointmentStats.total}</div>
           <div className="stat-label">Total Today</div>
         </div>
-        
+
         <div className="stat-card green">
           <FontAwesomeIcon icon={faCalendarCheck} className="stat-icon" />
           <div className="stat-value">{appointmentStats.confirmed}</div>
           <div className="stat-label">Confirmed</div>
         </div>
-        
+
         <div className="stat-card orange">
           <FontAwesomeIcon icon={faHourglassHalf} className="stat-icon" />
           <div className="stat-value">{appointmentStats.pending}</div>
           <div className="stat-label">Pending</div>
         </div>
-        
+
         <div className="stat-card red">
           <FontAwesomeIcon icon={faCalendarTimes} className="stat-icon" />
           <div className="stat-value">{appointmentStats.cancelled}</div>
@@ -416,7 +429,7 @@ const DoctorAppointments = () => {
                   className="search-input"
                 />
               </div>
-              
+
               <div className="status-filter">
                 <label>Status:</label>
                 <select
@@ -459,19 +472,19 @@ const DoctorAppointments = () => {
               Quick Actions
             </h3>
             <div className="doctor-action-buttons">
-              <button 
+              <button
                 onClick={() => navigate('/doctor/queue')}
                 className="doctor-action-btn"
               >
                 <FontAwesomeIcon icon={faUserInjured} /> Go to Queue
               </button>
-              <button 
+              <button
                 onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
                 className="doctor-action-btn"
               >
                 <FontAwesomeIcon icon={faCalendar} /> Today's Schedule
               </button>
-              <button 
+              <button
                 onClick={() => window.print()}
                 className="doctor-action-btn"
               >
@@ -488,7 +501,7 @@ const DoctorAppointments = () => {
             <div className="appointments-header">
               <h3>
                 <FontAwesomeIcon icon={faCalendarCheck} />
-                Appointments for {new Date(selectedDate).toLocaleDateString('en-US', { 
+                Appointments for {new Date(selectedDate).toLocaleDateString('en-US', {
                   weekday: 'long',
                   month: 'short',
                   day: 'numeric'
@@ -507,7 +520,7 @@ const DoctorAppointments = () => {
                 <FontAwesomeIcon icon={faCalendar} size="3x" />
                 <h3>No Appointments</h3>
                 <p>No appointments scheduled for this date</p>
-                <button 
+                <button
                   onClick={() => setShowAddModal(true)}
                   className="doctor-btn doctor-btn-primary"
                 >
@@ -527,28 +540,28 @@ const DoctorAppointments = () => {
                         {timeGroups[time].length} appointment{timeGroups[time].length !== 1 ? 's' : ''}
                       </div>
                     </div>
-                    
+
                     <div className="time-slot-appointments">
-                      {timeGroups[time].map(appointment => {
-                        const statusInfo = getStatusInfo(appointment.status);
+                      {timeGroups[time].map(app => {
+                        const statusInfo = getStatusInfo(app.status);
                         
                         return (
-                          <div key={appointment.id} className="appointment-card">
+                          <div key={app.id} className="appointment-card">
                             <div className="appointment-header">
                               <div className="appointment-patient">
                                 <div className="patient-name">
                                   <FontAwesomeIcon icon={faUserInjured} />
-                                  {appointment.patientName}
+                                  {app.patientName || app.patient_name || 'Patient'}
                                 </div>
                                 <div className="patient-contact">
-                                  <FontAwesomeIcon icon={faPhone} /> {appointment.phone}
+                                  <FontAwesomeIcon icon={faPhone} /> {app.phone || 'N/A'}
                                 </div>
                               </div>
                               <div className="appointment-meta">
                                 <span className="appointment-token">
-                                  Token: {appointment.token}
+                                  Token: {(typeof app.token === 'object' ? app.token?.tokenNumber : app.token) || app.token_number || 'N/A'}
                                 </span>
-                                <span 
+                                <span
                                   className="appointment-status"
                                   style={{ color: statusInfo.color }}
                                 >
@@ -557,57 +570,65 @@ const DoctorAppointments = () => {
                                 </span>
                               </div>
                             </div>
-                            
+
                             <div className="appointment-details">
                               <div className="appointment-type">
-                                <span 
+                                <span
                                   className="type-badge"
-                                  style={{ background: getTypeColor(appointment.type) }}
+                                  style={{ background: getTypeColor(app.type) }}
                                 >
-                                  {appointment.type}
+                                  {app.type}
                                 </span>
                                 <span className="duration">
-                                  {appointment.duration} mins
+                                  {app.duration} mins
                                 </span>
                               </div>
-                              
-                              {appointment.notes && (
+
+                              {app.notes && (
                                 <div className="appointment-notes">
                                   <FontAwesomeIcon icon={faFileMedical} />
-                                  {appointment.notes}
+                                  {app.notes}
                                 </div>
                               )}
                             </div>
-                            
+
                             <div className="appointment-actions">
-                              {appointment.status === 'pending' && (
+                              {app.status === 'pending' && (
                                 <button
-                                  onClick={() => handleConfirmAppointment(appointment.id)}
+                                  onClick={() => handleConfirmAppointment(app.id)}
                                   className="action-btn confirm-btn"
                                 >
                                   <FontAwesomeIcon icon={faCheckCircle} /> Confirm
                                 </button>
                               )}
-                              
-                              {appointment.status !== 'cancelled' && (
+
+                              {app.status !== 'cancelled' && (
                                 <>
                                   <button
-                                    onClick={() => handleEditAppointment(appointment)}
+                                    onClick={() => handleEditAppointment(app)}
                                     className="action-btn edit-btn"
                                   >
                                     <FontAwesomeIcon icon={faEdit} /> Edit
                                   </button>
                                   <button
-                                    onClick={() => handleCancelAppointment(appointment.id)}
+                                    onClick={() => handleCancelAppointment(app.id)}
                                     className="action-btn cancel-btn"
                                   >
                                     <FontAwesomeIcon icon={faTimesCircle} /> Cancel
                                   </button>
+                                  {app.status !== 'completed' && (
+                                    <button
+                                      onClick={() => handleCompleteAppointment(app.id)}
+                                      className="action-btn confirm-btn"
+                                    >
+                                      <FontAwesomeIcon icon={faCheckCircle} /> Complete
+                                    </button>
+                                  )}
                                 </>
                               )}
-                              
+
                               <button
-                                onClick={() => handleDeleteAppointment(appointment.id)}
+                                onClick={() => handleDeleteAppointment(app.id)}
                                 className="action-btn delete-btn"
                               >
                                 <FontAwesomeIcon icon={faTrash} /> Delete
@@ -638,36 +659,36 @@ const DoctorAppointments = () => {
                 ×
               </button>
             </div>
-            
+
             <div className="modal-body">
               <div className="form-group">
                 <label>Patient Name *</label>
                 <input
                   type="text"
                   value={newAppointment.patientName}
-                  onChange={(e) => setNewAppointment({...newAppointment, patientName: e.target.value})}
+                  onChange={(e) => setNewAppointment({ ...newAppointment, patientName: e.target.value })}
                   placeholder="Enter patient full name"
                   className="form-input"
                 />
               </div>
-              
+
               <div className="form-group">
                 <label>Phone Number *</label>
                 <input
                   type="tel"
                   value={newAppointment.phone}
-                  onChange={(e) => setNewAppointment({...newAppointment, phone: e.target.value})}
+                  onChange={(e) => setNewAppointment({ ...newAppointment, phone: e.target.value })}
                   placeholder="Enter contact phone"
                   className="form-input"
                 />
               </div>
-              
+
               <div className="form-row">
                 <div className="form-group">
                   <label>Time *</label>
                   <select
                     value={newAppointment.time}
-                    onChange={(e) => setNewAppointment({...newAppointment, time: e.target.value})}
+                    onChange={(e) => setNewAppointment({ ...newAppointment, time: e.target.value })}
                     className="form-input"
                   >
                     {getAvailableSlots().map(slot => (
@@ -675,12 +696,12 @@ const DoctorAppointments = () => {
                     ))}
                   </select>
                 </div>
-                
+
                 <div className="form-group">
                   <label>Duration (mins) *</label>
                   <select
                     value={newAppointment.duration}
-                    onChange={(e) => setNewAppointment({...newAppointment, duration: e.target.value})}
+                    onChange={(e) => setNewAppointment({ ...newAppointment, duration: e.target.value })}
                     className="form-input"
                   >
                     <option value="15">15 minutes</option>
@@ -690,12 +711,12 @@ const DoctorAppointments = () => {
                   </select>
                 </div>
               </div>
-              
+
               <div className="form-group">
                 <label>Appointment Type</label>
                 <select
                   value={newAppointment.type}
-                  onChange={(e) => setNewAppointment({...newAppointment, type: e.target.value})}
+                  onChange={(e) => setNewAppointment({ ...newAppointment, type: e.target.value })}
                   className="form-input"
                 >
                   <option value="consultation">Consultation</option>
@@ -704,18 +725,18 @@ const DoctorAppointments = () => {
                   <option value="checkup">Checkup</option>
                 </select>
               </div>
-              
+
               <div className="form-group">
                 <label>Notes (Optional)</label>
                 <textarea
                   value={newAppointment.notes}
-                  onChange={(e) => setNewAppointment({...newAppointment, notes: e.target.value})}
+                  onChange={(e) => setNewAppointment({ ...newAppointment, notes: e.target.value })}
                   placeholder="Additional notes..."
                   className="form-textarea"
                   rows="3"
                 />
               </div>
-              
+
               <div className="appointment-summary">
                 <h4>Appointment Summary</h4>
                 <div className="summary-details">
@@ -725,15 +746,15 @@ const DoctorAppointments = () => {
                   <p><strong>Type:</strong> {newAppointment.type}</p>
                 </div>
               </div>
-              
+
               <div className="modal-actions">
-                <button 
+                <button
                   onClick={() => setShowAddModal(false)}
                   className="doctor-btn doctor-btn-secondary"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   onClick={handleAddAppointment}
                   className="doctor-btn doctor-btn-primary"
                 >
@@ -758,34 +779,34 @@ const DoctorAppointments = () => {
                 ×
               </button>
             </div>
-            
+
             <div className="modal-body">
               <div className="form-group">
                 <label>Patient Name</label>
                 <input
                   type="text"
                   value={newAppointment.patientName}
-                  onChange={(e) => setNewAppointment({...newAppointment, patientName: e.target.value})}
+                  onChange={(e) => setNewAppointment({ ...newAppointment, patientName: e.target.value })}
                   className="form-input"
                 />
               </div>
-              
+
               <div className="form-group">
                 <label>Phone Number</label>
                 <input
                   type="tel"
                   value={newAppointment.phone}
-                  onChange={(e) => setNewAppointment({...newAppointment, phone: e.target.value})}
+                  onChange={(e) => setNewAppointment({ ...newAppointment, phone: e.target.value })}
                   className="form-input"
                 />
               </div>
-              
+
               <div className="form-row">
                 <div className="form-group">
                   <label>Time</label>
                   <select
                     value={newAppointment.time}
-                    onChange={(e) => setNewAppointment({...newAppointment, time: e.target.value})}
+                    onChange={(e) => setNewAppointment({ ...newAppointment, time: e.target.value })}
                     className="form-input"
                   >
                     {timeSlots.map(slot => (
@@ -793,12 +814,12 @@ const DoctorAppointments = () => {
                     ))}
                   </select>
                 </div>
-                
+
                 <div className="form-group">
                   <label>Duration (mins)</label>
                   <select
                     value={newAppointment.duration}
-                    onChange={(e) => setNewAppointment({...newAppointment, duration: e.target.value})}
+                    onChange={(e) => setNewAppointment({ ...newAppointment, duration: e.target.value })}
                     className="form-input"
                   >
                     <option value="15">15 minutes</option>
@@ -808,12 +829,12 @@ const DoctorAppointments = () => {
                   </select>
                 </div>
               </div>
-              
+
               <div className="form-group">
                 <label>Appointment Type</label>
                 <select
                   value={newAppointment.type}
-                  onChange={(e) => setNewAppointment({...newAppointment, type: e.target.value})}
+                  onChange={(e) => setNewAppointment({ ...newAppointment, type: e.target.value })}
                   className="form-input"
                 >
                   <option value="consultation">Consultation</option>
@@ -822,25 +843,25 @@ const DoctorAppointments = () => {
                   <option value="checkup">Checkup</option>
                 </select>
               </div>
-              
+
               <div className="form-group">
                 <label>Notes</label>
                 <textarea
                   value={newAppointment.notes}
-                  onChange={(e) => setNewAppointment({...newAppointment, notes: e.target.value})}
+                  onChange={(e) => setNewAppointment({ ...newAppointment, notes: e.target.value })}
                   className="form-textarea"
                   rows="3"
                 />
               </div>
-              
+
               <div className="modal-actions">
-                <button 
+                <button
                   onClick={() => setShowEditModal(false)}
                   className="doctor-btn doctor-btn-secondary"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   onClick={handleUpdateAppointment}
                   className="doctor-btn doctor-btn-primary"
                 >

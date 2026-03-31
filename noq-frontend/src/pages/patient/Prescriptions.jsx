@@ -67,11 +67,11 @@ const Prescriptions = () => {
         .toLowerCase()
         .includes(query)
     );
-  }, [allPrescriptions, searchQuery]);
+  }, [prescriptions, searchQuery]);
 
   const activeCount = useMemo(
-    () => allPrescriptions.filter((item) => item.status === 'active').length,
-    [allPrescriptions]
+    () => prescriptions.filter((item) => item.status === 'active').length,
+    [prescriptions]
   );
 
   const formatDate = (value) => {
@@ -84,7 +84,7 @@ const Prescriptions = () => {
     });
   };
 
-  if (loading || authLoading || !patient) {
+  if (loading || authLoading || !currentUser) {
     return (
       <div style={styles.loadingWrap}>
         <div style={styles.spinner} />

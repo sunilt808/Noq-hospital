@@ -7,14 +7,17 @@ const patientService = {
     return response || null;
   },
 
-  // Get my appointments - /appointments returns direct array
+  // Get my appointments - backend returns {appointments: [...], total: N}
   getMyAppointments: async (filters = {}) => {
     const params = new URLSearchParams();
     if (filters.status) params.append('status_filter', filters.status);
-    if (filters.date) params.append('date', filters.date);
-    const url = params.toString() ? `/appointments/?${params.toString()}` : '/appointments/';
+    if (filters.date)   params.append('date', filters.date);
+    const url = params.toString() ? `/appointments/my?${params.toString()}` : '/appointments/my';
     const response = await api.get(url);
-    return Array.isArray(response) ? response : [];
+    // Backend returns { appointments: [...], total: N }
+    if (response?.appointments) return Array.isArray(response.appointments) ? response.appointments : [];
+    if (Array.isArray(response))  return response;
+    return [];
   },
 
   // Get appointment by ID
@@ -29,9 +32,9 @@ const patientService = {
     return response || null;
   },
 
-  // Update appointment - PATCH returns flat appointment object
+  // Update appointment - backend only has PUT /appointments/{id}
   updateAppointment: async (appointmentId, updateData) => {
-    const response = await api.patch(`/appointments/${appointmentId}`, updateData);
+    const response = await api.put(`/appointments/${appointmentId}`, updateData);
     return response || null;
   },
 
@@ -174,6 +177,12 @@ const patientService = {
   submitReview: async (reviewData) => {
     const response = await api.post('/reviews', reviewData);
     return response || null;
+  },
+
+  // Get all reviews (public)
+  getAllReviews: async () => {
+    const response = await api.get('/reviews');
+    return response?.data?.reviews || response || [];
   },
 
   // Get my medical records

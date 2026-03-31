@@ -415,7 +415,7 @@ const HospitalProfile = () => {
       lastUpdated: new Date().toISOString().split('T')[0]
     };
 
-    await api.patch(`/hospitals/${encodeURIComponent(targetHospitalId)}`, {
+    await api.put(`/hospitals/${encodeURIComponent(targetHospitalId)}`, {
       name: updated.name,
       address: updated.address,
       phone: updated.phone,

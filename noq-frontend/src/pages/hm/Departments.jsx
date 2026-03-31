@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import useApiData from '../../hooks/useApiData';
 
 export default function HMDepartments() {
   const { currentUser, token } = useAuth();
-  const { data: allDepartments, loading: dataLoading } = useApiData();
+  const { departments: allDepts, loading: dataLoading } = useApiData();
   const navigate = useNavigate();
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,14 +25,15 @@ export default function HMDepartments() {
 
   // Filter departments for this hospital from API data
   useEffect(() => {
-    if (allDepartments?.departments && currentUser?.hospital_id) {
-      const hospitalDepts = allDepartments.departments.filter(
-        d => d.hospital_id === currentUser.hospital_id
+    const hospitalId = currentUser?.hospital_id || currentUser?.hospitalId || '';
+    if (hospitalId && Array.isArray(allDepts)) {
+      const hospitalDepts = allDepts.filter(
+        d => String(d.hospital_id || d.hospitalId || '') === hospitalId
       );
       setDepartments(hospitalDepts);
-      setLoading(dataLoading);
     }
-  }, [allDepartments, dataLoading, currentUser?.hospital_id]);
+    if (!dataLoading) setLoading(false);
+  }, [allDepts, dataLoading, currentUser?.hospital_id]);
 
   const handleAddDepartment = async (e) => {
     e.preventDefault();

@@ -20,6 +20,7 @@ class AppointmentResponse(BaseModel):
     hospital_id: str
     doctor_id: Optional[str] = None
     patient_id: str
+    patient_name: Optional[str] = None
     doctor_name: Optional[str] = None
     department: Optional[str] = None
     disease: Optional[str] = None
@@ -42,11 +43,25 @@ def _serialize_appointment(appt: dict) -> dict:
     for field in ["created_at", "updated_at", "appointment_date"]:
         if field in appt and isinstance(appt[field], datetime):
             appt[field] = appt[field].isoformat()
+    
+    # Ensure token object exists for frontend compatibility
+    if "token" not in appt:
+        token_val = appt.get("token_number") or appt.get("tokenNumber") or "N/A"
+        appt["token"] = {
+            "tokenNumber": token_val,
+            "date": appt.get("appointment_date"),
+            "time": appt.get("appointment_time"),
+            "priority": appt.get("priority", "Normal")
+        }
     return appt
 
 
 @router.get("/my")
-async def get_my_appointments(auth_payload: dict = Depends(require_auth)):
+async def get_my_appointments(
+    status_filter: Optional[str] = None,
+    date: Optional[str] = None,
+    auth_payload: dict = Depends(require_auth)
+):
     """Get appointments for the current authenticated user (patient or doctor) from MongoDB."""
     try:
         if mongodb is None: return {"appointments": [], "total": 0}
@@ -55,12 +70,16 @@ async def get_my_appointments(auth_payload: dict = Depends(require_auth)):
 
         query = {}
         if role == "doctor":
-            # In MongoDB, doctor records might be separate or merged with user
-            # Assuming doctor_id in appointment refers to the doctor's user ID for simplicity
-            # OR we find if there's a doctor profile
             query["doctor_id"] = user_id
         else:
             query["patient_id"] = user_id
+
+        if status_filter:
+            query["status"] = status_filter
+        
+        if date:
+            # Match date prefix (YYYY-MM-DD)
+            query["appointment_date"] = {"$regex": f"^{date}"}
 
         cursor = mongodb.appointments.find(query).sort("created_at", -1)
         appointments = await cursor.to_list(length=1000)
@@ -147,6 +166,21 @@ async def update_appointment_status(
             if updated_appt:
                 from .revenue import record_revenue_distribution
                 await record_revenue_distribution(updated_appt)
+                # Push review notification to the patient
+                try:
+                    from .notifications import push_notification
+                    patient_id = updated_appt.get("patient_id", "")
+                    doctor_name = updated_appt.get("doctor_name", "your doctor")
+                    if patient_id:
+                        await push_notification(
+                            user_id=str(patient_id),
+                            title="How was your visit? ⭐",
+                            message=f"Your appointment with {doctor_name} is complete. Share your experience to help others!",
+                            notif_type="review_request",
+                            link="/patient/billing"
+                        )
+                except Exception as notif_err:
+                    logger.warning(f"Could not push review notification: {notif_err}")
 
         updated_appt = await mongodb.appointments.find_one({"_id": appointment_id})
         return _serialize_appointment(updated_appt)
@@ -190,6 +224,7 @@ async def create_appointment(
             "hospital_id": payload.get("hospitalId") or payload.get("hospital_id", ""),
             "doctor_id": payload.get("doctorId") or payload.get("doctor_id", ""),
             "patient_id": payload.get("patientId") or payload.get("patient_id", ""),
+            "patient_name": payload.get("patientName") or payload.get("patient_name", ""),
             "appointment_date": appt_date,
             "appointment_time": payload.get("appointmentTime") or payload.get("appointment_time", ""),
             "appointment_type": payload.get("appointment_type", "regular"),

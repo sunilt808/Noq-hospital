@@ -1,20 +1,13 @@
-// src/services/queueService.js - Queue management with SQLite backend
-
+// src/services/queueService.js - Queue management for MongoDB Backend
 import api from './api.js';
-
-/* ─────────────────────────────────
-   QUEUE SERVICE (Backend API)
-──────────────────────────────── */
 
 export const queueService = {
   // Fetch all queues from API
-  fetchAll: async () => {
+  fetchAll: async (hospitalId = null) => {
     try {
-      const data = await api.get('/queues');
-      if (data?.success) {
-        return data?.data?.queues || [];
-      }
-      return [];
+      const url = hospitalId ? `/queues?hospital_id=${hospitalId}` : '/queues';
+      const data = await api.get(url);
+      return data?.success ? (data?.data?.queues || []) : [];
     } catch (error) {
       console.error('Failed to fetch queues:', error);
       return [];
@@ -25,8 +18,7 @@ export const queueService = {
   fetchById: async (queueId) => {
     try {
       const data = await api.get(`/queues/${queueId}`);
-      if (data?.success) return data?.data || null;
-      return null;
+      return data?.success ? (data?.data?.queue || data?.data || null) : null;
     } catch (error) {
       console.error('Failed to fetch queue:', error);
       return null;
@@ -37,7 +29,7 @@ export const queueService = {
   create: async (payload) => {
     try {
       const data = await api.post('/queues/create', payload);
-      if (data?.success) return data.data;
+      if (data?.success) return data.data?.queue || data.data;
       throw new Error(data?.message || 'Failed to create queue');
     } catch (error) {
       console.error('Failed to create queue:', error);
@@ -55,34 +47,8 @@ export const queueService = {
       console.error('Failed to update queue:', error);
       throw error;
     }
-  },
-
-  // Call next patient in queue
-  callNext: async (queueId) => {
-    try {
-      const data = await api.post(`/queues/${queueId}/next`, {});
-      if (data?.success) return data.data;
-      throw new Error(data?.message || 'Failed to call next patient');
-    } catch (error) {
-      console.error('Failed to call next patient:', error);
-      throw error;
-    }
-  },
-
-  // Delete queue
-  delete: async (queueId) => {
-    try {
-      await api.delete(`/queues/${queueId}`);
-    } catch (error) {
-      console.error('Failed to delete queue:', error);
-      throw error;
-    }
-  },
+  }
 };
-
-/* ─────────────────────────────────
-   TOKEN SERVICE (Backend API)
-──────────────────────────────── */
 
 export const tokenService = {
   // Get all tokens for a queue
@@ -90,124 +56,62 @@ export const tokenService = {
     try {
       const data = await api.get(`/tokens/${queueId}`);
       if (data?.success) {
-        const tokens = data?.data?.tokens || [];
-        // sync to API
-        for (const token of tokens) {
-          await apiDbService.upsert('tokens', token.id, token);
-        }
-        return tokens;
+        return data?.data?.tokens || [];
       }
+      return [];
     } catch (error) {
-      console.warn('API fetch failed, using api:', error);
+      console.error('Failed to fetch tokens:', error);
+      return [];
     }
-
-    // API fallback
-    const apiTokens = await getDataFromApi();
-    return apiTokens.filter((t) => String(t.queueId) === String(queueId));
   },
 
   // Create a new token
   create: async (payload) => {
     try {
-      const data = await api.post('/tokens/create', payload);
-      if (data?.success) {
-        // sync to API
-        const token = data.data;
-        await apiDbService.upsert('tokens', token.id, token);
-        return token;
-      }
+      // Ensure we're using snake_case for the API
+      const apiPayload = {
+        queue_id: payload.queue_id || payload.queueId,
+        patient_id: payload.patient_id || payload.patientId,
+        patient_name: payload.patient_name || payload.patientName || 'Patient',
+        patient_email: payload.patient_email || payload.patientEmail || '',
+        patient_phone: payload.patient_phone || payload.patientPhone || '',
+        hospital_id: payload.hospital_id || payload.hospitalId,
+        department_id: payload.department_id || payload.departmentId || '',
+        appointment_type: payload.appointment_type || payload.appointmentType || 'regular',
+        priority: payload.priority || 'normal',
+        notes: payload.notes || ''
+      };
+
+      const data = await api.post('/tokens/create', apiPayload);
+      if (data?.success) return data.data;
+      throw new Error(data?.message || 'Failed to create token');
     } catch (error) {
-      console.warn('API create failed, using api:', error);
+      console.error('Failed to create token:', error);
+      throw error;
     }
-
-    // API fallback
-    const allTokens = await getDataFromApi();
-    const queueTokens = allTokens.filter(
-      (t) => String(t.queueId) === String(payload.queueId)
-    );
-    const tokenNumber = queueTokens.length + 1;
-    const tokenCode = `T-${String(tokenNumber).padStart(3, '0')}`;
-
-    const newToken = {
-      id: `TOK-${Date.now()}`,
-      tokenNumber,
-      tokenCode,
-      ...payload,
-      status: 'waiting',
-      createdAt: new Date().toISOString(),
-    };
-    await apiDbService.upsert('tokens', newToken.id, newToken);
-    return newToken;
   },
 
   // Doctor calls a token
   call: async (tokenId) => {
     try {
       const data = await api.post(`/tokens/${tokenId}/call`, {});
-      if (data?.success) {
-        // sync to API
-        const token = data.data;
-        await apiDbService.upsert('tokens', token.id, token);
-        return token;
-      }
+      return data?.success ? data.data : null;
     } catch (error) {
-      console.warn('API call failed, using api:', error);
+      console.error('Failed to call token:', error);
+      throw error;
     }
-
-    // API fallback
-    const updatedToken = {
-      status: 'calling',
-      calledAt: new Date().toISOString(),
-    };
-    await apiDbService.upsert('tokens', tokenId, updatedToken);
-    return await apiDbService.getDocument('tokens', tokenId);
   },
 
   // Complete consultation
   complete: async (tokenId) => {
     try {
       const data = await api.post(`/tokens/${tokenId}/complete`, {});
-      if (data?.success) {
-        // sync to API
-        const token = data.data;
-        await apiDbService.upsert('tokens', token.id, token);
-        return token;
-      }
+      return data?.success ? data.data : null;
     } catch (error) {
-      console.warn('API complete failed, using api:', error);
+      console.error('Failed to complete consultation:', error);
+      throw error;
     }
-
-    // API fallback
-    const updatedToken = {
-      status: 'completed',
-      completedAt: new Date().toISOString(),
-    };
-    await apiDbService.upsert('tokens', tokenId, updatedToken);
-    return await apiDbService.getDocument('tokens', tokenId);
-  },
-
-  // Cancel token
-  cancel: async (tokenId) => {
-    try {
-      const data = await api.post(`/tokens/${tokenId}/cancel`, {});
-      if (data?.success) {
-        // sync to API
-        const token = data.data;
-        await apiDbService.upsert('tokens', token.id, token);
-        return token;
-      }
-    } catch (error) {
-      console.warn('API cancel failed, using api:', error);
-    }
-
-    // API fallback
-    const updatedToken = {
-      status: 'cancelled',
-      cancelledAt: new Date().toISOString(),
-    };
-    await apiDbService.upsert('tokens', tokenId, updatedToken);
-    return await apiDbService.getDocument('tokens', tokenId);
-  },
+  }
 };
 
 export default { queueService, tokenService };

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useAuth } from '../../context/AuthContext';
 import doctorService from '../../services/doctorService';
+import api from '../../services/api';
 import {
   faArrowLeft,
   faPrescriptionBottle,
@@ -19,6 +20,7 @@ const DoctorPrescriptions = () => {
   const { currentUser, loading: authLoading } = useAuth();
   const [form, setForm] = useState({
     patientId: '',
+    appointmentId: '',
     medicine: '',
     notes: '',
     status: 'active',
@@ -26,6 +28,21 @@ const DoctorPrescriptions = () => {
   const [patients, setPatients] = useState([]);
   const [prescriptions, setPrescriptions] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const initialPatientId = queryParams.get('patientId') || '';
+  const initialAppointmentId = queryParams.get('appointmentId') || '';
+
+  useEffect(() => {
+    if ((initialPatientId || initialAppointmentId) && (!form.patientId || !form.appointmentId)) {
+      setForm(prev => ({ 
+        ...prev, 
+        patientId: initialPatientId || prev.patientId,
+        appointmentId: initialAppointmentId || prev.appointmentId
+      }));
+    }
+  }, [initialPatientId, initialAppointmentId]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -38,13 +55,27 @@ const DoctorPrescriptions = () => {
     const loadData = async () => {
       try {
         setLoading(true);
+        const hospitalId = currentUser.hospitalId || currentUser.hospital_id || '';
         const [patientsData, prescriptionsData] = await Promise.all([
-          doctorService.getDoctorPatients(currentUser.id),
+          doctorService.getDoctorPatients(hospitalId),
           doctorService.getDoctorPrescriptions()
         ]);
 
-        setPatients(Array.isArray(patientsData) ? patientsData : []);
-        setPrescriptions(Array.isArray(prescriptionsData) ? prescriptionsData : []);
+        const pts = Array.isArray(patientsData) ? patientsData : (patientsData?.data?.users || []);
+        setPatients(pts);
+        setPrescriptions(Array.isArray(prescriptionsData) ? prescriptionsData : (prescriptionsData?.data?.prescriptions || []));
+
+        // If initial patient not in list, fetch them specifically
+        if (initialPatientId && !pts.find(p => String(p.id || p._id) === String(initialPatientId))) {
+           try {
+              const res = await api.get(`/users/${initialPatientId}`);
+              if (res) {
+                setPatients(prev => [...prev, res]);
+              }
+           } catch (e) {
+              console.warn('Could not fetch specific patient:', e);
+           }
+        }
       } catch (error) {
         console.error('Error loading prescriptions:', error);
         setPatients([]);
@@ -57,7 +88,7 @@ const DoctorPrescriptions = () => {
     loadData();
   }, [authLoading, currentUser, navigate]);
 
-  const selectedPatient = patients.find((p) => String(p.id) === String(form.patientId)) || null;
+  const selectedPatient = patients.find((p) => String(p.id || p._id) === String(form.patientId)) || null;
 
   const savePrescription = async () => {
     if (!form.patientId) {
@@ -78,7 +109,9 @@ const DoctorPrescriptions = () => {
         patient_id: form.patientId,
         patient_name: selectedPatient?.full_name || selectedPatient?.name || 'Patient',
         doctor_id: currentUser.id,
-        doctor_name: currentUser.name || 'Doctor',
+        doctor_name: currentUser.name || currentUser.full_name || 'Doctor',
+        hospital_name: currentUser.hospital_name || currentUser.hospitalName || '',
+        appointment_id: form.appointmentId,
         medicine,
         prescription: notes,
         status: form.status,
@@ -121,20 +154,45 @@ const DoctorPrescriptions = () => {
       <div style={styles.grid}>
         <div style={styles.card}>
           <h3 style={styles.sectionTitle}>Write Prescription</h3>
-
-          <label style={styles.label}>Patient</label>
-          <select
-            style={styles.input}
-            value={form.patientId}
-            onChange={(e) => setForm((prev) => ({ ...prev, patientId:  e.target.value }))}
-          >
-            <option value="">Select patient</option>
-            {patients.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
+          
+          {selectedPatient ? (
+            <div style={styles.selectedPatientInfo}>
+              <div style={styles.patientAvatar}>
+                <FontAwesomeIcon icon={faUser} />
+              </div>
+              <div style={styles.patientTexts}>
+                <h4 style={styles.patientNameDisplay}>{selectedPatient.full_name || selectedPatient.name || 'Patient'}</h4>
+                <p style={styles.patientIdDisplay}>Patient ID: {selectedPatient.id}</p>
+                {selectedPatient.phone && <p style={styles.patientIdDisplay}>Phone: {selectedPatient.phone}</p>}
+              </div>
+              <button 
+                style={styles.changePatientBtn}
+                onClick={() => setForm(prev => ({ ...prev, patientId: '' }))}
+              >
+                Change
+              </button>
+            </div>
+          ) : (
+            <>
+              <label style={styles.label}>Patient</label>
+              <select
+                style={styles.input}
+                value={form.patientId}
+                onChange={(e) => setForm((prev) => ({ ...prev, patientId:  e.target.value }))}
+              >
+                <option value="">Select patient</option>
+                {patients.length > 0 ? (
+                  patients.map((item) => (
+                    <option key={item.id || item._id} value={item.id || item._id}>
+                      {item.full_name || item.name || 'Patient'} ({String(item.id || item._id).slice(0, 8)}...) {item.phone || ''}
+                    </option>
+                  ))
+                ) : (
+                  <option disabled>No patients found in your hospital</option>
+                )}
+              </select>
+            </>
+          )}
 
           <label style={styles.label}>Medicine</label>
           <input
@@ -191,6 +249,7 @@ const styles = {
   headerRow: {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: '1rem',
     marginBottom: '2rem'
   },
@@ -207,13 +266,58 @@ const styles = {
     background: '#fff',
     border: '1px solid #ddd',
     borderRadius: '8px',
-    padding: '1.5rem'
+    padding: '1.5rem',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
   },
   sectionTitle: {
     marginTop: 0,
-    marginBottom: '1rem',
+    marginBottom: '1.5rem',
     color: '#333',
+    fontSize: '1.25rem',
+    fontWeight: '600'
+  },
+  selectedPatientInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem',
+    padding: '1rem',
+    background: '#f9fafb',
+    borderRadius: '8px',
+    marginBottom: '1.5rem',
+    border: '1px solid #e5e7eb'
+  },
+  patientAvatar: {
+    width: '40px',
+    height: '40px',
+    borderRadius: '50%',
+    background: '#3b82f6',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     fontSize: '1.2rem'
+  },
+  patientTexts: {
+    flex: 1
+  },
+  patientNameDisplay: {
+    margin: 0,
+    fontSize: '1rem',
+    color: '#111827'
+  },
+  patientIdDisplay: {
+    margin: 0,
+    fontSize: '0.85rem',
+    color: '#6b7280'
+  },
+  changePatientBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#3b82f6',
+    fontSize: '0.85rem',
+    cursor: 'pointer',
+    padding: '4px 8px',
+    borderRadius: '4px'
   },
   label: {
     display: 'block',
@@ -224,21 +328,21 @@ const styles = {
   input: {
     width: '100%',
     padding: '0.75rem',
-    marginBottom: '1rem',
+    marginBottom: '1.25rem',
     border: '1px solid #ddd',
-    borderRadius: '4px',
+    borderRadius: '6px',
     fontSize: '0.95rem',
     fontFamily: 'inherit'
   },
   submitBtn: {
     width: '100%',
     padding: '0.75rem',
-    background: '#4CAF50',
+    background: '#10b981',
     color: '#fff',
     border: 'none',
-    borderRadius: '4px',
+    borderRadius: '6px',
     fontSize: '1rem',
-    fontWeight: 'bold',
+    fontWeight: '600',
     cursor: 'pointer',
     transition: 'background 0.3s'
   },
@@ -282,6 +386,6 @@ const styles = {
     fontSize: '0.9rem',
     fontStyle: 'italic'
   }
-};
+}
 
 export default DoctorPrescriptions;

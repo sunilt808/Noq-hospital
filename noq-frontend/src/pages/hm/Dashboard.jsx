@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import api from '../../services/api.js';
 
 export default function HMDashboard() {
   const { currentUser, logout } = useAuth();
-  const { data: apiData, loading: dataLoading } = useApiData();
   const navigate = useNavigate();
   const [stats, setStats] = useState({
     hospitals: 0,
@@ -15,37 +15,53 @@ export default function HMDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!currentUser || currentUser.role !== 'hm') {
+    if (!currentUser) return;
+    if (currentUser.role !== 'hm') {
       navigate('/hm-login');
       return;
     }
-    setLoading(dataLoading);
-  }, [currentUser, dataLoading, navigate]);
 
-  // Calculate stats from API data
-  useEffect(() => {
-    if (currentUser?.hospital_id && apiData) {
-      const hospitalDoctors = apiData.doctors?.filter(
-        d => d.hospital_id === currentUser.hospital_id
-      ) || [];
-      
-      const hospitalDepartments = apiData.departments?.filter(
-        d => d.hospital_id === currentUser.hospital_id
-      ) || [];
-      
-      const todayAppointments = apiData.appointments?.filter(
-        a => a.hospital_id === currentUser.hospital_id && 
-        a.appointment_date?.split('T')[0] === new Date().toISOString().split('T')[0]
-      ) || [];
-      
-      setStats({
-        hospitals: 1, // Current hospital
-        doctors: hospitalDoctors.length,
-        departments: hospitalDepartments.length,
-        todayAppointments: todayAppointments.length
-      });
-    }
-  }, [apiData, currentUser?.hospital_id]);
+    const loadStats = async () => {
+      try {
+        setLoading(true);
+        const hospitalId = currentUser.hospital_id || currentUser.hospitalId || '';
+        const [doctorsRes, appointmentsRes] = await Promise.all([
+          api.get('/users?role=doctor').catch(() => null),
+          api.get('/appointments').catch(() => null),
+        ]);
+
+        const doctors = Array.isArray(doctorsRes)
+          ? doctorsRes
+          : doctorsRes?.data?.users || doctorsRes?.users || [];
+
+        const appointments = Array.isArray(appointmentsRes)
+          ? appointmentsRes
+          : appointmentsRes?.items || appointmentsRes?.data?.appointments || [];
+
+        const today = new Date().toISOString().split('T')[0];
+        const todayAppts = appointments.filter(
+          a => String(a.hospital_id || '') === hospitalId &&
+               (a.appointment_date || '').startsWith(today)
+        );
+        const myDoctors = doctors.filter(
+          d => String(d.hospital_id || d.hospitalId || '') === hospitalId
+        );
+
+        setStats({
+          hospitals: hospitalId ? 1 : 0,
+          doctors: myDoctors.length,
+          departments: 0,
+          todayAppointments: todayAppts.length,
+        });
+      } catch (err) {
+        console.error('HM Dashboard load error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadStats();
+  }, [currentUser, navigate]);
 
   const handleLogout = async () => {
     await logout();
@@ -63,7 +79,7 @@ export default function HMDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">HM Dashboard</h1>
-            <p className="text-gray-600 mt-1">Welcome, {user?.name}</p>
+            <p className="text-gray-600 mt-1">Welcome, {currentUser?.full_name || currentUser?.name || 'Hospital Manager'}</p>
           </div>
           <button
             onClick={handleLogout}

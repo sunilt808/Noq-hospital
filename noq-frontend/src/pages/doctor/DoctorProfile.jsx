@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useAuth } from '../../context/AuthContext';
 import doctorService from '../../services/doctorService';
+import patientService from '../../services/patientService';
 import {
   faArrowLeft, faUserMd, faStethoscope, faBuilding,
   faDoorOpen, faIdCard, faClock, faRupeeSign,
@@ -41,7 +42,7 @@ const DoctorProfile = () => {
         const [doctorData, appointmentsData, reviewsData] = await Promise.all([
           doctorService.getCurrentDoctor(),
           doctorService.getDoctorAppointments(currentUser.id),
-          doctorService.getDoctorRevenue() // Use revenue as reviews for now
+          patientService.getReviews(currentUser.id, 'doctor')
         ]);
 
         // Normalize API snake_case fields → component-expected names
