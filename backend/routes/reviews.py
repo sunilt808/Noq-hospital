@@ -1,17 +1,9 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime
-from database import Base
-import datetime
+# backend/routes/reviews.py - Reviews Routes (MongoDB)
+
 from fastapi import APIRouter
 from pydantic import BaseModel
-
-class Review(Base):
-    __tablename__ = "reviews"
-
-    id = Column(Integer, primary_key=True, index=True)
-    hospital_id = Column(String, index=True)
-    rating = Column(Integer)
-    comment = Column(Text)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+from database import mongodb
+from datetime import datetime
 
 router = APIRouter(prefix="/reviews", tags=["Reviews"])
 
@@ -21,5 +13,21 @@ class StandardResponse(BaseModel):
     data: dict = {}
 
 @router.get("", response_model=StandardResponse)
-def get_reviews():
-    return StandardResponse(success=True, message="Reviews fetched.", data={"reviews": []})
+async def get_reviews(hospital_id: str = None):
+    """Get reviews from MongoDB."""
+    try:
+        if mongodb is None: return StandardResponse(success=True, message="Success", data={"reviews": []})
+        query = {}
+        if hospital_id:
+            query["hospital_id"] = hospital_id
+        
+        cursor = mongodb.reviews.find(query).sort("created_at", -1)
+        reviews = await cursor.to_list(length=1000)
+        for r in reviews:
+            r["id"] = str(r.get("_id", r.get("id")))
+            if "created_at" in r and isinstance(r["created_at"], datetime):
+                r["created_at"] = r["created_at"].isoformat()
+        
+        return StandardResponse(success=True, message="Reviews fetched.", data={"reviews": reviews})
+    except Exception as e:
+        return StandardResponse(success=False, message=str(e), data={"reviews": []})

@@ -1,28 +1,29 @@
-# backend/services/queue_service.py - Queue & token business logic with Firestore
+# backend/services/queue_service.py - Queue & token business logic with MongoDB
 
-from database import db
-from google.cloud.firestore_v1.base_query import FieldFilter
+import logging
+from database import mongodb
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import uuid
 
+logger = logging.getLogger(__name__)
 
 def _now_iso() -> str:
     return datetime.utcnow().isoformat() + "Z"
 
-
 def _gen_id(prefix: str = "") -> str:
     return f"{prefix}{uuid.uuid4().hex[:12].upper()}"
-
 
 # ─────────────────────────────────────────────
 #  QUEUE OPERATIONS
 # ─────────────────────────────────────────────
 
-def create_queue(data: dict) -> dict:
-    """Create a new queue document in Firestore."""
+async def create_queue(data: dict) -> dict:
+    """Create a new queue in MongoDB."""
+    if mongodb is None: return {}
     queue_id = _gen_id("Q-")
     queue_doc = {
+        "_id": queue_id,
         "id": queue_id,
         "hospital_id": data.get("hospital_id"),
         "doctor_id": data.get("doctor_id"),
@@ -35,92 +36,79 @@ def create_queue(data: dict) -> dict:
         "token_counter": 0,
         "current_token": None,
         "waiting_count": 0,
-        "created_at": _now_iso(),
+        "created_at": datetime.utcnow(),
     }
-    db.collection("queues").document(queue_id).set(queue_doc)
+    await mongodb.queues.insert_one(queue_doc)
     return queue_doc
 
-
-def get_all_queues(hospital_id: Optional[str] = None) -> List[dict]:
-    """Fetch all queues, optionally filtered by hospital."""
-    ref = db.collection("queues")
+async def get_all_queues(hospital_id: Optional[str] = None) -> List[dict]:
+    """Fetch all queues from MongoDB."""
+    if mongodb is None: return []
+    query = {}
     if hospital_id:
-        ref = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id))
-    return [{"id": q.id, **q.to_dict()} for q in ref.stream()]
+        query["hospital_id"] = hospital_id
+    cursor = mongodb.queues.find(query)
+    queues = await cursor.to_list(length=1000)
+    for q in queues:
+        q["id"] = q.get("_id", q.get("id"))
+    return queues
 
+async def get_queue_by_id(queue_id: str) -> Optional[dict]:
+    """Get a specific queue from MongoDB."""
+    if mongodb is None: return None
+    queue = await mongodb.queues.find_one({"_id": queue_id})
+    if queue:
+        queue["id"] = queue.get("_id", queue.get("id"))
+    return queue
 
-def get_queue_by_id(queue_id: str) -> Optional[dict]:
-    doc = db.collection("queues").document(queue_id).get()
-    if doc.exists:
-        return {"id": doc.id, **doc.to_dict()}
-    return None
+async def update_queue(queue_id: str, updates: dict) -> Optional[dict]:
+    """Update a queue in MongoDB."""
+    if mongodb is None: return None
+    await mongodb.queues.update_one({"_id": queue_id}, {"$set": updates})
+    return await get_queue_by_id(queue_id)
 
+async def delete_queue(queue_id: str) -> bool:
+    """Delete a queue in MongoDB."""
+    if mongodb is None: return False
+    result = await mongodb.queues.delete_one({"_id": queue_id})
+    return result.deleted_count > 0
 
-def update_queue(queue_id: str, updates: dict) -> Optional[dict]:
-    ref = db.collection("queues").document(queue_id)
-    if not ref.get().exists:
-        return None
-    ref.update(updates)
-    return {"id": queue_id, **ref.get().to_dict()}
-
-
-def delete_queue(queue_id: str) -> bool:
-    ref = db.collection("queues").document(queue_id)
-    if not ref.get().exists:
-        return False
-    ref.delete()
-    return True
-
-
-def call_next_in_queue(queue_id: str) -> Optional[dict]:
-    """Atomically find and call the next waiting token in a queue."""
-    # Get waiting tokens sorted by token_number
-    tokens_ref = (
-        db.collection("tokens")
-        .where(filter=FieldFilter("queue_id", "==", queue_id))
-        .where(filter=FieldFilter("status", "==", "waiting"))
+async def call_next_in_queue(queue_id: str) -> Optional[dict]:
+    """Find and call the next waiting token in a queue."""
+    if mongodb is None: return None
+    next_token = await mongodb.tokens.find_one(
+        {"queue_id": queue_id, "status": "waiting"},
+        sort=[("token_number", 1)]
     )
-    waiting = sorted(
-        [{"id": t.id, **t.to_dict()} for t in tokens_ref.stream()],
-        key=lambda x: x.get("token_number", 999),
-    )
-    if not waiting:
+    if not next_token:
         return None
-    return call_token(waiting[0]["id"])
-
+    return await call_token(next_token["_id"])
 
 # ─────────────────────────────────────────────
 #  TOKEN OPERATIONS
 # ─────────────────────────────────────────────
 
-def _create_token_tx(transaction, queue_ref, token_ref, token_doc: dict):
-    """Atomically increment queue counter and create token."""
-    queue_snap = queue_ref.get(transaction=transaction)
-    if not queue_snap.exists:
+async def create_token(data: dict) -> dict:
+    """Create a token with atomic sequential numbering in MongoDB."""
+    if mongodb is None: return {}
+    queue_id = data["queue_id"]
+    
+    # Atomic increment of token_counter and waiting_count
+    queue = await mongodb.queues.find_one_and_update(
+        {"_id": queue_id},
+        {"$inc": {"token_counter": 1, "waiting_count": 1}},
+        return_document=True
+    )
+    
+    if not queue:
         raise ValueError("Queue not found")
 
-    current_counter = queue_snap.to_dict().get("token_counter", 0)
-    new_counter = current_counter + 1
-    token_number = new_counter
+    token_number = queue["token_counter"]
     token_code = f"T-{str(token_number).zfill(3)}"
-
-    token_doc["token_number"] = token_number
-    token_doc["token_code"] = token_code
-
-    transaction.update(queue_ref, {
-        "token_counter": new_counter,
-        "waiting_count": queue_snap.to_dict().get("waiting_count", 0) + 1,
-    })
-    transaction.set(token_ref, token_doc)
-    return token_doc
-
-
-def create_token(data: dict) -> dict:
-    """Create a token with atomic sequential numbering."""
     token_id = _gen_id("TOK-")
-    queue_id = data["queue_id"]
 
     token_doc = {
+        "_id": token_id,
         "id": token_id,
         "queue_id": queue_id,
         "patient_id": data.get("patient_id"),
@@ -131,106 +119,78 @@ def create_token(data: dict) -> dict:
         "priority": data.get("priority", "normal"),
         "notes": data.get("notes"),
         "status": "waiting",
-        "token_number": 0,
-        "token_code": "",
-        "created_at": _now_iso(),
+        "token_number": token_number,
+        "token_code": token_code,
+        "created_at": datetime.utcnow(),
         "called_at": None,
         "completed_at": None,
         "cancelled_at": None,
     }
 
-    queue_ref = db.collection("queues").document(queue_id)
-    token_ref = db.collection("tokens").document(token_id)
+    await mongodb.tokens.insert_one(token_doc)
+    return token_doc
 
-    transaction = db.transaction()
-    _create_token_tx(transaction, queue_ref, token_ref, token_doc)
+async def get_tokens_by_queue(queue_id: str) -> List[dict]:
+    """Get all tokens for a queue from MongoDB."""
+    if mongodb is None: return []
+    cursor = mongodb.tokens.find({"queue_id": queue_id}).sort("token_number", 1)
+    tokens = await cursor.to_list(length=1000)
+    for t in tokens:
+        t["id"] = t.get("_id", t.get("id"))
+    return tokens
 
-    # Re-fetch to get final stored doc with updated numbers
-    stored = token_ref.get().to_dict()
-    return {"id": token_id, **stored}
+async def get_token_by_id(token_id: str) -> Optional[dict]:
+    """Get a token by ID from MongoDB."""
+    if mongodb is None: return None
+    token = await mongodb.tokens.find_one({"_id": token_id})
+    if token:
+        token["id"] = token.get("_id", token.get("id"))
+    return token
 
-
-def get_tokens_by_queue(queue_id: str) -> List[dict]:
-    tokens = (
-        db.collection("tokens")
-        .where(filter=FieldFilter("queue_id", "==", queue_id))
-        .stream()
+async def call_token(token_id: str) -> Optional[dict]:
+    """Mark a token as calling in MongoDB."""
+    if mongodb is None: return None
+    token = await mongodb.tokens.find_one_and_update(
+        {"_id": token_id},
+        {"$set": {"status": "calling", "called_at": datetime.utcnow()}},
+        return_document=True
     )
-    return sorted(
-        [{"id": t.id, **t.to_dict()} for t in tokens],
-        key=lambda x: x.get("token_number", 0),
+    if token:
+        await mongodb.queues.update_one(
+            {"_id": token["queue_id"]},
+            {"$set": {"current_token": token_id}}
+        )
+        token["id"] = token["_id"]
+    return token
+
+async def complete_token(token_id: str) -> Optional[dict]:
+    """Mark a token as completed in MongoDB."""
+    if mongodb is None: return None
+    token = await mongodb.tokens.find_one_and_update(
+        {"_id": token_id},
+        {"$set": {"status": "completed", "completed_at": datetime.utcnow()}},
+        return_document=True
     )
+    if token:
+        await mongodb.queues.update_one(
+            {"_id": token["queue_id"]},
+            {"$inc": {"waiting_count": -1}, "$set": {"current_token": None}}
+        )
+        token["id"] = token["_id"]
+    return token
 
-
-def get_token_by_id(token_id: str) -> Optional[dict]:
-    doc = db.collection("tokens").document(token_id).get()
-    if doc.exists:
-        return {"id": doc.id, **doc.to_dict()}
-    return None
-
-
-def _update_token_and_queue(token_id: str, token_updates: dict, queue_updates: dict = None) -> Optional[dict]:
-    token_ref = db.collection("tokens").document(token_id)
-    token_snap = token_ref.get()
-    if not token_snap.exists:
-        return None
-
-    token_ref.update(token_updates)
-
-    if queue_updates:
-        queue_id = token_snap.to_dict().get("queue_id")
-        if queue_id:
-            db.collection("queues").document(queue_id).update(queue_updates)
-
-    return {"id": token_id, **token_ref.get().to_dict()}
-
-
-def call_token(token_id: str) -> Optional[dict]:
-    return _update_token_and_queue(
-        token_id,
-        {"status": "calling", "called_at": _now_iso()},
-        {"current_token": token_id},
+async def cancel_token(token_id: str) -> Optional[dict]:
+    """Mark a token as cancelled in MongoDB."""
+    if mongodb is None: return None
+    token = await mongodb.tokens.find_one_and_update(
+        {"_id": token_id},
+        {"$set": {"status": "cancelled", "cancelled_at": datetime.utcnow()}},
+        return_document=True
     )
-
-
-def complete_token(token_id: str) -> Optional[dict]:
-    token_snap = db.collection("tokens").document(token_id).get()
-    if not token_snap.exists:
-        return None
-    queue_id = token_snap.to_dict().get("queue_id")
-
-    result = _update_token_and_queue(
-        token_id,
-        {"status": "completed", "completed_at": _now_iso()},
-    )
-
-    # Decrement waiting count on queue
-    if queue_id:
-        queue_ref = db.collection("queues").document(queue_id)
-        queue_snap = queue_ref.get()
-        if queue_snap.exists:
-            wc = max(0, queue_snap.to_dict().get("waiting_count", 1) - 1)
-            queue_ref.update({"waiting_count": wc, "current_token": None})
-
-    return result
-
-
-def cancel_token(token_id: str) -> Optional[dict]:
-    token_snap = db.collection("tokens").document(token_id).get()
-    if not token_snap.exists:
-        return None
-    queue_id = token_snap.to_dict().get("queue_id")
-
-    result = _update_token_and_queue(
-        token_id,
-        {"status": "cancelled", "cancelled_at": _now_iso()},
-    )
-
-    if queue_id:
-        queue_ref = db.collection("queues").document(queue_id)
-        queue_snap = queue_ref.get()
-        if queue_snap.exists:
-            wc = max(0, queue_snap.to_dict().get("waiting_count", 1) - 1)
-            queue_ref.update({"waiting_count": wc})
-
-    return result
+    if token:
+        await mongodb.queues.update_one(
+            {"_id": token["queue_id"]},
+            {"$inc": {"waiting_count": -1}}
+        )
+        token["id"] = token["_id"]
+    return token

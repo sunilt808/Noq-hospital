@@ -1,19 +1,16 @@
+# backend/services/advanced_booking_service.py - Advanced booking business logic (MongoDB)
+
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 import uuid
-
-from database import db
-from google.cloud.firestore_v1.base_query import FieldFilter
+from database import mongodb
 from services import user_service
-
 
 def _now_iso() -> str:
     return datetime.utcnow().isoformat() + "Z"
 
-
 def _gen_id(prefix: str = "") -> str:
     return f"{prefix}{uuid.uuid4().hex[:12].upper()}"
-
 
 def _doctor_matches_case(doctor: dict, case_type: str) -> bool:
     category = str(doctor.get('advanced_booking_category') or doctor.get('advancedBookingCategory') or 'general').lower()
@@ -32,28 +29,28 @@ def _doctor_matches_case(doctor: dict, case_type: str) -> bool:
         return any(token in text for token in ('geriat', 'general', 'internal', 'medicine', 'senior'))
     return True
 
-
 def _doctor_is_available(doctor: dict) -> bool:
     status = str(doctor.get('status') or 'active').lower()
     return status not in ('inactive', 'disabled', 'blocked', 'suspended')
 
-
-def _allocate_doctor(hospital_id: str, case_type: str) -> Optional[dict]:
+async def _allocate_doctor(hospital_id: str, case_type: str) -> Optional[dict]:
+    if mongodb is None: return None
+    
+    all_docs = await user_service.get_all_users(role='doctor', hospital_id=hospital_id)
     doctors = [
-        item for item in user_service.get_all_users(role='doctor', hospital_id=hospital_id)
+        item for item in all_docs
         if _doctor_is_available(item) and _doctor_matches_case(item, case_type)
     ]
     if not doctors:
         return None
 
-    active_docs = db.collection('advanced_bookings').where(
-        filter=FieldFilter('hospital_id', '==', hospital_id)
-    ).stream()
-    existing = [doc.to_dict() for doc in active_docs]
+    # Get active bookings from MongoDB
+    cursor = mongodb.advanced_bookings.find({"hospital_id": hospital_id})
+    existing = await cursor.to_list(length=1000)
 
     weighted = []
     for doctor in doctors:
-        doctor_id = str(doctor.get('id') or '')
+        doctor_id = str(doctor.get('id') or doctor.get('_id') or '')
         active_count = sum(
             1 for item in existing
             if str(item.get('doctor_id') or '') == doctor_id
@@ -64,24 +61,25 @@ def _allocate_doctor(hospital_id: str, case_type: str) -> Optional[dict]:
     weighted.sort(key=lambda item: (item[0], item[1]))
     return weighted[0][2]
 
-
-def create_booking(data: dict) -> dict:
+async def create_booking(data: dict) -> dict:
+    if mongodb is None: return {}
     booking_id = _gen_id("AB-")
-    now = _now_iso()
+    now_dt = datetime.utcnow()
 
     doctor_id = str(data.get("doctor_id") or "")
     doctor_name = data.get("doctor_name", "")
     doctor_specialization = data.get("doctor_specialization", "")
 
     if not doctor_id:
-        allocated_doctor = _allocate_doctor(str(data.get('hospital_id') or ''), str(data.get('case_type') or ''))
+        allocated_doctor = await _allocate_doctor(str(data.get('hospital_id') or ''), str(data.get('case_type') or ''))
         if not allocated_doctor:
             raise ValueError('No eligible doctor available for this advanced booking.')
-        doctor_id = str(allocated_doctor.get('id') or '')
+        doctor_id = str(allocated_doctor.get('id') or allocated_doctor.get('_id') or '')
         doctor_name = allocated_doctor.get('name', '')
         doctor_specialization = allocated_doctor.get('specialization') or allocated_doctor.get('department', '')
 
     booking_doc = {
+        "_id": booking_id,
         "id": booking_id,
         "case_type": data.get("case_type"),
         "case_label": data.get("case_label"),
@@ -103,47 +101,48 @@ def create_booking(data: dict) -> dict:
         "status": str(data.get("status", "allocated")),
         "allocation_method": data.get("allocation_method", "auto-doctor-load-balanced"),
         "source": data.get("source", "advanced-booking"),
-        "allocated_at": data.get("allocated_at") or now,
-        "created_at": now,
-        "updated_at": now,
+        "allocated_at": now_dt,
+        "created_at": now_dt,
+        "updated_at": now_dt,
     }
 
-    db.collection("advanced_bookings").document(booking_id).set(booking_doc)
+    await mongodb.advanced_bookings.insert_one(booking_doc)
     return booking_doc
 
+async def get_booking_by_id(booking_id: str) -> Optional[dict]:
+    if mongodb is None: return None
+    booking = await mongodb.advanced_bookings.find_one({"_id": booking_id})
+    if booking:
+        booking["id"] = str(booking.get("_id", booking.get("id")))
+    return booking
 
-def get_booking_by_id(booking_id: str) -> Optional[dict]:
-    snap = db.collection("advanced_bookings").document(booking_id).get()
-    if not snap.exists:
-        return None
-    return {"id": snap.id, **snap.to_dict()}
-
-
-def get_bookings_scoped(payload: dict) -> List[dict]:
+async def get_bookings_scoped(payload: dict) -> List[dict]:
+    if mongodb is None: return []
     role = str(payload.get("role") or "").lower()
     user_id = str(payload.get("sub") or "")
     hospital_id = str(payload.get("hospital_id") or "")
 
-    ref = db.collection("advanced_bookings")
-
+    query = {}
     if role == "admin":
-        docs = ref.stream()
+        pass
     elif role == "hm":
-        docs = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id)).stream()
+        query["hospital_id"] = hospital_id
     elif role == "doctor":
-        docs = ref.where(filter=FieldFilter("doctor_id", "==", user_id)).stream()
+        query["doctor_id"] = user_id
     elif role == "patient":
-        docs = ref.where(filter=FieldFilter("patient_id", "==", user_id)).stream()
+        query["patient_id"] = user_id
     else:
         return []
 
-    bookings = [{"id": doc.id, **doc.to_dict()} for doc in docs]
-    bookings.sort(key=lambda item: item.get("created_at", ""), reverse=True)
+    cursor = mongodb.advanced_bookings.find(query).sort("created_at", -1)
+    bookings = await cursor.to_list(length=1000)
+    for b in bookings:
+        b["id"] = str(b.get("_id", b.get("id")))
     return bookings
 
-
-def update_booking_status(booking_id: str, status: str, payload: Dict[str, Any]) -> Optional[dict]:
-    booking = get_booking_by_id(booking_id)
+async def update_booking_status(booking_id: str, status: str, payload: Dict[str, Any]) -> Optional[dict]:
+    if mongodb is None: return None
+    booking = await get_booking_by_id(booking_id)
     if not booking:
         return None
 
@@ -162,14 +161,13 @@ def update_booking_status(booking_id: str, status: str, payload: Dict[str, Any])
 
     updates = {
         "status": status,
-        "updated_at": _now_iso(),
+        "updated_at": datetime.utcnow(),
     }
 
-    db.collection("advanced_bookings").document(booking_id).update(updates)
-    return get_booking_by_id(booking_id)
+    await mongodb.advanced_bookings.update_one({"_id": booking_id}, {"$set": updates})
+    return await get_booking_by_id(booking_id)
 
-
-def assign_booking_doctor(
+async def assign_booking_doctor(
     booking_id: str,
     doctor_id: str,
     payload: Dict[str, Any],
@@ -177,7 +175,8 @@ def assign_booking_doctor(
     doctor_specialization: str = "",
     allocation_method: str = "hm-manual-assignment",
 ) -> Optional[dict]:
-    booking = get_booking_by_id(booking_id)
+    if mongodb is None: return None
+    booking = await get_booking_by_id(booking_id)
     if not booking:
         return None
 
@@ -190,7 +189,7 @@ def assign_booking_doctor(
     if role == "hm" and actor_hospital_id and str(booking.get("hospital_id") or "") != actor_hospital_id:
         raise PermissionError("HM can update only own hospital bookings")
 
-    selected_doctor = user_service.get_user_by_id(str(doctor_id))
+    selected_doctor = await user_service.get_user_by_id(str(doctor_id))
     if not selected_doctor or str(selected_doctor.get("role") or "").lower() != "doctor":
         raise ValueError("Selected doctor not found")
 
@@ -201,12 +200,12 @@ def assign_booking_doctor(
 
     updates = {
         "doctor_id": str(doctor_id),
-        "doctor_name": doctor_name or selected_doctor.get("name", "Doctor"),
-        "doctor_specialization": doctor_specialization or selected_doctor.get("specialization", ""),
+        "doctor_name": doctor_name or selected_doctor.get("name") or "Doctor",
+        "doctor_specialization": doctor_specialization or selected_doctor.get("specialization") or "",
         "allocation_method": allocation_method or "hm-manual-assignment",
         "status": "allocated",
-        "updated_at": _now_iso(),
+        "updated_at": datetime.utcnow(),
     }
 
-    db.collection("advanced_bookings").document(booking_id).update(updates)
-    return get_booking_by_id(booking_id)
+    await mongodb.advanced_bookings.update_one({"_id": booking_id}, {"$set": updates})
+    return await get_booking_by_id(booking_id)

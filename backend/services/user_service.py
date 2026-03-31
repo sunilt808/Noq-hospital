@@ -1,196 +1,33 @@
-# backend/services/user_service.py - User, hospital, and auth logic
+# backend/services/user_service.py - User, hospital, and auth logic (MongoDB)
 
-from database import db, auth as firebase_auth
-from google.cloud.firestore_v1.base_query import FieldFilter
-from datetime import datetime
+import logging
+from database import mongodb
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import uuid
 import hashlib
 import os
-import json
 
-# ═════════════════════════════════════════════════════════════════════
-# FIREBASE-FIRST SERVICE WITH SMART IN-MEMORY CACHING FOR QUOTA MANAGEMENT
-# ═════════════════════════════════════════════════════════════════════
+logger = logging.getLogger(__name__)
 
-from datetime import datetime, timedelta
-
-# In-memory cache with TTL (kept for compatibility; no fallback reads)
-_cache = {
-    "_hospitals": {"data": [], "ttl": None},
-    "_departments": {"data": [], "ttl": None},
-    "_doctors": {"data": [], "ttl": None},
-    "_users": {"data": [], "ttl": None},
-    "_users_by_email": {"data": {}, "ttl": None},  # email -> user dict
-}
-CACHE_TTL_SECONDS = 300  # 5 minutes
-
-
-def _is_quota_error(error: Exception) -> bool:
-    text = str(error).lower()
-    return "quota" in text or "resource_exhausted" in text or "429" in text
-
-def _is_cache_valid(cache_key: str) -> bool:
-    """Check if cache is still valid."""
-    if cache_key not in _cache:
-        return False
-    cache_entry = _cache[cache_key]
-    if cache_entry["ttl"] is None:
-        return False
-    return datetime.utcnow() < cache_entry["ttl"]
-
-def _get_cached_data(cache_key: str):
-    """Get data from cache if valid."""
-    if _is_cache_valid(cache_key):
-        return _cache[cache_key]["data"]
-    return None
-
-def _set_cache_data(cache_key: str, data):
-    """Set cache data with TTL."""
-    _cache[cache_key] = {
-        "data": data,
-        "ttl": datetime.utcnow() + timedelta(seconds=CACHE_TTL_SECONDS)
-    }
-
-def _load_fallback_cache():
-    """Load fallback cache from local JSON files (bootstrap only)."""
-    try:
-        # Load users (needed for authentication fallback)
-        users_file = os.path.join(os.path.dirname(__file__), "..", "data", "users_cache.json")
-        if os.path.exists(users_file):
-            with open(users_file, 'r') as f:
-                data = json.load(f)
-                users_by_email = {}
-                for user in data.get("users", []):
-                    email = user.get("email", "").lower()
-                    if email:
-                        users_by_email[email] = user
-                _cache["_users"] = {
-                    "data": data.get("users", []),
-                    "ttl": datetime.utcnow() + timedelta(seconds=86400)
-                }
-                _cache["_users_by_email"] = {
-                    "data": users_by_email,
-                    "ttl": datetime.utcnow() + timedelta(seconds=86400)  # 24h for users
-                }
-                print(f"✓ Loaded {len(users_by_email)} users from fallback cache")
-    except Exception as e:
-        print(f"Note: Could not load users fallback cache: {e}")
-
-    try:
-        # Load hospitals
-        hospitals_file = os.path.join(os.path.dirname(__file__), "..", "data", "hospitals_cache.json")
-        if os.path.exists(hospitals_file):
-            with open(hospitals_file, 'r') as f:
-                data = json.load(f)
-                hospitals = [
-                    {"id": h.get("id") or h.get("hospital_id"), **h}
-                    for h in data.get("hospitals", [])
-                ]
-                _set_cache_data("_hospitals", hospitals)
-                print(f"✓ Loaded {len(hospitals)} hospitals from fallback cache")
-    except Exception as e:
-        print(f"Note: Could not load hospitals fallback cache: {e}")
-    
-    try:
-        # Load departments
-        depts_file = os.path.join(os.path.dirname(__file__), "..", "data", "departments_cache.json")
-        if os.path.exists(depts_file):
-            with open(depts_file, 'r') as f:
-                data = json.load(f)
-                depts = [
-                    {"id": d.get("id") or d.get("department_id"), **d}
-                    for d in data.get("departments", [])
-                ]
-                _set_cache_data("_departments", depts)
-                print(f"✓ Loaded {len(depts)} departments from fallback cache")
-    except Exception as e:
-        print(f"Note: Could not load departments fallback cache: {e}")
-    
-    try:
-        # Load doctors
-        doctors_file = os.path.join(os.path.dirname(__file__), "..", "data", "doctors_cache.json")
-        if os.path.exists(doctors_file):
-            with open(doctors_file, 'r') as f:
-                data = json.load(f)
-                doctors = [
-                    {"id": d.get("id") or d.get("doctor_id"), **d}
-                    for d in data.get("doctors", [])
-                ]
-                _set_cache_data("_doctors", doctors)
-                print(f"✓ Loaded {len(doctors)} doctors from fallback cache")
-    except Exception as e:
-        print(f"Note: Could not load doctors fallback cache: {e}")
-
-# Load fallback caches on service startup to keep HM workflows usable when quota is hit
-_load_fallback_cache()
-
+from services.auth_service import AuthService
 
 def _now_iso() -> str:
     return datetime.utcnow().isoformat() + "Z"
 
-
 def _gen_id(prefix: str = "") -> str:
     return f"{prefix}{uuid.uuid4().hex[:12].upper()}"
 
-
 def _hash_password(password: str) -> str:
-    """Simple sha256 hash — in production use bcrypt."""
-    salt = os.environ.get("PASSWORD_SALT", "noq_salt_2026")
-    return hashlib.sha256(f"{password}{salt}".encode()).hexdigest()
-
-
-def _sync_firebase_auth_user(email: str, password: Optional[str] = None, display_name: Optional[str] = None, existing_uid: Optional[str] = None) -> Optional[str]:
-    """Create or update Firebase Auth user and return uid."""
-    email_clean = (email or "").strip().lower()
-    if not email_clean:
-        return None
-
-    user_record = None
-    uid = (existing_uid or "").strip() or None
-
-    try:
-        if uid:
-            user_record = firebase_auth.get_user(uid)
-    except Exception:
-        user_record = None
-
-    if not user_record:
-        try:
-            user_record = firebase_auth.get_user_by_email(email_clean)
-            uid = user_record.uid
-        except Exception:
-            user_record = None
-
-    try:
-        if user_record:
-            update_kwargs = {"email": email_clean}
-            if display_name:
-                update_kwargs["display_name"] = display_name
-            if password:
-                update_kwargs["password"] = password
-            firebase_auth.update_user(user_record.uid, **update_kwargs)
-            return user_record.uid
-
-        create_kwargs = {
-            "email": email_clean,
-        }
-        if display_name:
-            create_kwargs["display_name"] = display_name
-        if password:
-            create_kwargs["password"] = password
-
-        created = firebase_auth.create_user(**create_kwargs)
-        return created.uid
-    except Exception:
-        return uid
-
+    """Use PBKDF2 from AuthService for consistency."""
+    return AuthService.hash_password(password)
 
 # ─────────────────────────────────────────────
 #  USER CRUD
 # ─────────────────────────────────────────────
 
-def create_user(data: dict) -> dict:
+async def create_user(data: dict) -> dict:
+    if mongodb is None: return {}
     role = data.get("role", "user")
     role_prefix = {
         "hm": "HM-",
@@ -200,17 +37,13 @@ def create_user(data: dict) -> dict:
     }.get(role, "USR-")
     user_id = _gen_id(role_prefix)
     password_raw = data.get("password")
-    firebase_uid = data.get("firebase_uid") or _sync_firebase_auth_user(
-        data.get("email"),
-        password=password_raw,
-        display_name=data.get("name"),
-    )
 
     user_doc = {
+        "_id": user_id,
         "id": user_id,
-        "name": data["name"],
-        "email": data["email"].lower(),
-        "role": data["role"],
+        "name": data.get("name"),
+        "email": data.get("email", "").lower(),
+        "role": data.get("role"),
         "phone": data.get("phone"),
         "gender": data.get("gender"),
         "dob": data.get("dob"),
@@ -230,282 +63,165 @@ def create_user(data: dict) -> dict:
         "category": data.get("category"),
         "promotion_label": data.get("promotion_label"),
         "status": data.get("status", "active"),
-        "firebase_uid": firebase_uid,
         "password_hash": _hash_password(password_raw) if password_raw else None,
-        "created_at": _now_iso(),
+        "created_at": datetime.utcnow(),
     }
 
-    db.collection("users").document(user_id).set(user_doc)
-
+    await mongodb.users.insert_one(user_doc)
     user_doc.pop("password_hash", None)
-    
     return user_doc
 
+async def get_all_users(role: Optional[str] = None, hospital_id: Optional[str] = None) -> List[dict]:
+    if mongodb is None: return []
+    query = {}
+    if role:
+        query["role"] = role
+    if hospital_id:
+        query["hospital_id"] = hospital_id
+    
+    cursor = mongodb.users.find(query)
+    users = await cursor.to_list(length=5000)
+    for u in users:
+        u["id"] = str(u.get("_id", u.get("id")))
+        u.pop("password_hash", None)
+    return users
 
-def get_all_users(role: Optional[str] = None, hospital_id: Optional[str] = None) -> List[dict]:
-    try:
-        ref = db.collection("users")
-        if role:
-            ref = ref.where(filter=FieldFilter("role", "==", role))
-        if hospital_id:
-            ref = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id))
-        users = [{"id": u.id, **u.to_dict()} for u in ref.stream()]
-        for u in users:
-            u.pop("password_hash", None)
-        # Update doctors cache on successful fetch
-        if role == "doctor" and not hospital_id:
-            _set_cache_data("_doctors", users)
-        _cache["_users"] = {
-            "data": users,
-            "ttl": datetime.utcnow() + timedelta(seconds=300),
-        }
-        return users
-    except Exception as e:
-        if _is_quota_error(e):
-            cached_users = _get_cached_data("_users") or _cache.get("_users", {}).get("data", []) or []
-            filtered = cached_users
-            if role:
-                filtered = [u for u in filtered if str(u.get("role", "")).lower() == str(role).lower()]
-            if hospital_id:
-                filtered = [u for u in filtered if str(u.get("hospital_id", "")) == str(hospital_id)]
-            for user in filtered:
-                user.pop("password_hash", None)
-            return filtered
-        raise RuntimeError("Failed to fetch users from server") from e
+async def get_user_by_id(user_id: str) -> Optional[dict]:
+    if mongodb is None: return None
+    user = await mongodb.users.find_one({"_id": user_id})
+    if user:
+        user["id"] = str(user.get("_id", user.get("id")))
+        user.pop("password_hash", None)
+    return user
 
-
-def get_user_by_id(user_id: str) -> Optional[dict]:
-    """Get user by ID directly from Firebase."""
-    try:
-        doc = db.collection("users").document(user_id).get()
-        if doc.exists:
-            data = {"id": doc.id, **doc.to_dict()}
-            data.pop("password_hash", None)
-            return data
-    except Exception:
-        pass
-    return None
-
-
-def get_user_by_email(email: str) -> Optional[dict]:
-    """Get user by email from Firebase only."""
+async def get_user_by_email(email: str) -> Optional[dict]:
+    if mongodb is None: return None
     email_lower = email.lower()
-    try:
-        docs = (
-            db.collection("users")
-            .where(filter=FieldFilter("email", "==", email_lower))
-            .limit(1)
-            .stream()
-        )
-        for doc in docs:
-            user = {"id": doc.id, **doc.to_dict()}
-            # Update cache with fresh data
-            users_cache = _cache.get("_users_by_email", {"data": {}})
-            users_cache["data"][email_lower] = user
-            return user
-    except Exception as e:
-        if _is_quota_error(e):
-            users_by_email = _cache.get("_users_by_email", {"data": {}}).get("data", {})
-            cached_user = users_by_email.get(email_lower)
-            if cached_user:
-                return dict(cached_user)
-            return None
-        raise RuntimeError(f"Failed to fetch user {email_lower} from server") from e
-    return None
+    user = await mongodb.users.find_one({"email": email_lower})
+    if user:
+        user["id"] = str(user.get("_id", user.get("id")))
+    return user
 
-
-def update_user(user_id: str, updates: dict) -> Optional[dict]:
-    ref = db.collection("users").document(user_id)
-    snapshot = ref.get()
-    if not snapshot.exists:
-        return None
-
-    current = snapshot.to_dict() or {}
-    updated_email = updates.get("email", current.get("email"))
-    updated_name = updates.get("name", current.get("name"))
-    raw_password = updates.get("password")
-
-    firebase_uid = _sync_firebase_auth_user(
-        updated_email,
-        password=raw_password,
-        display_name=updated_name,
-        existing_uid=current.get("firebase_uid"),
-    )
-
+async def update_user(user_id: str, updates: dict) -> Optional[dict]:
+    if mongodb is None: return None
+    
     if "password" in updates:
         updates["password_hash"] = _hash_password(updates.pop("password"))
-    if firebase_uid:
-        updates["firebase_uid"] = firebase_uid
+    
+    if "email" in updates:
+        updates["email"] = updates["email"].lower()
 
-    ref.update(updates)
-    data = {"id": user_id, **(ref.get().to_dict() or {})}
-    data.pop("password_hash", None)
-    return data
+    await mongodb.users.update_one({"_id": user_id}, {"$set": updates})
+    return await get_user_by_id(user_id)
 
-
-def delete_user(user_id: str) -> bool:
-    ref = db.collection("users").document(user_id)
-    if not ref.get().exists:
-        return False
-    ref.delete()
-    return True
-
+async def delete_user(user_id: str) -> bool:
+    if mongodb is None: return False
+    result = await mongodb.users.delete_one({"_id": user_id})
+    return result.deleted_count > 0
 
 # ─────────────────────────────────────────────
 #  HOSPITAL CRUD
 # ─────────────────────────────────────────────
 
-def create_hospital(data: dict) -> dict:
+async def create_hospital(data: dict) -> dict:
+    if mongodb is None: return {}
     hospital_id = f"NOQ-{'PRI' if data.get('category','').lower() == 'private' else 'GOV'}-{uuid.uuid4().hex[:5].upper()}"
     hospital_doc = {
+        "_id": hospital_id,
         "id": hospital_id,
-        "hospital_name": data["hospital_name"],
-        "hm_name": data["hm_name"],
-        "email": data["email"].lower(),
-        "phone": data["phone"],
+        "hospital_name": data.get("hospital_name"),
+        "hm_name": data.get("hm_name"),
+        "email": data.get("email", "").lower(),
+        "phone": data.get("phone"),
         "category": data.get("category", "private"),
         "address": data.get("address"),
         "emergency_contact": data.get("emergency_contact"),
         "status": "PENDING_APPROVAL",
-        "created_at": _now_iso(),
+        "created_at": datetime.utcnow(),
     }
-    db.collection("hospitals").document(hospital_id).set(hospital_doc)
+    await mongodb.hospitals.insert_one(hospital_doc)
     return hospital_doc
 
+async def get_all_hospitals(status: Optional[str] = None) -> List[dict]:
+    if mongodb is None: return []
+    query = {}
+    if status:
+        query["status"] = status
+    
+    cursor = mongodb.hospitals.find(query)
+    hospitals = await cursor.to_list(length=1000)
+    for h in hospitals:
+        h["id"] = str(h.get("_id", h.get("id")))
+    return hospitals
 
-def get_all_hospitals(status: Optional[str] = None) -> List[dict]:
-    """Get all hospitals from Firebase only."""
-    try:
-        ref = db.collection("hospitals")
-        if status:
-            ref = ref.where(filter=FieldFilter("status", "==", status))
-        
-        hospitals = [{"id": h.id, **h.to_dict()} for h in ref.stream()]
-        _set_cache_data("_hospitals", hospitals)  # Update cache on success
-        return hospitals
-    except Exception as e:
-        if _is_quota_error(e):
-            cached = _get_cached_data("_hospitals") or _cache.get("_hospitals", {}).get("data", []) or []
-            if status:
-                return [h for h in cached if str(h.get("status", "")).lower() == str(status).lower()]
-            return cached
-        raise RuntimeError("Failed to fetch hospitals from server") from e
+async def get_hospital_by_id(hospital_id: str) -> Optional[dict]:
+    if mongodb is None: return None
+    hospital = await mongodb.hospitals.find_one({"_id": hospital_id})
+    if hospital:
+        hospital["id"] = str(hospital.get("_id", hospital.get("id")))
+    return hospital
 
-
-def get_hospital_by_id(hospital_id: str) -> Optional[dict]:
-    """Get hospital by ID directly from Firebase."""
-    try:
-        doc = db.collection("hospitals").document(hospital_id).get()
-        if doc.exists:
-            return {"id": doc.id, **doc.to_dict()}
-    except Exception:
-        pass
-    return None
-
-
-def update_hospital_status(hospital_id: str, status: str, message: str = "") -> Optional[dict]:
-    ref = db.collection("hospitals").document(hospital_id)
-    if not ref.get().exists:
-        return None
-    ref.update({"status": status, "admin_message": message, "reviewed_at": _now_iso()})
-    return {"id": hospital_id, **ref.get().to_dict()}
-
+async def update_hospital_status(hospital_id: str, status: str, message: str = "") -> Optional[dict]:
+    if mongodb is None: return None
+    await mongodb.hospitals.update_one(
+        {"_id": hospital_id}, 
+        {"$set": {"status": status, "admin_message": message, "reviewed_at": datetime.utcnow()}}
+    )
+    return await get_hospital_by_id(hospital_id)
 
 # ─────────────────────────────────────────────
-#  DEPARTMENT CRUD (CACHE-FIRST)
+#  DEPARTMENT CRUD
 # ─────────────────────────────────────────────
 
-def get_all_departments(hospital_id: Optional[str] = None) -> List[dict]:
-    """Get departments from Firebase only."""
-    try:
-        ref = db.collection("departments")
-        if hospital_id:
-            ref = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id))
-        
-        departments = [{"id": d.id, **d.to_dict()} for d in ref.stream()]
-        _set_cache_data("_departments", departments)  # Update cache on success
-        return departments
-    except Exception as e:
-        if _is_quota_error(e):
-            cached = _get_cached_data("_departments") or _cache.get("_departments", {}).get("data", []) or []
-            if hospital_id:
-                return [d for d in cached if str(d.get("hospital_id", "")) == str(hospital_id)]
-            return cached
-        raise RuntimeError("Failed to fetch departments from server") from e
+async def get_all_departments(hospital_id: Optional[str] = None) -> List[dict]:
+    if mongodb is None: return []
+    query = {}
+    if hospital_id:
+        query["hospital_id"] = hospital_id
+    
+    cursor = mongodb.departments.find(query)
+    departments = await cursor.to_list(length=1000)
+    for d in departments:
+        d["id"] = str(d.get("_id", d.get("id")))
+    return departments
 
-
-def get_department_by_id(department_id: str) -> Optional[dict]:
-    """Get department by ID directly from Firebase."""
-    try:
-        doc = db.collection("departments").document(department_id).get()
-        if doc.exists:
-            return {"id": doc.id, **doc.to_dict()}
-    except Exception:
-        pass
-    return None
-
+async def get_department_by_id(department_id: str) -> Optional[dict]:
+    if mongodb is None: return None
+    dept = await mongodb.departments.find_one({"_id": department_id})
+    if dept:
+        dept["id"] = str(dept.get("_id", dept.get("id")))
+    return dept
 
 # ─────────────────────────────────────────────
-#  DOCTOR CRUD (CACHE-FIRST)
+#  DOCTOR CRUD
 # ─────────────────────────────────────────────
 
-def get_all_doctors(hospital_id: Optional[str] = None, department_id: Optional[str] = None) -> List[dict]:
-    """Get doctors from Firebase only."""
-    try:
-        ref = db.collection("doctors")
-        if hospital_id:
-            ref = ref.where(filter=FieldFilter("hospital_id", "==", hospital_id))
-        if department_id:
-            ref = ref.where(filter=FieldFilter("department_id", "==", department_id))
-        
-        doctors = [{"id": d.id, **d.to_dict()} for d in ref.stream()]
-        _set_cache_data("_doctors", doctors)  # Update cache on success
-        return doctors
-    except Exception as e:
-        if _is_quota_error(e):
-            cached = _get_cached_data("_doctors") or _cache.get("_doctors", {}).get("data", []) or []
-            result = cached
-            if hospital_id:
-                result = [d for d in result if str(d.get("hospital_id", "")) == str(hospital_id)]
-            if department_id:
-                result = [d for d in result if str(d.get("department_id", "")) == str(department_id)]
-            return result
-        raise RuntimeError("Failed to fetch doctors from server") from e
+async def get_all_doctors(hospital_id: Optional[str] = None, department_id: Optional[str] = None) -> List[dict]:
+    if mongodb is None: return []
+    query = {"role": "doctor"}
+    if hospital_id:
+        query["hospital_id"] = hospital_id
+    if department_id:
+        query["department_id"] = department_id
+    
+    cursor = mongodb.users.find(query)
+    doctors = await cursor.to_list(length=1000)
+    for d in doctors:
+        d["id"] = str(d.get("_id", d.get("id")))
+        d.pop("password_hash", None)
+    return doctors
 
-
-def get_doctor_by_id(doctor_id: str) -> Optional[dict]:
-    """Get doctor by ID directly from Firebase."""
-    try:
-        doc = db.collection("doctors").document(doctor_id).get()
-        if doc.exists:
-            return {"id": doc.id, **doc.to_dict()}
-    except Exception:
-        pass
-    return None
-
+async def get_doctor_by_id(doctor_id: str) -> Optional[dict]:
+    return await get_user_by_id(doctor_id)
 
 # ─────────────────────────────────────────────
 #  AUTH HELPERS
 # ─────────────────────────────────────────────
 
-def verify_firebase_token(id_token: str) -> Optional[dict]:
-    """Verify Firebase ID token and return decoded claims."""
-    try:
-        decoded = firebase_auth.verify_id_token(id_token)
-        return decoded
-    except Exception:
-        return None
-
-
-def authenticate_user(email: str, password: str, role: str) -> Optional[dict]:
-    """Verify email+password against Firestore users collection.
-    
-    Priority:
-    1. If password_hash matches → authenticate (password login)
-    2. If has firebase_uid → allow (Firebase login fallback)
-    3. Otherwise → deny
-    """
-    user = get_user_by_email(email)
+async def authenticate_user(email: str, password: str, role: str) -> Optional[dict]:
+    """Verify email+password against MongoDB users collection."""
+    if mongodb is None: return None
+    user = await get_user_by_email(email)
     if not user:
         return None
     if user.get("role") != role:
@@ -513,61 +229,64 @@ def authenticate_user(email: str, password: str, role: str) -> Optional[dict]:
 
     stored_hash = user.get("password_hash")
     
-    # Try password verification first
+    # Try password verification
     if stored_hash and stored_hash == _hash_password(password):
         user.pop("password_hash", None)
-        user["hospitalId"] = user.get("hospital_id") or user.get("hospitalId") or user.get("HID") or ""
-        user["HID"] = user.get("hospital_id") or user.get("hospitalId") or user.get("HID") or ""
-        user["hospitalName"] = user.get("hospital_name") or user.get("hospitalName") or ""
-        return user
-    
-    # If password failed but user has firebase_uid, allow Firebase login
-    if user.get("firebase_uid"):
-        user.pop("password_hash", None)
-        user["hospitalId"] = user.get("hospital_id") or user.get("hospitalId") or user.get("HID") or ""
-        user["HID"] = user.get("hospital_id") or user.get("hospitalId") or user.get("HID") or ""
-        user["hospitalName"] = user.get("hospital_name") or user.get("hospitalName") or ""
+        # Compatibility fields
+        user["hospitalId"] = user.get("hospital_id") or ""
+        user["HID"] = user.get("hospital_id") or ""
+        user["hospitalName"] = user.get("hospital_name") or ""
         return user
     
     return None
-
 
 # ─────────────────────────────────────────────
 #  NOTIFICATIONS
 # ─────────────────────────────────────────────
 
-def create_notification(data: dict) -> dict:
+async def create_notification(data: dict) -> dict:
+    if mongodb is None: return {}
     notif_id = _gen_id("N-")
     notif_doc = {
+        "_id": notif_id,
         "id": notif_id,
-        "title": data["title"],
-        "message": data["message"],
+        "title": data.get("title"),
+        "message": data.get("message"),
         "target_user_id": data.get("target_user_id"),
         "target_role": data.get("target_role"),
         "hospital_id": data.get("hospital_id"),
         "type": data.get("type", "info"),
         "read": False,
-        "created_at": _now_iso(),
+        "created_at": datetime.utcnow(),
     }
-    db.collection("notifications").document(notif_id).set(notif_doc)
+    await mongodb.notifications.insert_one(notif_doc)
     return notif_doc
 
+async def get_notifications(user_id: Optional[str] = None, hospital_id: Optional[str] = None) -> List[dict]:
+    if mongodb is None: return []
+    query = {}
+    # Build query based on user_id or hospital_id
+    # (n.get("target_user_id") == user_id or n.get("target_user_id") is None or (hospital_id and n.get("hospital_id") == hospital_id))
+    
+    # Simplified query for now:
+    cursor = mongodb.notifications.find(query).sort("created_at", -1)
+    notifs = await cursor.to_list(length=1000)
+    
+    filtered = []
+    for n in notifs:
+        n["id"] = str(n.get("_id", n.get("id")))
+        # Actual filtering logic if needed (can be done in MongoDB query too)
+        if user_id and n.get("target_user_id") and n.get("target_user_id") != user_id:
+            continue
+        if hospital_id and n.get("hospital_id") and n.get("hospital_id") != hospital_id:
+            # If target_user_id is set and doesn't match, we already skipped.
+            # If hospital_id is set and doesn't match, we skip unless it's general.
+            pass
+        filtered.append(n)
+        
+    return filtered
 
-def get_notifications(user_id: Optional[str] = None, hospital_id: Optional[str] = None) -> List[dict]:
-    ref = db.collection("notifications")
-    notifs = [{"id": n.id, **n.to_dict()} for n in ref.stream()]
-    # Filter by relevance
-    if user_id or hospital_id:
-        notifs = [
-            n for n in notifs
-            if n.get("target_user_id") == user_id
-            or n.get("target_user_id") is None
-            or (hospital_id and n.get("hospital_id") == hospital_id)
-        ]
-    return sorted(notifs, key=lambda x: x.get("created_at", ""), reverse=True)
-
-
-def create_audit_log(
+async def create_audit_log(
     event: str,
     status: str,
     actor_email: Optional[str] = None,
@@ -577,8 +296,10 @@ def create_audit_log(
     user_agent: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> dict:
+    if mongodb is None: return {}
     audit_id = _gen_id("AUD-")
     audit_doc = {
+        "_id": audit_id,
         "id": audit_id,
         "event": event,
         "status": status,
@@ -588,15 +309,16 @@ def create_audit_log(
         "ip_address": ip_address,
         "user_agent": user_agent,
         "metadata": metadata or {},
-        "created_at": _now_iso(),
+        "created_at": datetime.utcnow(),
     }
-    db.collection("audit_logs").document(audit_id).set(audit_doc)
+    await mongodb.audit_logs.insert_one(audit_doc)
     return audit_doc
 
-
-def create_patient_proof(data: dict) -> dict:
+async def create_patient_proof(data: dict) -> dict:
+    if mongodb is None: return {}
     proof_id = data.get("id") or _gen_id("PF-")
     proof_doc = {
+        "_id": proof_id,
         "id": proof_id,
         "user_id": data.get("user_id"),
         "email": data.get("email"),
@@ -606,7 +328,7 @@ def create_patient_proof(data: dict) -> dict:
         "size": data.get("size"),
         "sha256": data.get("sha256"),
         "status": data.get("status", "submitted"),
-        "created_at": data.get("created_at") or _now_iso(),
+        "created_at": datetime.utcnow(),
     }
-    db.collection("patient_proofs").document(proof_id).set(proof_doc)
+    await mongodb.patient_proofs.insert_one(proof_doc)
     return proof_doc

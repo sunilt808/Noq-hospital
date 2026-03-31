@@ -1,11 +1,9 @@
-# backend/routes/auth.py - Authentication Routes (FIXED)
+# backend/routes/auth.py - Authentication Routes (MongoDB)
 
 import logging
 import re
-from fastapi import APIRouter, HTTPException, Depends, status, Request
+from fastapi import APIRouter, HTTPException, status, Request
 from pydantic import BaseModel, EmailStr, field_validator
-from sqlalchemy.orm import Session
-from database import get_db
 from services.auth_service import AuthService, UserService
 from audit import AuditLogger
 from hospital_id_utils import is_valid_hospital_id
@@ -83,41 +81,26 @@ class SignupRequest(BaseModel):
         return v
 
 
-# ───────────────── LOGIN (FIXED) ───────────────── #
+# ───────────────── LOGIN ───────────────── #
 
 @router.post("/login", response_model=LoginResponse)
-def login(
+async def login(
     req: LoginRequest,
-    request: Request,
-    db: Session = Depends(get_db)
+    request: Request
 ):
     try:
         client_ip = request.client.host if request.client else None
 
-        user = AuthService.authenticate_user(
-            db=db,
+        user = await AuthService.authenticate_user(
             email=req.email,
             password=req.password,
             ip_address=client_ip
         )
 
-        if not user:
-            raise ValueError("Invalid credentials")
-
-        # ✅ CREATE TOKEN (THIS WAS MISSING)
-        token = AuthService.create_access_token({
-            "sub": user["id"],
-            "email": user["email"],
-            "role": user["role"],
-        })
-
         return LoginResponse(
             success=True,
             message="Login successful",
-            data={
-                **user,
-                "token": token   # ✅ IMPORTANT
-            }
+            data=user
         )
 
     except ValueError as e:
@@ -129,19 +112,17 @@ def login(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-# ───────────────── SIGNUP (ALREADY CORRECT) ───────────────── #
+# ───────────────── SIGNUP ───────────────── #
 
 @router.post("/signup", response_model=LoginResponse)
-def signup(
+async def signup(
     req: SignupRequest,
-    request: Request,
-    db: Session = Depends(get_db)
+    request: Request
 ):
     try:
         client_ip = request.client.host if request.client else None
 
-        user = UserService.create_user(
-            db=db,
+        user = await UserService.create_user(
             email=req.email,
             password=req.password,
             full_name=req.full_name,
@@ -151,20 +132,19 @@ def signup(
         )
 
         token = AuthService.create_access_token({
-            "sub": user.id,
-            "email": user.email,
-            "role": user.role,
+            "sub": user["id"],
+            "email": user["email"],
+            "role": user["role"],
         })
 
-        AuditLogger.log(
-            db=db,
+        await AuditLogger.log(
             action="SIGNUP",
             entity_type="User",
-            entity_id=user.id,
-            user_id=user.id,
+            entity_id=user["id"],
+            user_id=user["id"],
             new_values={
-                "email": user.email,
-                "role": user.role,
+                "email": user["email"],
+                "role": user["role"],
                 "hospital_id": req.hospital_id or ""
             },
             ip_address=client_ip,
@@ -174,11 +154,11 @@ def signup(
             success=True,
             message=f"Signup successful as {req.role or 'patient'}",
             data={
-                "id": user.id,
-                "email": user.email,
-                "full_name": user.full_name,
-                "role": user.role,
-                "hospital_id": user.hospital_id,
+                "id": user["id"],
+                "email": user["email"],
+                "full_name": user["full_name"],
+                "role": user["role"],
+                "hospital_id": user.get("hospital_id"),
                 "token": token,
             }
         )
@@ -189,4 +169,4 @@ def signup(
 
     except Exception as e:
         logger.error(f"Signup error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error")

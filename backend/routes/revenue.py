@@ -1,12 +1,10 @@
-# backend/routes/revenue.py - Revenue & analytics endpoints for admin/HM
+# backend/routes/revenue.py - Revenue & analytics endpoints for admin/HM (MongoDB)
 
 import logging
 from fastapi import APIRouter, HTTPException, Depends, status
-from sqlalchemy.orm import Session
-from sqlalchemy import func
 from pydantic import BaseModel
-from typing import Optional
-from database import get_db, Appointment, User
+from typing import Optional, List
+from database import mongodb
 from services.auth_service import require_auth
 from datetime import datetime, timedelta
 
@@ -21,62 +19,53 @@ class StandardResponse(BaseModel):
 
 
 @router.get("/dashboard", response_model=StandardResponse)
-def get_revenue_dashboard(
+async def get_revenue_dashboard(
     hospital_id: Optional[str] = None,
-    db: Session = Depends(get_db),
     auth_payload: dict = Depends(require_auth)
 ):
-    """Get revenue dashboard for hospital admin using SQLite."""
+    """Get revenue dashboard for hospital admin from MongoDB."""
     try:
-        # Query appointments from SQLite
-        query = db.query(Appointment)
-        if hospital_id:
-            query = query.filter(Appointment.hospital_id == hospital_id)
+        if mongodb is None: return StandardResponse(success=False, message="DB Error")
         
-        appointments = query.all()
+        query = {}
+        if hospital_id:
+            query["hospital_id"] = hospital_id
+        
+        cursor = mongodb.appointments.find(query)
+        appointments = await cursor.to_list(length=5000)
         
         # Calculate totals
         total_appointments = len(appointments)
-        completed_appointments = len([a for a in appointments if a.status == "completed"])
+        completed_appointments = len([a for a in appointments if a.get("status") == "completed"])
         
         # Calculate revenue
-        total_revenue = sum(float(a.fee or 0) for a in appointments)
+        total_revenue = sum(float(a.get("fee", 0) or 0) for a in appointments)
         completed_revenue = sum(
-            float(a.fee or 0) 
+            float(a.get("fee", 0) or 0) 
             for a in appointments 
-            if a.status == "completed"
+            if a.get("status") == "completed"
         )
         
         # Last 7 days revenue
         today = datetime.utcnow()
         week_ago = today - timedelta(days=7)
         week_revenue = sum(
-            float(a.fee or 0) 
+            float(a.get("fee", 0) or 0) 
             for a in appointments 
-            if a.status == "completed" 
-            and a.appointment_date 
-            and a.appointment_date >= week_ago
+            if a.get("status") == "completed" 
+            and isinstance(a.get("appointment_date"), datetime)
+            and a.get("appointment_date") >= week_ago
         )
         
         # Doctor count
-        doctor_count = db.query(User).filter(
-            User.role == "doctor"
-        ).count()
-        if hospital_id:
-            doctor_count = db.query(User).filter(
-                User.role == "doctor",
-                User.hospital_id == hospital_id
-            ).count()
+        doc_query = {"role": "doctor"}
+        if hospital_id: doc_query["hospital_id"] = hospital_id
+        doctor_count = await mongodb.users.count_documents(doc_query)
         
         # Patient count
-        patient_count = db.query(User).filter(
-            User.role == "patient"
-        ).count()
-        if hospital_id:
-            patient_count = db.query(User).filter(
-                User.role == "patient",
-                User.hospital_id == hospital_id
-            ).count()
+        pat_query = {"role": "patient"}
+        if hospital_id: pat_query["hospital_id"] = hospital_id
+        patient_count = await mongodb.users.count_documents(pat_query)
         
         return StandardResponse(
             success=True,
@@ -93,36 +82,34 @@ def get_revenue_dashboard(
         )
     except Exception as e:
         logger.error(f"Error fetching revenue dashboard: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch revenue dashboard"
-        )
+        raise HTTPException(status_code=500, detail="Failed to fetch revenue dashboard")
 
 
 @router.get("/by-doctor", response_model=StandardResponse)
-def get_revenue_by_doctor(
+async def get_revenue_by_doctor(
     hospital_id: Optional[str] = None,
-    db: Session = Depends(get_db),
     auth_payload: dict = Depends(require_auth)
 ):
-    """Get revenue breakdown by doctor using SQLite."""
+    """Get revenue breakdown by doctor from MongoDB."""
     try:
-        # Query completed appointments from SQLite
-        query = db.query(Appointment).filter(Appointment.status == "completed")
-        if hospital_id:
-            query = query.filter(Appointment.hospital_id == hospital_id)
+        if mongodb is None: return StandardResponse(success=False, message="DB Error")
         
-        completed_appointments = query.all()
+        query = {"status": "completed"}
+        if hospital_id:
+            query["hospital_id"] = hospital_id
+        
+        cursor = mongodb.appointments.find(query)
+        completed_appointments = await cursor.to_list(length=5000)
         
         # Group by doctor and sum revenue
         revenue_by_doctor = {}
         for appt in completed_appointments:
-            if not appt.doctor_id:
+            doctor_id = appt.get("doctor_id")
+            if not doctor_id:
                 continue
             
-            doctor_id = appt.doctor_id
-            doctor_name = appt.doctor_name or "Unknown"
-            fee = float(appt.fee or 0)
+            doctor_name = appt.get("doctor_name") or "Unknown"
+            fee = float(appt.get("fee", 0) or 0)
             
             if doctor_id not in revenue_by_doctor:
                 revenue_by_doctor[doctor_id] = {
@@ -152,7 +139,4 @@ def get_revenue_by_doctor(
         )
     except Exception as e:
         logger.error(f"Error fetching revenue by doctor: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch revenue by doctor"
-        )
+        raise HTTPException(status_code=500, detail="Failed to fetch revenue by doctor")

@@ -12,7 +12,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../../context/AuthContext';
 import revenueService from '../../../services/revenueService';
-import apiDbService from '../../../services/apiDbService';
+import api from '../../../services/api';
 
 const Revenue = () => {
   const navigate = useNavigate();
@@ -25,14 +25,21 @@ const Revenue = () => {
 
     const loadData = async () => {
       try {
-        const [hospitalRows, billRows] = await Promise.all([
-          apiDbService.getCollection('hospitals'),
-          apiDbService.getCollection('bills'),
+        const [hospitalRes, billRes] = await Promise.all([
+          api.get('/hospitals?status_filter=all'),
+          api.get('/bills'),
         ]);
         if (!active) return;
-        setHospitals(Array.isArray(hospitalRows) ? hospitalRows : []);
-        setBills(Array.isArray(billRows) ? billRows : []);
-      } catch {
+        
+        // Backend returns { success, data: { hospitals: [...] } } or similar?
+        // Let's check hospitals.py/bills.py response formats.
+        // hospitals.py returns List[HospitalResponse] directly.
+        // bills.py returns StandardResponse(success=True, data={"bills": bills})
+        
+        setHospitals(Array.isArray(hospitalRes) ? hospitalRes : []);
+        setBills(billRes?.data?.bills || []);
+      } catch (err) {
+        console.error('Failed to load revenue data:', err);
         if (!active) return;
         setHospitals([]);
         setBills([]);
@@ -59,7 +66,7 @@ const Revenue = () => {
 
     // Use revenueService for consistent calculations
     const revenueData = revenueService.calculateHospitalRevenue(bills, hospitalId);
-    
+
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();

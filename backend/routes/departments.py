@@ -1,17 +1,15 @@
-# backend/routes/departments.py - Department Management Routes
+# backend/routes/departments.py - Department Management Routes (MongoDB)
 
 import logging
-from fastapi import APIRouter, HTTPException, Depends, status, Request
+from fastapi import APIRouter, HTTPException, status, Request
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy.orm import Session
-from database import get_db, Department
+from database import mongodb
 from audit import AuditLogger
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/departments", tags=["Departments"])
 
 
@@ -27,200 +25,131 @@ class DepartmentUpdate(BaseModel):
     status: Optional[str] = None
 
 
-def _serialize_dept(dept: Department) -> dict:
-    return {
-        "id": dept.id,
-        "hospital_id": dept.hospital_id,
-        "name": dept.name,
-        "description": dept.description,
-        "status": dept.status,
-        "created_at": dept.created_at.isoformat() if dept.created_at else None,
-        "updated_at": dept.updated_at.isoformat() if dept.updated_at else None,
-    }
+def _serialize_dept(dept: dict) -> dict:
+    dept["id"] = str(dept.get("_id", dept.get("id")))
+    for field in ["created_at", "updated_at"]:
+        if field in dept and isinstance(dept[field], datetime):
+            dept[field] = dept[field].isoformat()
+    return dept
 
 
 @router.get("")
-def list_departments(
-    hospital_id: str = None,
-    db: Session = Depends(get_db)
-):
-    """List departments with optional hospital filter."""
+async def list_departments(hospital_id: str = None):
+    """List departments from MongoDB."""
     try:
-        query = db.query(Department)
-        
+        if mongodb is None: return {"success": False, "data": {"departments": []}}
+        query = {}
         if hospital_id:
-            query = query.filter(Department.hospital_id == hospital_id)
+            query["hospital_id"] = hospital_id
         
-        departments = query.filter(Department.status == "active").all()
+        cursor = mongodb.departments.find(query)
+        departments = await cursor.to_list(length=1000)
         
         return {
             "success": True,
             "data": {
-                "departments": [_serialize_dept(d) for d in departments]
+                "departments": [_serialize_dept(d) for d in departments if d.get("status") != "inactive"]
             }
         }
     except Exception as e:
         logger.error(f"Error listing departments: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("")
-def create_department(
-    payload: DepartmentCreate,
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    """Create a new department."""
+async def create_department(payload: DepartmentCreate, request: Request):
+    """Create a new department in MongoDB."""
     try:
-        if not payload.name or not payload.hospital_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Name and hospital_id are required"
-            )
+        if mongodb is None: raise HTTPException(status_code=500, detail="DB Error")
         
-        dept = Department(
-            id=str(uuid4()),
-            hospital_id=payload.hospital_id,
-            name=payload.name.strip(),
-            description=(payload.description or "").strip() or None,
-            status="active",
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
-        )
+        dept_id = str(uuid4())
+        dept_doc = {
+            "_id": dept_id,
+            "hospital_id": payload.hospital_id,
+            "name": payload.name.strip(),
+            "description": (payload.description or "").strip() or None,
+            "status": "active",
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }
         
-        db.add(dept)
-        db.commit()
-        db.refresh(dept)
+        await mongodb.departments.insert_one(dept_doc)
         
         client_ip = request.client.host if request and request.client else None
-        AuditLogger.log_entity_create(
-            db,
+        await AuditLogger.log(
+            action="CREATE",
             entity_type="Department",
-            entity_id=dept.id,
-            data={"name": dept.name, "hospital_id": dept.hospital_id},
+            entity_id=dept_id,
+            new_values={"name": dept_doc["name"], "hospital_id": dept_doc["hospital_id"]},
             ip_address=client_ip,
         )
         
         return {
             "success": True,
-            "data": {"department": _serialize_dept(dept)}
+            "data": {"department": _serialize_dept(dept_doc)}
         }
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error creating department: {e}")
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.put("/{department_id}")
-def update_department(
-    department_id: str,
-    payload: DepartmentUpdate,
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    """Update a department."""
+@router.patch("/{department_id}")
+async def patch_department(department_id: str, payload: DepartmentUpdate, request: Request):
+    """Update a department in MongoDB."""
     try:
-        dept = db.query(Department).filter(Department.id == department_id).first()
-        if not dept:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Department not found"
-            )
+        if mongodb is None: raise HTTPException(status_code=500, detail="DB Error")
         
-        updates = {}
-        if payload.name:
-            dept.name = payload.name.strip()
-            updates["name"] = dept.name
-        if payload.description is not None:
-            dept.description = payload.description.strip() if payload.description else None
-            updates["description"] = dept.description
-        if payload.status:
-            dept.status = payload.status.lower()
-            updates["status"] = dept.status
+        updates = payload.model_dump(exclude_unset=True)
+        if not updates:
+            dept = await mongodb.departments.find_one({"_id": department_id})
+            return {"success": True, "data": {"department": _serialize_dept(dept)}}
+
+        updates["updated_at"] = datetime.utcnow()
+        result = await mongodb.departments.update_one({"_id": department_id}, {"$set": updates})
         
-        dept.updated_at = datetime.utcnow()
-        db.commit()
-        db.refresh(dept)
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Department not found")
         
         client_ip = request.client.host if request and request.client else None
-        AuditLogger.log_entity_update(
-            db,
+        await AuditLogger.log(
+            action="UPDATE",
             entity_type="Department",
             entity_id=department_id,
-            old_values={},
             new_values=updates,
             ip_address=client_ip,
         )
         
+        updated_dept = await mongodb.departments.find_one({"_id": department_id})
         return {
             "success": True,
-            "data": {"department": _serialize_dept(dept)}
+            "data": {"department": _serialize_dept(updated_dept)}
         }
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error updating department: {e}")
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
-
-
-@router.patch("/{department_id}")
-def patch_department(
-    department_id: str,
-    payload: DepartmentUpdate,
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    """Patch a department."""
-    return update_department(department_id, payload, request, db)
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/{department_id}")
-def delete_department(
-    department_id: str,
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    """Soft-delete a department."""
+async def delete_department(department_id: str, request: Request):
+    """Soft-delete a department in MongoDB."""
     try:
-        dept = db.query(Department).filter(Department.id == department_id).first()
-        if not dept:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Department not found"
-            )
+        if mongodb is None: raise HTTPException(status_code=500, detail="DB Error")
         
-        dept.status = "inactive"
-        dept.updated_at = datetime.utcnow()
-        db.commit()
+        await mongodb.departments.update_one(
+            {"_id": department_id},
+            {"$set": {"status": "inactive", "updated_at": datetime.utcnow()}}
+        )
         
         client_ip = request.client.host if request and request.client else None
-        AuditLogger.log_entity_delete(
-            db,
+        await AuditLogger.log(
+            action="DELETE",
             entity_type="Department",
             entity_id=department_id,
-            data={"name": dept.name},
             ip_address=client_ip,
         )
         
         return {"success": True}
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error deleting department: {e}")
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        raise HTTPException(status_code=500, detail="Internal server error")

@@ -1,14 +1,13 @@
-# backend/routes/users.py - User Management Routes
+# backend/routes/users.py - User Management Routes (MongoDB)
 
 import json
 import logging
 from datetime import datetime
 from uuid import uuid4
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends, status, Request
+from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, HTTPException, status, Request, Depends
 from pydantic import BaseModel, EmailStr
-from sqlalchemy.orm import Session
-from database import get_db, User, AuditLog, Room
+from database import mongodb, Room
 from services.auth_service import UserService, AuthService, require_auth
 from audit import AuditLogger
 
@@ -16,9 +15,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["Users"])
 
 
-
 class UserResponse(BaseModel):
-    """User response model - includes all user fields for comprehensive syncing."""
+    """User response model."""
     id: str
     email: str
     full_name: str
@@ -43,9 +41,6 @@ class UserResponse(BaseModel):
     promotion_label: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
-
-    class Config:
-        from_attributes = True
 
 
 class CreateUserRequest(BaseModel):
@@ -99,54 +94,31 @@ class ResetCredentialsRequest(BaseModel):
     password: str
 
 
-def _serialize_user(user: User) -> dict:
-    return {
-        "id": user.id,
-        "email": user.email,
-        "full_name": user.full_name,
-        "phone": user.phone,
-        "role": user.role,
-        "hospital_id": user.hospital_id,
-        "hospital_name": user.hospital_name,
-        "status": user.status,
-        "specialization": user.specialization,
-        "department_id": user.department_id,
-        "department_name": user.department_name,
-        "room_id": user.room_id,
-        "room_no": user.room_no,
-        "floor": user.floor,
-        "license": user.license,
-        "shift": user.shift,
-        "advanced_booking_category": user.advanced_booking_category,
-        "fee": user.fee,
-        "experience": user.experience,
-        "qualifications": user.qualifications,
-        "category": user.category,
-        "promotion_label": user.promotion_label,
-        "created_at": user.created_at.isoformat() if user.created_at else None,
-        "updated_at": user.updated_at.isoformat() if user.updated_at else None,
-    }
+def _serialize_user(user: dict) -> dict:
+    user["id"] = str(user.get("_id", user.get("id")))
+    for field in ["created_at", "updated_at"]:
+        if field in user and isinstance(user[field], datetime):
+            user[field] = user[field].isoformat()
+    return user
 
 
 @router.get("")
-def list_users(
+async def list_users(
     role: str = None,
-    hospital_id: str = None,
-    db: Session = Depends(get_db)
+    hospital_id: str = None
 ):
-    """List users with optional role and hospital filter."""
+    """List users from MongoDB."""
     try:
-        query = db.query(User)
-
+        if mongodb is None: return {"success": False, "data": {"users": []}}
+        query = {}
         if role:
-            query = query.filter(User.role == role)
-            # When filtering by role, exclude inactive (soft-deleted) users
-            query = query.filter(User.status != "inactive")
-
+            query["role"] = role
+            query["status"] = {"$ne": "inactive"}
         if hospital_id:
-            query = query.filter(User.hospital_id == hospital_id)
+            query["hospital_id"] = hospital_id
 
-        users = query.all()
+        cursor = mongodb.users.find(query)
+        users = await cursor.to_list(length=1000)
 
         return {
             "success": True,
@@ -156,168 +128,77 @@ def list_users(
         }
     except Exception as e:
         logger.error(f"Error listing users: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/me", response_model=UserResponse)
-def get_current_user(
-    db: Session = Depends(get_db),
-    auth_payload: dict = Depends(require_auth)
-):
-    """Get current user profile with all synced fields."""
+async def get_current_user(auth_payload: dict = Depends(require_auth)):
+    """Get current user profile from MongoDB."""
     try:
         user_id = auth_payload.get("sub")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: user ID not found"
-            )
+            raise HTTPException(status_code=401, detail="Invalid token")
         
-        # Get user from database
-        user = db.query(User).filter(User.id == user_id).first()
+        user = await mongodb.users.find_one({"_id": user_id})
         if not user:
-            logger.warning(f"User not found: {user_id}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
+            user = await mongodb.users.find_one({"id": user_id})
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found")
         
-        # Return serialized user with all fields
-        return _serialize_user(user)
-    except HTTPException:
-        raise
+        return UserResponse(**_serialize_user(user))
     except Exception as e:
         logger.error(f"Error getting current user: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.patch("/me", response_model=UserResponse)
-def update_current_user(
+async def update_current_user(
     req: UpdateUserRequest,
-    db: Session = Depends(get_db),
     auth_payload: dict = Depends(require_auth)
 ):
-    """Update current user's profile."""
+    """Update current user's profile in MongoDB."""
     try:
         user_id = auth_payload.get("sub")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: user ID not found"
-            )
+            raise HTTPException(status_code=401, detail="Invalid token")
         
-        # Get user from database
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            logger.warning(f"User not found: {user_id}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
+        updates = req.model_dump(exclude_unset=True)
+        if "name" in updates:
+            updates["full_name"] = updates.pop("name")
         
-        # Update allowed fields
-        if req.full_name is not None:
-            user.full_name = req.full_name
-        if req.name is not None:
-            user.full_name = req.name  # Map name to full_name
-        if req.phone is not None:
-            user.phone = req.phone
-        if req.status is not None:
-            user.status = req.status
-        if req.hospital_name is not None:
-            user.hospital_name = req.hospital_name
-        if req.specialization is not None:
-            user.specialization = req.specialization
-        if req.department_id is not None:
-            user.department_id = req.department_id
-        if req.department_name is not None:
-            user.department_name = req.department_name
-        if req.room_id is not None:
-            user.room_id = req.room_id
-        if req.room_no is not None:
-            user.room_no = req.room_no
-        if req.floor is not None:
-            user.floor = req.floor
-        if req.license is not None:
-            user.license = req.license
-        if req.shift is not None:
-            user.shift = req.shift
-        if req.advanced_booking_category is not None:
-            user.advanced_booking_category = req.advanced_booking_category
-        if req.fee is not None:
-            user.fee = req.fee
-        if req.experience is not None:
-            user.experience = req.experience
-        if req.qualifications is not None:
-            user.qualifications = req.qualifications
-        if req.category is not None:
-            user.category = req.category
-        if req.promotion_label is not None:
-            user.promotion_label = req.promotion_label
-        
-        # Update timestamp
-        user.updated_at = datetime.utcnow().isoformat()
-        
-        db.commit()
-        db.refresh(user)
-        
-        return _serialize_user(user)
-    except HTTPException:
-        raise
+        updated_user = await UserService.update_user(user_id, **updates)
+        return UserResponse(**_serialize_user(updated_user))
     except Exception as e:
         logger.error(f"Error updating user profile: {e}")
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/{user_id}", response_model=UserResponse)
-def get_user(
-    user_id: str,
-    db: Session = Depends(get_db)
-):
-    """Get user by ID."""
+async def get_user(user_id: str):
+    """Get user by ID from MongoDB."""
     try:
-        user = UserService.get_user(db, user_id)
-        return user
+        user = await UserService.get_user(user_id)
+        return UserResponse(**_serialize_user(user))
     except ValueError as e:
-        logger.warning(f"User not found: {user_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error getting user: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/create")
-def create_user(
+async def create_user(
     payload: CreateUserRequest,
-    request: Request,
-    db: Session = Depends(get_db)
+    request: Request
 ):
-    """Create a user account (used by HM for doctor credentials)."""
+    """Create a user account in MongoDB."""
     try:
         if len(payload.password or "") < 6:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Password must be at least 6 characters"
-            )
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
 
-        user = UserService.create_user(
-            db=db,
+        user = await UserService.create_user(
             email=payload.email,
             password=payload.password,
             full_name=payload.name,
@@ -326,347 +207,198 @@ def create_user(
             phone=payload.phone,
         )
 
-        if payload.status and payload.status != user.status:
-            user = UserService.update_user(db, user.id, status=payload.status)
-
-        profile_updates = {
-            "hospital_name": payload.hospital_name,
-            "specialization": payload.specialization,
-            "department_id": payload.department_id,
-            "department_name": payload.department_name,
-            "room_id": payload.room_id,
-            "room_no": payload.room_no,
-            "floor": payload.floor,
-            "license": payload.license,
-            "shift": payload.shift,
-            "advanced_booking_category": payload.advanced_booking_category,
-            "fee": payload.fee,
-            "experience": payload.experience,
-            "qualifications": payload.qualifications,
-            "category": payload.category,
-            "promotion_label": payload.promotion_label,
-        }
+        profile_updates = payload.model_dump(exclude={"name", "email", "password", "role", "hospital_id", "phone"})
         profile_updates = {k: v for k, v in profile_updates.items() if v is not None}
+        if "hospital_name" in profile_updates:
+            profile_updates["hospital_name"] = payload.hospital_name
+
         if profile_updates:
-            user = UserService.update_user(db, user.id, **profile_updates)
+            user = await UserService.update_user(user["id"], **profile_updates)
 
+        # Room assignment logic
         if payload.role == "doctor" and payload.hospital_id and payload.room_no:
-            normalized_room_no = str(payload.room_no).strip()
-            normalized_floor = str(payload.floor or "1").strip()
-
-            room = db.query(Room).filter(
-                Room.hospital_id == payload.hospital_id,
-                Room.room_number == normalized_room_no,
-                Room.floor == normalized_floor,
-            ).first()
-
+            room_no = str(payload.room_no).strip()
+            floor = str(payload.floor or "1").strip()
+            
+            room = await mongodb.rooms.find_one({
+                "hospital_id": payload.hospital_id,
+                "room_number": room_no,
+                "floor": floor
+            })
+            
             if room:
-                room.department_id = payload.department_id or room.department_id
-                room.department_name = payload.department_name or room.department_name
-                room.status = "occupied"
-                room.type = room.type or "doctor"
-                room.assigned_doctor_id = user.id
-                room.assigned_doctor_name = user.full_name
-                room.updated_at = datetime.utcnow()
-            else:
-                room = Room(
-                    id=str(uuid4()),
-                    hospital_id=payload.hospital_id,
-                    department_id=payload.department_id,
-                    department_name=payload.department_name,
-                    room_number=normalized_room_no,
-                    floor=normalized_floor,
-                    capacity=1,
-                    status="occupied",
-                    type="doctor",
-                    assigned_doctor_id=user.id,
-                    assigned_doctor_name=user.full_name,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
+                await mongodb.rooms.update_one(
+                    {"_id": room["_id"]},
+                    {"$set": {
+                        "department_id": payload.department_id,
+                        "department_name": payload.department_name,
+                        "status": "occupied",
+                        "assigned_doctor_id": user["id"],
+                        "assigned_doctor_name": user["full_name"],
+                        "updated_at": datetime.utcnow()
+                    }}
                 )
-                db.add(room)
-
-            db.commit()
-            db.refresh(room)
-
-            user = UserService.update_user(
-                db,
-                user.id,
-                room_id=room.id,
-                room_no=room.room_number,
-                floor=room.floor,
-            )
+                room_id = room["_id"]
+            else:
+                room_id = str(uuid4())
+                await mongodb.rooms.insert_one({
+                    "_id": room_id,
+                    "hospital_id": payload.hospital_id,
+                    "department_id": payload.department_id,
+                    "department_name": payload.department_name,
+                    "room_number": room_no,
+                    "floor": floor,
+                    "capacity": 1,
+                    "status": "occupied",
+                    "type": "doctor",
+                    "assigned_doctor_id": user["id"],
+                    "assigned_doctor_name": user["full_name"],
+                    "created_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow(),
+                })
+            
+            user = await UserService.update_user(user["id"], room_id=room_id, room_no=room_no, floor=floor)
 
         client_ip = request.client.host if request and request.client else None
-        AuditLogger.log(
-            db=db,
+        await AuditLogger.log(
             action="CREDENTIAL_CREATED",
             entity_type="User",
-            entity_id=user.id,
-            user_id=user.id,
+            entity_id=user["id"],
+            user_id=user["id"],
             ip_address=client_ip,
-            new_values={"email": user.email, "role": user.role, "status": user.status},
+            new_values={"email": user["email"], "role": user["role"], "status": user["status"]},
         )
 
-        return {
-            "success": True,
-            "id": user.id,
-            "user": _serialize_user(user),
-        }
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        return {"success": True, "id": user["id"], "user": _serialize_user(user)}
     except Exception as e:
         logger.error(f"Error creating user: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.put("/{user_id}", response_model=UserResponse)
-def update_user(
+async def update_user(
     user_id: str,
     full_name: str = None,
     phone: str = None,
-    request: Request = None,
-    db: Session = Depends(get_db)
+    request: Request = None
 ):
-    """Update user details."""
+    """Update user details in MongoDB."""
     try:
         updates = {}
-        if full_name:
-            updates["full_name"] = full_name
-        if phone:
-            updates["phone"] = phone
+        if full_name: updates["full_name"] = full_name
+        if phone: updates["phone"] = phone
         
-        user = UserService.update_user(db, user_id, **updates)
+        user = await UserService.update_user(user_id, **updates)
         
-        # Log IP if available
         client_ip = request.client.host if request and request.client else None
-        AuditLogger.log_entity_update(
-            db,
-            entity_type="User",
-            entity_id=user_id,
-            old_values={},
-            new_values=updates,
-            user_id=user_id,
-            ip_address=client_ip,
-        )
+        await AuditLogger.log_entity_update("User", user_id, {}, updates, user_id, client_ip)
         
-        return user
-    except ValueError as e:
-        logger.warning(f"User not found: {user_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
-        )
+        return UserResponse(**_serialize_user(user))
     except Exception as e:
         logger.error(f"Error updating user: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.patch("/{user_id}")
-def patch_user(
+async def patch_user(
     user_id: str,
     payload: UpdateUserRequest,
-    request: Request,
-    db: Session = Depends(get_db)
+    request: Request
 ):
-    """Patch user fields from JSON body (frontend-friendly)."""
+    """Patch user fields in MongoDB."""
     try:
-        updates = {
-            key: value
-            for key, value in {
-                "full_name": payload.full_name or payload.name,
-                "phone": payload.phone,
-                "status": payload.status,
-                "hospital_name": payload.hospital_name,
-                "specialization": payload.specialization,
-                "department_id": payload.department_id,
-                "department_name": payload.department_name,
-                "room_id": payload.room_id,
-                "room_no": payload.room_no,
-                "floor": payload.floor,
-                "license": payload.license,
-                "shift": payload.shift,
-                "advanced_booking_category": payload.advanced_booking_category,
-                "fee": payload.fee,
-                "experience": payload.experience,
-                "qualifications": payload.qualifications,
-                "category": payload.category,
-                "promotion_label": payload.promotion_label,
-            }.items()
-            if value is not None
-        }
-
+        updates = payload.model_dump(exclude_unset=True)
+        if "name" in updates: updates["full_name"] = updates.pop("name")
+        
         if not updates:
-            user = UserService.get_user(db, user_id)
+            user = await UserService.get_user(user_id)
             return {"success": True, "user": _serialize_user(user)}
 
-        user = UserService.update_user(db, user_id, **updates)
+        user = await UserService.update_user(user_id, **updates)
 
         client_ip = request.client.host if request and request.client else None
-        try:
-            AuditLogger.log(
-                db=db,
-                action="CREDENTIAL_UPDATED",
-                entity_type="User",
-                entity_id=user_id,
-                user_id=user_id,
-                ip_address=client_ip,
-                new_values=updates,
-            )
-        except Exception as audit_error:
-            logger.warning(f"Credential update audit failed for {user_id}: {audit_error}")
+        await AuditLogger.log("CREDENTIAL_UPDATED", "User", user_id, user_id, None, updates, client_ip)
 
         return {"success": True, "user": _serialize_user(user)}
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
         logger.error(f"Error patching user: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.patch("/{user_id}/credentials")
-def reset_user_credentials(
+async def reset_user_credentials(
     user_id: str,
     payload: ResetCredentialsRequest,
-    request: Request,
-    db: Session = Depends(get_db)
+    request: Request
 ):
-    """Reset user password and track credential change in audit logs."""
+    """Reset user password in MongoDB."""
     try:
         if len(payload.password or "") < 6:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Password must be at least 6 characters"
-            )
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
 
-        user = UserService.get_user(db, user_id)
-        user.password_hash = AuthService.hash_password(payload.password)
-        db.commit()
-        db.refresh(user)
-
-        client_ip = request.client.host if request and request.client else None
-        AuditLogger.log(
-            db=db,
-            action="CREDENTIAL_RESET",
-            entity_type="User",
-            entity_id=user_id,
-            user_id=user_id,
-            ip_address=client_ip,
-            status="success",
-            new_values={"email": user.email, "role": user.role},
+        await mongodb.users.update_one(
+            {"_id": user_id},
+            {"$set": {"password_hash": AuthService.hash_password(payload.password), "updated_at": datetime.utcnow()}}
         )
+
+        user = await UserService.get_user(user_id)
+        client_ip = request.client.host if request and request.client else None
+        await AuditLogger.log("CREDENTIAL_RESET", "User", user_id, user_id, None, {"email": user["email"]}, client_ip)
 
         return {"success": True, "message": "Credentials updated"}
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
         logger.error(f"Error resetting credentials: {e}")
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/{user_id}")
-def delete_user(
-    user_id: str,
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    """Soft-delete user by marking account inactive."""
+async def delete_user(user_id: str):
+    """Soft-delete user in MongoDB."""
     try:
-        UserService.delete_user(db, user_id)
+        await UserService.delete_user(user_id)
         return {"success": True}
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
         logger.error(f"Error deleting user: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/audit/credentials")
-def get_credential_audits(
+async def get_credential_audits(
     hospital_id: str = None,
-    limit: int = 200,
-    db: Session = Depends(get_db)
+    limit: int = 200
 ):
-    """Get audit logs for HM audit page (credential + core auth/entity actions)."""
+    """Get audit logs for HM audit page from MongoDB."""
     try:
-        actions = [
-            "CREDENTIAL_CREATED",
-            "CREDENTIAL_UPDATED",
-            "CREDENTIAL_RESET",
-            "CREDENTIAL_DELETED",
-            "CREATE",
-            "UPDATE",
-            "DELETE",
-            "LOGIN",
-            "FAILED_LOGIN",
-            "SIGNUP",
-        ]
-
-        max_limit = min(max(limit, 1), 500)
-        rows = (
-            db.query(AuditLog)
-            .filter(AuditLog.action.in_(actions))
-            .order_by(AuditLog.timestamp.desc())
-            .limit(2000)
-            .all()
-        )
-
+        actions = ["CREDENTIAL_CREATED", "CREDENTIAL_UPDATED", "CREDENTIAL_RESET", "CREDENTIAL_DELETED", "CREATE", "UPDATE", "DELETE", "LOGIN", "FAILED_LOGIN", "SIGNUP"]
+        
+        query = {"action": {"$in": actions}}
         if hospital_id:
-            user_ids = {
-                item[0]
-                for item in db.query(User.id).filter(User.hospital_id == hospital_id).all()
-            }
-            rows = [
-                row for row in rows
-                if str(row.entity_id or "") in user_ids or str(row.user_id or "") in user_ids
-            ]
+            # First find users for this hospital
+            user_cursor = mongodb.users.find({"hospital_id": hospital_id}, {"_id": 1})
+            user_ids = [str(u["_id"]) for u in await user_cursor.to_list(length=10000)]
+            query["$or"] = [{"entity_id": {"$in": user_ids}}, {"user_id": {"$in": user_ids}}]
 
-        rows = rows[:max_limit]
+        cursor = mongodb.audit_logs.find(query).sort("timestamp", -1).limit(limit)
+        rows = await cursor.to_list(length=limit)
 
         logs = []
         for row in rows:
-            try:
-                new_values = json.loads(row.new_values) if row.new_values else {}
-            except Exception:
-                new_values = {}
-
             logs.append({
-                "id": row.id,
-                "action": row.action,
-                "entity_type": row.entity_type,
-                "entity_id": row.entity_id,
-                "user_id": row.user_id,
-                "timestamp": row.timestamp.isoformat() if row.timestamp else None,
-                "status": row.status,
-                "new_values": new_values,
+                "id": str(row["_id"]),
+                "action": row["action"],
+                "entity_type": row["entity_type"],
+                "entity_id": row["entity_id"],
+                "user_id": row["user_id"],
+                "timestamp": row["timestamp"].isoformat() if row.get("timestamp") else None,
+                "status": row["status"],
+                "new_values": row.get("new_values", {}),
             })
 
         return {"success": True, "data": {"logs": logs}}
     except Exception as e:
         logger.error(f"Error getting credential audits: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 
 

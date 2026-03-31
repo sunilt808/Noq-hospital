@@ -1,4 +1,4 @@
-# backend/services/auth_service.py - Authentication Service
+# backend/services/auth_service.py - Authentication Service (MongoDB)
 
 import os
 import logging
@@ -6,10 +6,9 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 from fastapi import Header, HTTPException
 from jose import JWTError, jwt
-from sqlalchemy.orm import Session
 import hashlib
 import secrets
-from database import User, Doctor, Hospital
+from database import mongodb
 from audit import AuditLogger
 from hospital_id_utils import is_valid_hospital_id
 
@@ -21,7 +20,7 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_MINUTES = int(os.getenv("JWT_EXPIRATION_MINUTES", "1440"))
 
 
-def require_auth(authorization: str = Header(default=None)) -> dict:
+async def require_auth(authorization: str = Header(default=None)) -> dict:
     """FastAPI dependency for Bearer token authentication."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Authorization token required")
@@ -44,12 +43,12 @@ def require_auth(authorization: str = Header(default=None)) -> dict:
 
 
 class AuthService:
-    """Authentication service."""
+    """Authentication service using MongoDB."""
     
     @staticmethod
     def hash_password(password: str) -> str:
         """Hash a password using PBKDF2."""
-        salt = secrets.token_hex(32)  # 64 character hex string
+        salt = secrets.token_hex(32)
         pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000)
         return f"{salt}${pwd_hash.hex()}"
     
@@ -71,7 +70,6 @@ class AuthService:
         """Create JWT access token."""
         try:
             to_encode = data.copy()
-            
             if expires_delta:
                 expire = datetime.utcnow() + expires_delta
             else:
@@ -79,7 +77,6 @@ class AuthService:
             
             to_encode.update({"exp": expire})
             encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
-            
             return encoded_jwt
         except Exception as e:
             logger.error(f"Failed to create access token: {e}")
@@ -99,61 +96,58 @@ class AuthService:
             raise
     
     @staticmethod
-    def authenticate_user(
-        db: Session,
+    async def authenticate_user(
         email: str,
         password: str,
         ip_address: str = None
     ) -> dict:
-        """
-        Authenticate user with email and password.
-        
-        Returns:
-            dict with user info and token
-        """
+        """Authenticate user with email and password from MongoDB."""
         try:
+            if mongodb is None:
+                raise HTTPException(status_code=500, detail="Database connection failed")
+
             # Find user by email
-            user = db.query(User).filter(User.email == email.lower().strip()).first()
+            user = await mongodb.users.find_one({"email": email.lower().strip()})
             
             if not user:
                 logger.warning(f"Login attempt with non-existent email: {email}")
-                AuditLogger.log_login(db, email, ip_address, success=False, 
-                                     error_message="User not found")
+                await AuditLogger.log_login(email, ip_address, success=False, 
+                                           error_message="User not found")
                 raise ValueError("Invalid credentials")
             
             # Check if user is active
-            if user.status != "active":
+            if user.get("status") != "active":
                 logger.warning(f"Login attempt with inactive user: {email}")
-                AuditLogger.log_login(db, user.id, ip_address, success=False,
-                                     error_message=f"User status: {user.status}")
+                await AuditLogger.log_login(user.get("_id"), ip_address, success=False,
+                                           error_message=f"User status: {user.get('status')}")
                 raise ValueError("Account is not active")
             
             # Verify password
-            if not AuthService.verify_password(password, user.password_hash):
+            if not AuthService.verify_password(password, user.get("password_hash")):
                 logger.warning(f"Failed login attempt for user: {email}")
-                AuditLogger.log_login(db, user.id, ip_address, success=False,
-                                     error_message="Invalid password")
+                await AuditLogger.log_login(user.get("_id"), ip_address, success=False,
+                                           error_message="Invalid password")
                 raise ValueError("Invalid credentials")
             
             # Create token
             token = AuthService.create_access_token({
-                "sub": user.id,
-                "email": user.email,
-                "role": user.role,
+                "sub": user.get("_id"),
+                "email": user.get("email"),
+                "role": user.get("role"),
             })
             
             # Log successful login
-            AuditLogger.log_login(db, user.id, ip_address, success=True)
+            await AuditLogger.log_login(user.get("_id"), ip_address, success=True)
             
-            logger.info(f"User logged in successfully: {email} ({user.role})")
+            logger.info(f"User logged in successfully: {email} ({user.get('role')})")
             
             return {
-                "id": user.id,
-                "email": user.email,
-                "full_name": user.full_name,
-                "role": user.role,
-                "hospital_id": user.hospital_id,
-                "status": user.status,
+                "id": user.get("_id"),
+                "email": user.get("email"),
+                "full_name": user.get("full_name"),
+                "role": user.get("role"),
+                "hospital_id": user.get("hospital_id"),
+                "status": user.get("status"),
                 "token": token,
             }
             
@@ -165,11 +159,10 @@ class AuthService:
 
 
 class UserService:
-    """User service."""
+    """User service using MongoDB."""
     
     @staticmethod
-    def create_user(
-        db: Session,
+    async def create_user(
         email: str,
         password: str,
         full_name: str,
@@ -177,245 +170,242 @@ class UserService:
         hospital_id: str = None,
         phone: str = None,
         user_id: str = None,
-    ) -> User:
-        """Create a new user."""
+    ) -> dict:
+        """Create a new user in MongoDB."""
         try:
+            if mongodb is None:
+                raise HTTPException(status_code=500, detail="Database connection failed")
+
             role_normalized = (role or "").strip().lower()
             if role_normalized in {"hm", "doctor"}:
                 if not hospital_id:
                     raise ValueError(f"hospital_id required for {role_normalized} registration")
                 if not is_valid_hospital_id(hospital_id):
                     raise ValueError("hospital_id must be in format Noq-######")
-                hospital_exists = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+                
+                hospital_exists = await mongodb.hospitals.find_one({"_id": hospital_id})
                 if not hospital_exists:
-                    raise ValueError(f"Invalid hospital_id: {hospital_id}")
+                    # Check legacy "id" field just in case
+                    hospital_exists = await mongodb.hospitals.find_one({"id": hospital_id})
+                    if not hospital_exists:
+                        raise ValueError(f"Invalid hospital_id: {hospital_id}")
 
             # Check if email already exists
-            existing_user = db.query(User).filter(User.email == email.lower().strip()).first()
+            existing_user = await mongodb.users.find_one({"email": email.lower().strip()})
             if existing_user:
-                if existing_user.status == "inactive" and existing_user.role == role:
-                    existing_user.password_hash = AuthService.hash_password(password)
-                    existing_user.full_name = full_name
-                    existing_user.phone = phone
+                if existing_user.get("status") == "inactive" and existing_user.get("role") == role:
+                    updated_data = {
+                        "password_hash": AuthService.hash_password(password),
+                        "full_name": full_name,
+                        "phone": phone,
+                        "status": "active",
+                        "updated_at": datetime.utcnow()
+                    }
                     if hospital_id:
-                        existing_user.hospital_id = hospital_id
-                    existing_user.status = "active"
-                    existing_user.updated_at = datetime.utcnow()
-
-                    db.commit()
-                    db.refresh(existing_user)
-
+                        updated_data["hospital_id"] = hospital_id
+                    
+                    await mongodb.users.update_one(
+                        {"_id": existing_user["_id"]},
+                        {"$set": updated_data}
+                    )
+                    
                     logger.info(f"Reactivated existing user: {email} ({role})")
-                    return existing_user
+                    return {**existing_user, **updated_data, "id": existing_user["_id"]}
 
                 raise ValueError(f"Email {email} already registered")
             
             # Create user
-            user = User(
-                id=user_id or str(uuid4()),
-                email=email.lower().strip(),
-                password_hash=AuthService.hash_password(password),
-                full_name=full_name,
-                phone=phone,
-                role=role,
-                hospital_id=hospital_id,
-                status="active",
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-            )
+            new_id = user_id or str(uuid4())
+            user_doc = {
+                "_id": new_id,
+                "email": email.lower().strip(),
+                "password_hash": AuthService.hash_password(password),
+                "full_name": full_name,
+                "phone": phone,
+                "role": role,
+                "hospital_id": hospital_id,
+                "status": "active",
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            }
             
-            db.add(user)
-            db.commit()
-            db.refresh(user)
+            await mongodb.users.insert_one(user_doc)
             
-            # If doctor role, create Doctor record (only if we have required department)
+            # If doctor role, create Doctor record
             if role == "doctor" and hospital_id:
                 try:
-                    # Doctor.department_id is required FK, skip if not available
-                    # Will be set when profile is updated with department info
-                    pass  # Doctor syncing will happen on first profile update
+                    # Will be created on first profile update
+                    pass
                 except Exception as doctor_error:
                     logger.warning(f"Failed to create Doctor record: {doctor_error}")
      
             # Log user creation
-            AuditLogger.log_entity_create(
-                db,
+            await AuditLogger.log_entity_create(
                 entity_type="User",
-                entity_id=user.id,
+                entity_id=new_id,
                 data={
-                    "email": user.email,
-                    "full_name": user.full_name,
-                    "role": user.role,
-                    "phone": user.phone,
+                    "email": user_doc["email"],
+                    "full_name": user_doc["full_name"],
+                    "role": user_doc["role"],
+                    "phone": user_doc["phone"],
                 },
             )
             
             logger.info(f"New user created: {email} ({role})")
-            return user
+            return {**user_doc, "id": new_id}
             
         except ValueError as e:
             raise
         except Exception as e:
             logger.error(f"User creation error: {e}", exc_info=True)
-            db.rollback()
             raise
     
     @staticmethod
-    def get_user(db: Session, user_id: str) -> User:
-        """Get user by ID."""
-        user = db.query(User).filter(User.id == user_id).first()
+    async def get_user(user_id: str) -> dict:
+        """Get user by ID from MongoDB."""
+        if mongodb is None: return {}
+        user = await mongodb.users.find_one({"_id": user_id})
         if not user:
-            raise ValueError(f"User not found: {user_id}")
-        return user
-    
-    @staticmethod
-    def get_user_by_email(db: Session, email: str) -> User:
-        """Get user by email."""
-        user = db.query(User).filter(User.email == email.lower().strip()).first()
-        if not user:
-            raise ValueError(f"User not found: {email}")
-        return user
-    
-    @staticmethod
-    def update_user(
-        db: Session,
-        user_id: str,
-        **kwargs
-    ) -> User:
-        """Update user details."""
-        try:
-            user = db.query(User).filter(User.id == user_id).first()
+            # Try legacy "id" field
+            user = await mongodb.users.find_one({"id": user_id})
             if not user:
                 raise ValueError(f"User not found: {user_id}")
+        user["id"] = user["_id"]
+        return user
+    
+    @staticmethod
+    async def get_user_by_email(email: str) -> dict:
+        """Get user by email from MongoDB."""
+        if mongodb is None: return {}
+        user = await mongodb.users.find_one({"email": email.lower().strip()})
+        if not user:
+            raise ValueError(f"User not found: {email}")
+        user["id"] = user["_id"]
+        return user
+    
+    @staticmethod
+    async def update_user(user_id: str, **kwargs) -> dict:
+        """Update user details in MongoDB."""
+        try:
+            if mongodb is None: return {}
+            user = await mongodb.users.find_one({"_id": user_id})
+            if not user:
+                user = await mongodb.users.find_one({"id": user_id})
+                if not user:
+                    raise ValueError(f"User not found: {user_id}")
+            
+            user_key = user["_id"]
             
             # Store old values for audit
             old_values = {
-                "full_name": user.full_name,
-                "phone": user.phone,
-                "status": user.status,
+                "full_name": user.get("full_name"),
+                "phone": user.get("phone"),
+                "status": user.get("status"),
             }
             
-            # Update fields
-            for key, value in kwargs.items():
-                if hasattr(user, key) and key not in ["id", "email", "password_hash"]:
-                    setattr(user, key, value)
+            # Clean kwargs
+            update_data = {k: v for k, v in kwargs.items() if k not in ["id", "_id", "email", "password_hash"]}
+            update_data["updated_at"] = datetime.utcnow()
             
-            user.updated_at = datetime.utcnow()
-            db.commit()
-            db.refresh(user)
+            await mongodb.users.update_one({"_id": user_key}, {"$set": update_data})
             
             # Sync Doctor record if user is a doctor
-            if user.role == "doctor" and user.hospital_id:
+            if user.get("role") == "doctor" and user.get("hospital_id"):
                 try:
-                    doctor = db.query(Doctor).filter(Doctor.user_id == user.id).first()
+                    doctor = await mongodb.doctors.find_one({"user_id": user_key})
                     
-                    # Create Doctor record if it doesn't exist and we have department_id
                     if not doctor and "department_id" in kwargs and kwargs.get("department_id"):
-                        doctor = Doctor(
-                            id=str(uuid4()),
-                            user_id=user.id,
-                            hospital_id=user.hospital_id,
-                            department_id=kwargs.get("department_id"),
-                            specialization=kwargs.get("specialization"),
-                            license_number=kwargs.get("license"),
-                            experience_years=kwargs.get("experience", 0),
-                            consultation_fee=kwargs.get("fee", 500),
-                            status=user.status,
-                            created_at=datetime.utcnow(),
-                            updated_at=datetime.utcnow(),
-                        )
-                        db.add(doctor)
-                        db.commit()
-                        db.refresh(doctor)
-                        logger.info(f"Doctor record created for user {user.id}")
+                        doctor_doc = {
+                            "_id": str(uuid4()),
+                            "user_id": user_key,
+                            "hospital_id": user.get("hospital_id"),
+                            "department_id": kwargs.get("department_id"),
+                            "specialization": kwargs.get("specialization"),
+                            "license_number": kwargs.get("license"),
+                            "experience_years": kwargs.get("experience", 0),
+                            "consultation_fee": kwargs.get("fee", 500),
+                            "status": user.get("status", "active"),
+                            "created_at": datetime.utcnow(),
+                            "updated_at": datetime.utcnow(),
+                        }
+                        await mongodb.doctors.insert_one(doctor_doc)
+                        logger.info(f"Doctor record created for user {user_key}")
                     elif doctor:
-                        # Update doctor fields from user updates
-                        if "specialization" in kwargs:
-                            doctor.specialization = kwargs.get("specialization")
-                        if "department_id" in kwargs:
-                            doctor.department_id = kwargs.get("department_id")
-                        if "license" in kwargs:
-                            doctor.license_number = kwargs.get("license")
-                        if "experience" in kwargs:
-                            doctor.experience_years = kwargs.get("experience", 0)
-                        if "fee" in kwargs:
-                            doctor.consultation_fee = kwargs.get("fee", 500)
-                        if "status" in kwargs:
-                            doctor.status = kwargs.get("status")
-                        doctor.updated_at = datetime.utcnow()
-                        db.commit()
-                        db.refresh(doctor)
-                        logger.info(f"Doctor record synced for user {user.id}")
+                        doc_update = {}
+                        if "specialization" in kwargs: doc_update["specialization"] = kwargs.get("specialization")
+                        if "department_id" in kwargs: doc_update["department_id"] = kwargs.get("department_id")
+                        if "license" in kwargs: doc_update["license_number"] = kwargs.get("license")
+                        if "experience" in kwargs: doc_update["experience_years"] = kwargs.get("experience", 0)
+                        if "fee" in kwargs: doc_update["consultation_fee"] = kwargs.get("fee", 500)
+                        if "status" in kwargs: doc_update["status"] = kwargs.get("status")
+                        
+                        if doc_update:
+                            doc_update["updated_at"] = datetime.utcnow()
+                            await mongodb.doctors.update_one({"_id": doctor["_id"]}, {"$set": doc_update})
+                            logger.info(f"Doctor record synced for user {user_key}")
                 except Exception as doctor_error:
                     logger.warning(f"Failed to sync Doctor record: {doctor_error}")
             
             # Log update
             new_values = {
-                "full_name": user.full_name,
-                "phone": user.phone,
-                "status": user.status,
+                "full_name": update_data.get("full_name", user.get("full_name")),
+                "phone": update_data.get("phone", user.get("phone")),
+                "status": update_data.get("status", user.get("status")),
             }
 
-            try:
-                AuditLogger.log_entity_update(
-                    db,
-                    entity_type="User",
-                    entity_id=user.id,
-                    old_values=old_values,
-                    new_values=new_values,
-                    user_id=user_id,
-                )
-            except Exception as audit_error:
-                logger.warning(f"User update audit failed for {user_id}: {audit_error}")
+            await AuditLogger.log_entity_update(
+                entity_type="User",
+                entity_id=user_key,
+                old_values=old_values,
+                new_values=new_values,
+                user_id=user_id,
+            )
             
-            return user
+            return {**user, **update_data, "id": user_key}
             
         except Exception as e:
             logger.error(f"User update error: {e}", exc_info=True)
-            db.rollback()
             raise
     
     @staticmethod
-    def delete_user(db: Session, user_id: str):
-        """Soft delete user (mark as inactive)."""
+    async def delete_user(user_id: str):
+        """Soft delete user (mark as inactive) in MongoDB."""
         try:
-            user = db.query(User).filter(User.id == user_id).first()
+            if mongodb is None: return
+            user = await mongodb.users.find_one({"_id": user_id})
             if not user:
-                raise ValueError(f"User not found: {user_id}")
+                user = await mongodb.users.find_one({"id": user_id})
+                if not user:
+                    raise ValueError(f"User not found: {user_id}")
+            
+            user_key = user["_id"]
             
             # If doctor, also delete Doctor record
-            if user.role == "doctor":
+            if user.get("role") == "doctor":
                 try:
-                    doctor = db.query(Doctor).filter(Doctor.user_id == user.id).first()
-                    if doctor:
-                        db.delete(doctor)
-                        db.commit()
-                        logger.info(f"Doctor record deleted for user {user.id}")
+                    await mongodb.doctors.delete_one({"user_id": user_key})
+                    logger.info(f"Doctor record deleted for user {user_key}")
                 except Exception as doctor_error:
                     logger.warning(f"Failed to delete Doctor record: {doctor_error}")
             
-            user.status = "inactive"
-            user.updated_at = datetime.utcnow()
-            db.commit()
+            await mongodb.users.update_one(
+                {"_id": user_key},
+                {"$set": {"status": "inactive", "updated_at": datetime.utcnow()}}
+            )
 
-            try:
-                AuditLogger.log_entity_delete(
-                    db,
-                    entity_type="User",
-                    entity_id=user.id,
-                    data={
-                        "email": user.email,
-                        "full_name": user.full_name,
-                        "role": user.role,
-                    },
-                    user_id=user_id,
-                )
-            except Exception as audit_error:
-                logger.warning(f"User delete audit failed for {user_id}: {audit_error}")
+            await AuditLogger.log_entity_delete(
+                entity_type="User",
+                entity_id=user_key,
+                data={
+                    "email": user.get("email"),
+                    "full_name": user.get("full_name"),
+                    "role": user.get("role"),
+                },
+                user_id=user_id,
+            )
             
-            logger.info(f"User deleted: {user.email}")
+            logger.info(f"User deleted: {user.get('email')}")
             
         except Exception as e:
             logger.error(f"User deletion error: {e}", exc_info=True)
-            db.rollback()
             raise

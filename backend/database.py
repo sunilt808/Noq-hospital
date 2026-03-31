@@ -1,14 +1,16 @@
-# backend/database.py - SQLAlchemy Database Setup with SQLite
+# backend/database.py - MongoDB & SQLAlchemy Setup
 
 import os
+import logging
 from datetime import datetime
 from pathlib import Path
-import firebase_admin
-from firebase_admin import credentials, firestore, auth as firebase_auth
+from motor.motor_asyncio import AsyncIOMotorClient
 from sqlalchemy import create_engine, Column, String, Integer, DateTime, Boolean, Float, ForeignKey, Text, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.pool import StaticPool
+
+logger = logging.getLogger(__name__)
 
 # Database configuration
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -16,22 +18,20 @@ DEFAULT_SQLITE_PATH = (BACKEND_DIR / "noq_hospital.db").as_posix()
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_SQLITE_PATH}")
 ECHO_SQL = os.getenv("ECHO_SQL", "False").lower() == "true"
 
-# Firebase/Firestore configuration for legacy Firestore-backed routes
-SERVICE_ACCOUNT_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", str(BACKEND_DIR / "serviceAccountKey.json"))
+# MongoDB configuration
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+DATABASE_NAME = os.getenv("DATABASE_NAME", "noq_hospital_db")
 
+# Initialize MongoDB Client
 try:
-    if not firebase_admin._apps:
-        if os.path.exists(SERVICE_ACCOUNT_PATH):
-            cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
-            firebase_admin.initialize_app(cred)
-        else:
-            firebase_admin.initialize_app()
-    db = firestore.client()
-    auth = firebase_auth
-except Exception:
-    db = None
-    auth = None
+    mongo_client = AsyncIOMotorClient(MONGODB_URL)
+    mongodb = mongo_client[DATABASE_NAME]
+    logger.info(f"MongoDB connected to: {MONGODB_URL}")
+except Exception as e:
+    logger.error(f"Failed to connect to MongoDB: {e}")
+    mongodb = None
 
+# ─── SQLALCHEMY (LEGACY/REFERENCE) ───────────────────────────────────────────
 # Create engine
 engine = create_engine(
     DATABASE_URL,
@@ -348,6 +348,12 @@ def _ensure_appointments_schema():
             if not _sqlite_column_exists(connection, "appointments", column_name):
                 connection.execute(text(f"ALTER TABLE appointments ADD COLUMN {column_name} {column_sql}"))
 
+
+async def get_mongodb():
+    """Get MongoDB database instance."""
+    if mongodb is None:
+        raise Exception("MongoDB not initialized")
+    return mongodb
 
 def get_db():
     """Get database session - used as dependency in FastAPI."""

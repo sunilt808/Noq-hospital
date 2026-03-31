@@ -1,13 +1,11 @@
-# backend/routes/hospitals.py - Hospital Management Routes
+# backend/routes/hospitals.py - Hospital Management Routes (MongoDB)
 
 import logging
-import json
-from fastapi import APIRouter, HTTPException, Depends, status
-from sqlalchemy.orm import Session
-from database import get_db, Hospital, User
+from fastapi import APIRouter, HTTPException, status
+from database import mongodb
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 from services.auth_service import UserService
 from hospital_id_utils import generate_hospital_id
@@ -37,13 +35,10 @@ class HospitalResponse(BaseModel):
     total_beds: Optional[int] = 0
     total_icu_beds: Optional[int] = 0
     total_operation_theatres: Optional[int] = 0
-    accreditation: Optional[str] = None
-    services: Optional[str] = None
+    accreditation: Optional[List[str]] = None
+    services: Optional[List[str]] = None
     last_updated: Optional[str] = None
     status: str
-
-    class Config:
-        from_attributes = True
 
 
 class HospitalRegisterRequest(BaseModel):
@@ -82,8 +77,8 @@ class HospitalUpdateRequest(BaseModel):
     total_beds: Optional[int] = None
     total_icu_beds: Optional[int] = None
     total_operation_theatres: Optional[int] = None
-    accreditation: Optional[list[str]] = None
-    services: Optional[list[str]] = None
+    accreditation: Optional[List[str]] = None
+    services: Optional[List[str]] = None
     last_updated: Optional[str] = None
 
 
@@ -95,39 +90,42 @@ class NotificationRequest(BaseModel):
     type: str = 'info'
 
 
+def _serialize_hospital(h: dict) -> dict:
+    h["id"] = h.get("_id", h.get("id"))
+    if "created_at" in h and isinstance(h["created_at"], datetime):
+        h["created_at"] = h["created_at"].isoformat()
+    if "updated_at" in h and isinstance(h["updated_at"], datetime):
+        h["updated_at"] = h["updated_at"].isoformat()
+    return h
+
+
 @router.post('/register')
-def register_hospital(
-    req: HospitalRegisterRequest,
-    db: Session = Depends(get_db)
-):
-    """Register a hospital and linked HM account (pending approval)."""
+async def register_hospital(req: HospitalRegisterRequest):
+    """Register a hospital and linked HM account in MongoDB."""
     try:
-        existing_hm = db.query(Hospital).filter(Hospital.email == req.email.lower().strip()).first()
-        if existing_hm:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail='A hospital with this email already exists'
-            )
+        if mongodb is None: raise HTTPException(status_code=500, detail="DB Error")
+
+        existing_h = await mongodb.hospitals.find_one({"email": req.email.lower().strip()})
+        if existing_h:
+            raise HTTPException(status_code=400, detail='A hospital with this email already exists')
 
         hospital_id = generate_hospital_id()
-        while db.query(Hospital).filter(Hospital.id == hospital_id).first():
+        while await mongodb.hospitals.find_one({"_id": hospital_id}):
             hospital_id = generate_hospital_id()
-        hospital = Hospital(
-            id=hospital_id,
-            name=req.hospital_name.strip(),
-            address=(req.address or '').strip() or None,
-            phone=req.phone.strip(),
-            email=req.email.lower().strip(),
-            status='pending',
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
-        )
-        db.add(hospital)
-        db.commit()
-        db.refresh(hospital)
 
-        hm_user = UserService.create_user(
-            db=db,
+        hospital_doc = {
+            "_id": hospital_id,
+            "name": req.hospital_name.strip(),
+            "address": (req.address or '').strip() or None,
+            "phone": req.phone.strip(),
+            "email": req.email.lower().strip(),
+            "status": 'pending',
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }
+        await mongodb.hospitals.insert_one(hospital_doc)
+
+        hm_user = await UserService.create_user(
             email=req.email.lower().strip(),
             password=req.password,
             full_name=req.hm_name.strip(),
@@ -136,301 +134,176 @@ def register_hospital(
             hospital_id=hospital_id,
         )
 
-        if hm_user.status == 'active':
-            hm_user.status = 'pending'
-            db.commit()
+        if hm_user.get("status") == 'active':
+            await mongodb.users.update_one({"_id": hm_user["id"]}, {"$set": {"status": "pending"}})
+            hm_user["status"] = "pending"
 
         return {
             'success': True,
             'message': 'Hospital registration submitted successfully',
             'data': {
-                'hm_user_id': hm_user.id,
+                'hm_user_id': hm_user["id"],
                 'hospital': {
-                    'id': hospital.id,
-                    'hospital_name': hospital.name,
+                    'id': hospital_id,
+                    'hospital_name': hospital_doc["name"],
                     'hm_name': req.hm_name,
-                    'email': hospital.email,
-                    'phone': hospital.phone,
+                    'email': hospital_doc["email"],
+                    'phone': hospital_doc["phone"],
                     'category': req.category,
-                    'address': hospital.address,
-                    'status': hospital.status,
-                    'created_at': hospital.created_at.isoformat() if hospital.created_at else None,
+                    'address': hospital_doc["address"],
+                    'status': hospital_doc["status"],
+                    'created_at': hospital_doc["created_at"].isoformat(),
                 }
             }
         }
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
     except Exception as e:
         logger.error(f"Error registering hospital: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail='Internal server error'
-        )
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/", response_model=list[HospitalResponse])
-def list_hospitals(
-    status_filter: str = "active",
-    db: Session = Depends(get_db)
-):
-    """List all hospitals."""
+@router.get("/", response_model=List[HospitalResponse])
+async def list_hospitals(status_filter: str = "active"):
+    """List all hospitals from MongoDB."""
     try:
-        query = db.query(Hospital)
+        if mongodb is None: return []
+        query = {}
         selected_status = (status_filter or "active").lower()
         if selected_status == "all":
-            query = query.filter(Hospital.status != "deleted")
+            query["status"] = {"$ne": "deleted"}
         else:
-            query = query.filter(Hospital.status == (status_filter or "active").lower())
-        hospitals = query.all()
-        return hospitals
+            query["status"] = selected_status
+            
+        cursor = mongodb.hospitals.find(query)
+        hospitals = await cursor.to_list(length=1000)
+        return [_serialize_hospital(h) for h in hospitals]
     except Exception as e:
         logger.error(f"Error listing hospitals: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/available", response_model=list[HospitalResponse])
-def list_available_hospitals(db: Session = Depends(get_db)):
-    """List hospitals available for selection in frontend forms."""
+@router.get("/available", response_model=List[HospitalResponse])
+async def list_available_hospitals():
+    """List available hospitals from MongoDB."""
     try:
-        hospitals = db.query(Hospital).filter(Hospital.status == "active").all()
-        return hospitals
+        if mongodb is None: return []
+        cursor = mongodb.hospitals.find({"status": "active"})
+        hospitals = await cursor.to_list(length=1000)
+        return [_serialize_hospital(h) for h in hospitals]
     except Exception as e:
         logger.error(f"Error listing available hospitals: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.patch("/{hospital_id}/status")
-def update_hospital_status(
-    hospital_id: str,
-    payload: HospitalStatusRequest,
-    db: Session = Depends(get_db)
-):
-    """Update hospital status and sync HM user status."""
+async def update_hospital_status(hospital_id: str, payload: HospitalStatusRequest):
+    """Update hospital status and sync HM user status in MongoDB."""
     try:
-        hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+        if mongodb is None: raise HTTPException(status_code=500, detail="DB Error")
+        hospital = await mongodb.hospitals.find_one({"_id": hospital_id})
         if not hospital:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Hospital not found: {hospital_id}"
-            )
+            raise HTTPException(status_code=404, detail="Hospital not found")
 
         requested = str(payload.status or '').strip().lower()
         status_map = {
-            'approved': 'active',
-            'active': 'active',
-            'rejected': 'rejected',
-            'blocked': 'rejected',
-            'suspended': 'suspended',
-            'pending': 'pending',
+            'approved': 'active', 'active': 'active', 'rejected': 'rejected',
+            'blocked': 'rejected', 'suspended': 'suspended', 'pending': 'pending',
         }
         new_hospital_status = status_map.get(requested, requested)
-        if new_hospital_status not in {'active', 'pending', 'rejected', 'suspended'}:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail='Invalid hospital status'
-            )
-
-        hospital.status = new_hospital_status
-        hospital.updated_at = datetime.utcnow()
-
-        hm_users = db.query(User).filter(
-            User.hospital_id == hospital_id,
-            User.role == 'hm'
-        ).all()
+        
+        await mongodb.hospitals.update_one(
+            {"_id": hospital_id},
+            {"$set": {"status": new_hospital_status, "updated_at": datetime.utcnow()}}
+        )
 
         hm_status_map = {
-            'active': 'active',
-            'pending': 'pending',
-            'rejected': 'blocked',
-            'suspended': 'suspended',
+            'active': 'active', 'pending': 'pending', 'rejected': 'blocked', 'suspended': 'suspended',
         }
-        new_hm_status = hm_status_map[new_hospital_status]
-        for hm_user in hm_users:
-            hm_user.status = new_hm_status
-            hm_user.updated_at = datetime.utcnow()
-
-        db.commit()
+        new_hm_status = hm_status_map.get(new_hospital_status, 'inactive')
+        
+        await mongodb.users.update_many(
+            {"hospital_id": hospital_id, "role": "hm"},
+            {"$set": {"status": new_hm_status, "updated_at": datetime.utcnow()}}
+        )
 
         return {
             'success': True,
             'message': 'Hospital status updated',
             'data': {
-                'hospital_id': hospital.id,
-                'status': hospital.status,
-                'hm_count': len(hm_users),
+                'hospital_id': hospital_id,
+                'status': new_hospital_status,
                 'hm_status': new_hm_status,
             }
         }
-    except HTTPException:
-        raise
     except Exception as e:
-        db.rollback()
         logger.error(f"Error updating hospital status: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.patch("/{hospital_id}")
-def update_hospital(
-    hospital_id: str,
-    payload: HospitalUpdateRequest,
-    db: Session = Depends(get_db)
-):
-    """Update editable hospital profile fields."""
+async def update_hospital(hospital_id: str, payload: HospitalUpdateRequest):
+    """Update hospital profile in MongoDB."""
     try:
-        hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
-        if not hospital:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Hospital not found: {hospital_id}"
-            )
-
+        if mongodb is None: raise HTTPException(status_code=500, detail="DB Error")
         updates = payload.model_dump(exclude_unset=True)
-        if "accreditation" in updates and updates["accreditation"] is not None:
-            updates["accreditation"] = json.dumps(updates["accreditation"])
-        if "services" in updates and updates["services"] is not None:
-            updates["services"] = json.dumps(updates["services"])
-        for key, value in updates.items():
-            setattr(hospital, key, value)
+        updates["updated_at"] = datetime.utcnow()
 
-        hospital.updated_at = datetime.utcnow()
-        db.commit()
-        db.refresh(hospital)
+        result = await mongodb.hospitals.update_one({"_id": hospital_id}, {"$set": updates})
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Hospital not found")
 
+        updated_hospital = await mongodb.hospitals.find_one({"_id": hospital_id})
         return {
             "success": True,
             "message": "Hospital profile updated",
-            "data": {
-                "id": hospital.id,
-                "name": hospital.name,
-                "address": hospital.address,
-                "phone": hospital.phone,
-                "email": hospital.email,
-                "city": hospital.city,
-                "state": hospital.state,
-                "pincode": hospital.pincode,
-                "category": hospital.category,
-                "hospital_type": hospital.hospital_type,
-                "established_year": hospital.established_year,
-                "registration_number": hospital.registration_number,
-                "website": hospital.website,
-                "emergency_contact": hospital.emergency_contact,
-                "owner_name": hospital.owner_name,
-                "director_name": hospital.director_name,
-                "total_beds": hospital.total_beds,
-                "total_icu_beds": hospital.total_icu_beds,
-                "total_operation_theatres": hospital.total_operation_theatres,
-                "accreditation": hospital.accreditation,
-                "services": hospital.services,
-                "last_updated": hospital.last_updated,
-                "status": hospital.status,
-            },
+            "data": _serialize_hospital(updated_hospital)
         }
-    except HTTPException:
-        raise
     except Exception as e:
-        db.rollback()
         logger.error(f"Error updating hospital {hospital_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post('/notifications/send')
-def send_hospital_notification(
-    payload: NotificationRequest,
-    db: Session = Depends(get_db)
-):
-    """Accept admin notification requests (placeholder implementation)."""
+async def send_hospital_notification(payload: NotificationRequest):
     return {
         'success': True,
         'message': 'Notification accepted',
-        'data': {
-            'title': payload.title,
-            'type': payload.type,
-            'hospital_id': payload.hospital_id,
-            'target_role': payload.target_role,
-        }
+        'data': payload.model_dump()
     }
 
 
 @router.delete('/{hospital_id}')
-def delete_hospital(
-    hospital_id: str,
-    db: Session = Depends(get_db)
-):
-    """Soft-delete hospital and deactivate associated HM users."""
+async def delete_hospital(hospital_id: str):
+    """Soft-delete hospital in MongoDB."""
     try:
-        hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
-        if not hospital:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Hospital not found: {hospital_id}"
-            )
-
-        hospital.status = 'deleted'
-        hospital.updated_at = datetime.utcnow()
-
-        hm_users = db.query(User).filter(
-            User.hospital_id == hospital_id,
-            User.role == 'hm'
-        ).all()
-
-        for hm_user in hm_users:
-            hm_user.status = 'inactive'
-            hm_user.updated_at = datetime.utcnow()
-
-        db.commit()
-
-        return {
-            'success': True,
-            'message': 'Hospital deleted successfully',
-            'data': {
-                'hospital_id': hospital_id,
-                'hm_count': len(hm_users),
-            }
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error deleting hospital: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail='Internal server error'
+        if mongodb is None: raise HTTPException(status_code=500, detail="DB Error")
+        await mongodb.hospitals.update_one(
+            {"_id": hospital_id},
+            {"$set": {"status": 'deleted', "updated_at": datetime.utcnow()}}
         )
+        await mongodb.users.update_many(
+            {"hospital_id": hospital_id, "role": "hm"},
+            {"$set": {"status": 'inactive', "updated_at": datetime.utcnow()}}
+        )
+        return {'success': True, 'message': 'Hospital deleted successfully'}
+    except Exception as e:
+        logger.error(f"Error deleting hospital: {e}")
+        raise HTTPException(status_code=500, detail='Internal server error')
 
 
 @router.get("/{hospital_id}", response_model=HospitalResponse)
-def get_hospital(hospital_id: str, db: Session = Depends(get_db)):
-    """Get hospital by ID."""
+async def get_hospital(hospital_id: str):
+    """Get hospital by ID from MongoDB."""
     try:
-        hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+        if mongodb is None: raise HTTPException(status_code=500, detail="DB Error")
+        hospital = await mongodb.hospitals.find_one({"_id": hospital_id})
         if not hospital:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Hospital not found: {hospital_id}"
-            )
-        return hospital
-    except HTTPException:
-        raise
+            raise HTTPException(status_code=404, detail="Hospital not found")
+        return _serialize_hospital(hospital)
     except Exception as e:
         logger.error(f"Error getting hospital: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail="Internal server error")
+

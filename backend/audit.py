@@ -1,18 +1,15 @@
-# backend/audit.py - Audit Logging System
+# backend/audit.py - Audit Logging System (MongoDB)
 
-import json
 import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
-from sqlalchemy.orm import Session
 from uuid import uuid4
-from database import AuditLog
+from database import mongodb
 
 logger = logging.getLogger(__name__)
 
-
 class AuditLogger:
-    """Centralized audit logging system."""
+    """Centralized audit logging system for MongoDB."""
     
     # Action types
     ACTION_CREATE = "CREATE"
@@ -23,11 +20,10 @@ class AuditLogger:
     ACTION_FAILED_LOGIN = "FAILED_LOGIN"
     ACTION_APPOINTMENT_CREATED = "APPOINTMENT_CREATED"
     ACTION_APPOINTMENT_CANCELLED = "APPOINTMENT_CANCELLED"
-    Action_ROLE_CHANGED = "ROLE_CHANGED"
+    ACTION_ROLE_CHANGED = "ROLE_CHANGED"
     
     @staticmethod
-    def log(
-        db: Session,
+    async def log(
         action: str,
         entity_type: str,
         entity_id: str,
@@ -37,43 +33,25 @@ class AuditLogger:
         ip_address: Optional[str] = None,
         status: str = "success",
         error_message: Optional[str] = None,
-    ) -> AuditLog:
-        """
-        Log an audit entry.
-        
-        Args:
-            db: Database session
-            action: Action type (CREATE, UPDATE, DELETE, LOGIN, etc.)
-            entity_type: Type of entity (User, Appointment, Doctor, etc.)
-            entity_id: ID of the entity
-            user_id: ID of user performing action
-            old_values: Previous values (for updates)
-            new_values: New values (for updates/creates)
-            ip_address: IP address of requester
-            status: success or failed
-            error_message: Error message if failed
-            
-        Returns:
-            AuditLog instance
-        """
+    ) -> dict:
+        """Log an audit entry to MongoDB."""
         try:
-            audit_entry = AuditLog(
-                id=str(uuid4()),
-                user_id=user_id,
-                action=action,
-                entity_type=entity_type,
-                entity_id=entity_id,
-                old_values=json.dumps(old_values) if old_values else None,
-                new_values=json.dumps(new_values) if new_values else None,
-                ip_address=ip_address,
-                status=status,
-                error_message=error_message,
-                timestamp=datetime.utcnow(),
-            )
+            audit_entry = {
+                "_id": str(uuid4()),
+                "user_id": user_id,
+                "action": action,
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "old_values": old_values,
+                "new_values": new_values,
+                "ip_address": ip_address,
+                "status": status,
+                "error_message": error_message,
+                "timestamp": datetime.utcnow(),
+            }
             
-            db.add(audit_entry)
-            db.commit()
-            db.refresh(audit_entry)
+            if mongodb is not None:
+                await mongodb.audit_logs.insert_one(audit_entry)
             
             # Also log to application logger
             log_msg = f"[{action}] {entity_type}#{entity_id} by user#{user_id} - {status}"
@@ -89,11 +67,11 @@ class AuditLogger:
             
         except Exception as e:
             logger.error(f"Failed to log audit entry: {e}", exc_info=True)
-            raise
-    
+            # Don't raise, audit should not break the main flow
+            return {}
+
     @staticmethod
-    def log_login(
-        db: Session,
+    async def log_login(
         user_id: str,
         ip_address: Optional[str] = None,
         success: bool = True,
@@ -101,8 +79,7 @@ class AuditLogger:
     ):
         """Log a login attempt."""
         action = "LOGIN" if success else "FAILED_LOGIN"
-        return AuditLogger.log(
-            db=db,
+        return await AuditLogger.log(
             action=action,
             entity_type="User",
             entity_id=user_id,
@@ -113,8 +90,7 @@ class AuditLogger:
         )
     
     @staticmethod
-    def log_entity_create(
-        db: Session,
+    async def log_entity_create(
         entity_type: str,
         entity_id: str,
         data: Dict[str, Any],
@@ -122,8 +98,7 @@ class AuditLogger:
         ip_address: Optional[str] = None,
     ):
         """Log entity creation."""
-        return AuditLogger.log(
-            db=db,
+        return await AuditLogger.log(
             action=AuditLogger.ACTION_CREATE,
             entity_type=entity_type,
             entity_id=entity_id,
@@ -133,8 +108,7 @@ class AuditLogger:
         )
     
     @staticmethod
-    def log_entity_update(
-        db: Session,
+    async def log_entity_update(
         entity_type: str,
         entity_id: str,
         old_values: Dict[str, Any],
@@ -143,8 +117,7 @@ class AuditLogger:
         ip_address: Optional[str] = None,
     ):
         """Log entity update."""
-        return AuditLogger.log(
-            db=db,
+        return await AuditLogger.log(
             action=AuditLogger.ACTION_UPDATE,
             entity_type=entity_type,
             entity_id=entity_id,
@@ -155,8 +128,7 @@ class AuditLogger:
         )
     
     @staticmethod
-    def log_entity_delete(
-        db: Session,
+    async def log_entity_delete(
         entity_type: str,
         entity_id: str,
         data: Dict[str, Any],
@@ -164,8 +136,7 @@ class AuditLogger:
         ip_address: Optional[str] = None,
     ):
         """Log entity deletion."""
-        return AuditLogger.log(
-            db=db,
+        return await AuditLogger.log(
             action=AuditLogger.ACTION_DELETE,
             entity_type=entity_type,
             entity_id=entity_id,
@@ -175,37 +146,27 @@ class AuditLogger:
         )
 
 
-def get_audit_logs(
-    db: Session,
+async def get_audit_logs(
     entity_type: Optional[str] = None,
     entity_id: Optional[str] = None,
     user_id: Optional[str] = None,
     action: Optional[str] = None,
     limit: int = 100,
 ) -> list:
-    """
-    Query audit logs with filters.
-    
-    Args:
-        db: Database session
-        entity_type: Filter by entity type
-        entity_id: Filter by entity ID
-        user_id: Filter by user ID
-        action: Filter by action
-        limit: Maximum number of results
+    """Query audit logs from MongoDB."""
+    if mongodb is None:
+        return []
         
-    Returns:
-        List of AuditLog instances
-    """
-    query = db.query(AuditLog)
-    
+    query = {}
     if entity_type:
-        query = query.filter(AuditLog.entity_type == entity_type)
+        query["entity_type"] = entity_type
     if entity_id:
-        query = query.filter(AuditLog.entity_id == entity_id)
+        query["entity_id"] = entity_id
     if user_id:
-        query = query.filter(AuditLog.user_id == user_id)
+        query["user_id"] = user_id
     if action:
-        query = query.filter(AuditLog.action == action)
+        query["action"] = action
     
-    return query.order_by(AuditLog.timestamp.desc()).limit(limit).all()
+    cursor = mongodb.audit_logs.find(query).sort("timestamp", -1).limit(limit)
+    return await cursor.to_list(length=limit)
+
