@@ -1,56 +1,166 @@
-# NOQ Hospital Management System
+# 🏥 NOQ Hospital Management System
+
+*A Fair, Real-Time, and Scalable Hospital Workflow Platform*
 
 A comprehensive, production-ready hospital management system built with modern web technologies: **MongoDB** for data persistence, **FastAPI** for the backend API, and **React** for the frontend.
 
-## 🌟 Key Features
+---
 
-### Backend API (FastAPI)
-- **RESTful API** endpoints following standardized conventions.
-- **MongoDB integration** with connection pooling and async drivers.
-- **Role-Based Access Control (RBAC)** across all resources.
-- **Standardized Response Model** (success, message, data).
-- **JWT-based Authentication** for secure sessions.
-- **Interactive Documentation** with Swagger UI and Redoc.
+## 🌟 Project Vision
 
-### Frontend (React)
-- **4 Distinct User Roles**: Admin, Doctor, Hospital Manager (HM), and Patient.
-- **Complete Feature Set**: Appointment booking, queue management, prescription tracking, and revenue analytics.
-- **Dynamic Real-time Dashboard**: Responsive design for all screen sizes.
-- **API service layer**: Centralized `api.js` with consistent error handling.
+The **NOQ Hospital Management System** is designed to solve real-world problems in Indian hospitals, where long queues, lack of transparency, and unfair prioritization are common.
 
-### Database (MongoDB)
-- **Scalable Document Store**: Optimized collections for multi-role workflows.
-- **Indexing**: Efficient query execution for large datasets.
-- **Data Integrity**: Consistent serialization across all routes.
+Unlike traditional systems that focus only on appointments and records, this platform introduces:
+* **Fairness (No VIP Culture)**
+* **Real-Time Queue Accuracy**
+* **Patient & Doctor Accountability**
+* **Priority-Based Ethical Access**
 
-## 📋 System Overview
+---
 
+## 💡 Core Idea
+
+> A hospital system that ensures **only physically present patients can book appointments**, while still supporting **priority-based remote booking for critical cases**.
+
+This ensures:
+* No fake bookings
+* Reduced waiting time confusion
+* Transparent and fair queue system
+
+---
+
+## 🔥 Unique Features
+
+### 🎯 1. Location-Based Booking Validation
+* Normal patients must be **physically present in the hospital** to book.
+* Prevents misuse and fake slot blocking.
+* Ensures accurate queue timing.
+
+📌 *Implementation Idea*: QR scan / geofencing inside hospital premises.
+
+### ⚖️ 2. Fair Queue System (No VIP / No Bias)
+* First-Come-First-Serve strictly enforced.
+* No manual override or priority skipping.
+* Equal treatment for all patients.
+
+### 👶 3. Smart Priority Booking (Remote Access)
+Remote booking (Advanced Booking) is allowed only for:
+* Pregnant women 🤰
+* Senior citizens (70+) 👴
+* Children (0–8 years) 👶
+
+👉 These groups cannot handle long waiting queues, so the system ensures **ethical prioritization**.
+
+### ⏱️ 4. Real-Time Queue Transparency
+* Live queue status.
+* Doctor availability tracking.
+* Break time visibility.
+* Estimated waiting time.
+
+### 📊 5. Accountability System
+* **👨‍⚕️ Doctor Accountability**: Track working hours, break monitoring, queue handling transparency.
+* **🧍 Patient Accountability**: Missed appointments tracking, repeated absence → penalty / temporary block.
+
+### 🧾 6. Complaint Management System
+* Patients can report misconduct or long delays.
+* Hospital Manager (HM) can review complaints, issue formal warnings, and suspend doctors if needed.
+
+### 💊 7. Medical Records & Prescriptions
+* Digital prescription tracking.
+* Patient medical history & document uploads.
+* Centralized record system linked by unique IDs.
+
+### 📈 8. Revenue & Analytics
+* Hospital earnings tracking.
+* Appointment statistics.
+* Performance insights for Hospital Managers.
+
+---
+
+## 🏗️ System Architecture
+
+```text
+┌──────────────────────────────────────────────┐
+│            React Frontend                    │
+│  - Multi-role dashboards (Admin, HM, Doc)    │
+│  - Queue, booking & complaint UI             │
+│  - Service-Oriented Logic (`apiDbService`)   │
+└──────────────────────────────────────────────┘
+                    ↓
+        HTTP/HTTPS, JSON, JWT Auth
+                    ↓
+┌──────────────────────────────────────────────┐
+│            FastAPI Backend                   │
+│  - REST APIs (RBAC enabled)                 │
+│  - Queue & fairness algorithms              │
+│  - Complaint & booking engine               │
+└──────────────────────────────────────────────┘
+                    ↓
+┌──────────────────────────────────────────────┐
+│            MongoDB Database                 │
+│  - Users, Hospitals, Appointments, Queues    │
+│  - Complaints, Records, Revenue             │
+└──────────────────────────────────────────────┘
 ```
-┌─────────────────────────────────────────────────────┐
-│           Client Layer (React Frontend)             │
-│  ├─ Multi-Role Dashboard                             │
-│  ├─ Appointment & Queue Workflows                   │
-│  └─ Service-Oriented Architecture                   │
-│                    ↓                                 │
-│  HTTP/HTTPS, JSON, JWT Tokens (Authorization)      │
-│                    ↓                                 │
-├─────────────────────────────────────────────────────┤
-│         API Layer (FastAPI Backend)                 │
-│  ├─ RESTful Endpoints (RBAC Enabled)                │
-│  ├─ Asynchronous MongoDB Driver                     │
-│  ├─ Shared DB Connection Pooling                    │
-│  └─ Modular Router Registry                         │
-│                    ↓                                 │
-│         MongoDB Query Pipeline                      │
-│                    ↓                                 │
-├─────────────────────────────────────────────────────┤
-│      Data Layer (MongoDB Database)                  │
-│  ├─ Collections: Users, Hospitals, Appointments...  │
-│  ├─ Advanced Booking & Revenue Management           │
-│  └─ Atomic Updates & Performance Indexing           │
-│                                                     │
-└─────────────────────────────────────────────────────┘
+
+---
+
+## 📂 Folder Structure
+
+### Backend (FastAPI)
 ```
+backend/
+├── main.py                  # Application entry point and router registry
+├── database.py              # MongoDB async driver (Motor) setup
+├── requirements.txt         # Python dependencies
+├── models/                  # Pydantic models & validation schemas
+├── routes/                  # API Endpoints (Auth, Users, Appointments, etc.)
+│   ├── auth.py              # JWT authentication & session handling
+│   ├── advanced_bookings.py # Priority booking system
+│   ├── complaints.py        # Grievance reporting system
+│   ├── hospitals.py         # Hospital management
+│   ├── prescriptions.py     # Medical documents & history
+│   └── ...                  # Other entity routers
+├── services/                # Reusable business logic & integrations
+└── uploads/                 # Static asset storage (if applicable)
+```
+
+### Frontend (React + Vite)
+```
+noq-frontend/
+├── index.html               # Main HTML template
+├── package.json             # NPM dependencies & scripts
+├── src/
+│   ├── App.jsx              # Main routing & Protected Routes setup
+│   ├── main.jsx             # React DOM entry
+│   ├── components/          # Reusable UI elements & layouts
+│   │   ├── admin/           # Super admin dashboard layout
+│   │   ├── hm/              # Hospital Manager dashboard layout
+│   │   ├── doctor/          # Doctor interface components
+│   │   └── pat/             # Patient portal & sidebar layout
+│   ├── context/             # React Contexts (e.g., AuthContext)
+│   ├── hooks/               # Custom hooks (e.g., useApiData)
+│   ├── pages/               # Top-level page components
+│   │   ├── admin/           # Platform overview, HM approvals
+│   │   ├── hm/              # Staff management, queues, feedback
+│   │   ├── doctor/          # Consultation workflows
+│   │   └── patient/         # Booking, complaints, medical records
+│   ├── services/            # API interaction layers
+│   │   ├── api.js           # Axios wrapper with automated error handling
+│   │   └── apiDbService.js  # Abstraction layer for data fetching
+│   └── styles/              # Global CSS & theme styles
+```
+
+---
+
+## 🛠️ Technology Stack
+
+* **Frontend**: React, Vite, FontAwesome, React Router Dom
+* **Backend**: FastAPI, Pydantic, PyMongo, Motor
+* **Database**: MongoDB (Atlas/Community)
+* **Authentication**: JWT, Bcrypt
+
+---
 
 ## 🚀 Quick Start
 
@@ -82,6 +192,8 @@ A comprehensive, production-ready hospital management system built with modern w
    npm run dev
    ```
 
+---
+
 ## 📚 API Architecture
 
 | Router | Prefix | Description |
@@ -90,30 +202,33 @@ A comprehensive, production-ready hospital management system built with modern w
 | **Users** | `/users` | Profile management & Role-based listing |
 | **Hospitals** | `/hospitals` | Hospital registration & available listings |
 | **Appointments** | `/appointments` | Booking & status tracking |
+| **Advanced Bookings**| `/advanced-bookings`| Priority bookings for sensitive cases |
 | **Departments** | `/departments` | HM managed hospital segments |
 | **Rooms** | `/rooms` | Room availability & assignments |
 | **Queues** | `/queues` | Real-time queue status & next-caller logic |
 | **Tokens** | `/tokens` | Patient queue tokens |
 | **Diseases** | `/diseases` | Disease catalogue for smart routing |
 | **Reviews** | `/reviews` | Patient feedback system |
-| **Prescriptions** | `/prescriptions` | Clinical documentation |
-| **Revenue** | `/revenue` | Analytics for HM Role |
-
-## 🧪 Testing & Verification
-
-Comprehensive testing suite for system integrity:
-
-- **Auth Verification**: `test_auth_8000.ps1`
-- **Integration Workflow**: `integration_test.py`
-- **Sync Audit**: `verify_sync.py`
-- **Manual End-to-End**: Sign up as patient -> find hospital -> book token -> doctor visit.
-
-## 🛠️ Technology Stack
-
-- **Frontend**: React, Vite, FontAwesome, Lucide React
-- **Backend**: FastAPI, Pydantic, PyMongo, Motor
-- **Database**: MongoDB (Atlas/Community)
-- **Auth**: JWT, Bcrypt
+| **Complaints** | `/complaints` | Public grievance reporting & HM action system |
+| **Prescriptions** | `/prescriptions` | Clinical documentation & medicine info |
+| **Medical Records**| `/medical-records`| Past medical histories & document uploads |
+| **Revenue** | `/revenue` | Analytics and billing tracking for HM Role |
 
 ---
-*Developed by the NOQ Team*
+
+## 🚧 Pending Works & Roadmap
+
+While the core migration to MongoDB and major features are complete, the following tasks are planned for future updates:
+
+- **Advanced Booking System (Frontend Integration)**: The backend for advanced bookings is fully implemented. The frontend UI has been built, but some final integration and flow refinements will be completed later.
+- **Payment Gateway Integration**: Integration with Stripe/Razorpay for handling real-time payments for priority tokens and hospital bills.
+- **Push Notifications**: WebSockets or Firebase Cloud Messaging (FCM) integration for real-time queue updates and appointment alerts.
+- **Video Consultations**: Telemedicine features for remote doctor-patient appointments.
+- **Advanced Admin Analytics**: Deeper platform-wide analytics for super-admins regarding hospital performance and disease outbreaks.
+
+---
+
+## 👨‍💻 Developed By
+
+**Sunil**  
+*The NOQ Team*

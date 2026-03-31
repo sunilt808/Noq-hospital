@@ -1,0 +1,5 @@
+queue timing showing
+break show+auto expire 15min
+advance booking proper manahement
+proper revies revenue and complaint 
+admin and hm controls 
