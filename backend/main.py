@@ -24,6 +24,7 @@ from routes import (
     settings,
     notifications,
     medical_records,
+    complaints,
 )
 from database import init_db
 
@@ -140,4 +141,5 @@ app.include_router(bills.router)
 app.include_router(settings.router)
 app.include_router(notifications.router)
 app.include_router(medical_records.router)
+app.include_router(complaints.router)
 

@@ -23,7 +23,8 @@ import {
   faSun,
   faMoon,
   faKey,
-  faUserCircle
+  faUserCircle,
+  faFlag
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../context/AuthContext';
 

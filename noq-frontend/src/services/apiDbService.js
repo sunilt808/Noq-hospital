@@ -21,6 +21,7 @@ const API_ENDPOINTS = {
   advancedBooking: '/advanced-bookings',
   advancedBookings: '/advanced-bookings',
   admin_settings: '/settings',
+  complaints: '/complaints',
 };
 
 /**
@@ -38,7 +39,19 @@ export const getCollection = async (collectionName) => {
     const endpoint = getEndpoint(collectionName);
     const result = await api.get(endpoint);
     // Standardize response extraction based on the backend routes
-    return result?.data?.[collectionName] || result?.[collectionName] || result || [];
+    // More robust extraction for MongoDB responses
+    const data = result?.data || result;
+    if (Array.isArray(data)) return data;
+    
+    return (
+      data?.[collectionName] || 
+      data?.bookings || 
+      data?.users || 
+      data?.reviews || 
+      data?.items || 
+      data?.data || 
+      (Array.isArray(data?.results) ? data.results : [])
+    );
   } catch (error) {
     console.warn(`Failed to GET ${collectionName}:`, error);
     return [];

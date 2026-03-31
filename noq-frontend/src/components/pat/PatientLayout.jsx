@@ -22,6 +22,7 @@ import {
   faTriangleExclamation,
   faBell,
   faSignOutAlt,
+  faFlag,
 } from '@fortawesome/free-solid-svg-icons';
 import './p.css';
 
@@ -80,6 +81,7 @@ const PatientLayout = ({ children }) => {
     { id: 'prescriptions', label: 'Prescriptions', icon: faPrescriptionBottle, path: '/patient/prescriptions' },
     { id: 'billing', label: 'Billing', icon: faCreditCard, path: '/patient/billing' },
     { id: 'reviews', label: 'Reviews', icon: faStar, path: '/patient/reviews' },
+    { id: 'complaints', label: 'Complaint Box', icon: faFlag, path: '/patient/complaints' },
     { id: 'notifications', label: 'Notifications', icon: faChartLine, path: '/patient/notifications' },
     { id: 'profile', label: 'Profile & Settings', icon: faCog, path: '/patient/profile' },
   ];

@@ -111,6 +111,9 @@ async def _serialize_hospital(h: dict) -> dict:
             h["hm_email"] = hm.get("email")
             h["hm_phone"] = hm.get("phone")
             
+    # Aliases for frontend robustness - ensuring name matches what frontend expects
+    h["hospitalName"] = h.get("name") or h.get("hospital_name")
+    h["hospital_name"] = h.get("name") or h.get("hospital_name")
     return h
 
 

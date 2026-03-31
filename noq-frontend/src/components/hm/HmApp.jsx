@@ -18,6 +18,7 @@ import Audit from "../../pages/hm/management/Audit";
 import AdvancedBookings from "../../pages/hm/management/AdvancedBookings";
 import DoctorCredentials from "../../pages/hm/management/DoctorCredentials";
 import HospitalProfile from "../../pages/hm/management/HospitalProfile"; // Correct path
+import ManageComplaints from "../../pages/hm/ManageComplaints";
 
 // Doctor profile is in pages/hm/doctors/[id]/
 import DoctorProfile from "../../pages/hm/doctors/[id]/Profile";
@@ -51,6 +52,7 @@ const HmApp = () => {
         <Route path="management/audit" element={<Audit />} />
         <Route path="management/credentials" element={<DoctorCredentials />} />
         <Route path="management/pending-approval" element={<PendingApproval />} />
+        <Route path="management/complaints" element={<ManageComplaints />} />
         
         {/* Redirect any unknown route to management */}
         <Route path="*" element={<Navigate to="management" replace />} />

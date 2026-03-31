@@ -49,6 +49,7 @@ async def get_reviews(hospital_id: Optional[str] = None):
         return StandardResponse(success=False, message=str(e), data={"reviews": []})
 
 @router.post("", response_model=StandardResponse)
+@router.post("/", response_model=StandardResponse)
 async def create_review(review: ReviewCreate, payload: dict = Depends(require_auth)):
     """Add a review for a completed appointment."""
     try:

@@ -14,6 +14,7 @@ import Notifications from "../../pages/patient/Notifications";
 import Reviews from "../../pages/patient/Reviews";
 import Profile from "../../pages/patient/Profile";
 import Settings from "../../pages/patient/Settings";
+import Complaints from "../../pages/patient/Complaints";
 
 import PatientLayout from "./PatientLayout"; 
 
@@ -33,6 +34,7 @@ const PatientApp = () => {
         <Route path="notifications" element={<Notifications />} />
         <Route path="profile" element={<Profile />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="complaints" element={<Complaints />} />
       </Routes>
     </PatientLayout>
   );
