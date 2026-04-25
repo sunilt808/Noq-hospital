@@ -4,8 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useAuth } from '../../context/AuthContext';
 import patientService from '../../services/patientService';
-import { 
-  faPrint, faCopy, faTimes, faTicketAlt, 
+import {
+  faPrint, faCopy, faTimes, faTicketAlt,
   faUserMd, faDoorOpen, faClock, faCalendarAlt, faChevronLeft,
   faCheckCircle, faStar
 } from '@fortawesome/free-solid-svg-icons';
@@ -23,7 +23,7 @@ const MyAppointments = () => {
     }
     return { text: 'Away', color: '#991b1b', bg: '#fee2e2' };
   };
-  
+
   const [appointments, setAppointments] = useState([]);
   const [userReviews, setUserReviews] = useState([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -35,7 +35,7 @@ const MyAppointments = () => {
   // Load appointments and reviews from API
   useEffect(() => {
     if (authLoading) return;
-    
+
     if (!currentUser || currentUser.role !== 'patient') {
       navigate('/login', { replace: true });
       return;
@@ -48,7 +48,7 @@ const MyAppointments = () => {
           patientService.getMyAppointments(),
           patientService.getMyReviews()
         ]);
-        
+
         setAppointments(Array.isArray(appointmentsData) ? appointmentsData : []);
         setUserReviews(Array.isArray(reviewsData) ? reviewsData : []);
       } catch (error) {
@@ -133,11 +133,11 @@ const MyAppointments = () => {
       };
 
       await patientService.submitReview(reviewData);
-      
+
       // Reload reviews
       const updatedReviews = await patientService.getMyReviews();
       setUserReviews(Array.isArray(updatedReviews) ? updatedReviews : []);
-      
+
       setShowReviewModal(false);
       setReviewTarget(null);
       alert('Review submitted successfully!');
@@ -229,8 +229,8 @@ const MyAppointments = () => {
           </div>
         </div>
         <div style={styles.tokenActions}>
-          <button 
-            style={{ ...styles.btn, ...styles.btnSecondary }} 
+          <button
+            style={{ ...styles.btn, ...styles.btnSecondary }}
             onClick={() => copyTokenToClipboard(token.tokenNumber)}
           >
             <FontAwesomeIcon icon={faCopy} /> Copy Token

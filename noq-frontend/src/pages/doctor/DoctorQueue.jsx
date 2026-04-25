@@ -20,7 +20,7 @@ const DoctorQueue = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
   const { appointments, patients, doctors, loading } = useApiData();
-  
+
   const [isOnBreak, setIsOnBreak] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
@@ -52,8 +52,8 @@ const DoctorQueue = () => {
 
   // Get current doctor from API data
   const doctor = useMemo(() => {
-    return doctors.find(d => 
-      d.id === currentUser?.id || 
+    return doctors.find(d =>
+      d.id === currentUser?.id ||
       d.email?.toLowerCase() === currentUser?.email?.toLowerCase()
     ) || {
       id: currentUser?.id,
@@ -93,7 +93,7 @@ const DoctorQueue = () => {
       const status = String(apt.status || '').toLowerCase();
       return String(dId) === String(currentUser?.id || '') && ['waiting', 'pending', 'confirmed', 'in_consultation'].includes(status);
     });
-    
+
     return doctorAppts.map(apt => {
       const pId = apt.patient_id || apt.patientId || '';
       const patient = patients.find(
@@ -125,7 +125,7 @@ const DoctorQueue = () => {
       const status = String(apt.status || '').toLowerCase();
       return String(dId) === String(currentUser?.id || '') && status === 'completed';
     });
-    
+
     return doctorAppts.map(apt => ({
       id: apt.id || apt._id,
       token: getTokenLabel(apt.token || apt.token_number || apt.tokenNumber || ''),
@@ -184,9 +184,9 @@ const DoctorQueue = () => {
         status: 'in_consultation',
         consultationStartedAt: new Date().toISOString(),
       });
-      
+
       setSelectedPatient(patient);
-      
+
       recordHistory({
         action: 'consultation_started',
         module: 'queue',
@@ -215,7 +215,7 @@ const DoctorQueue = () => {
       });
 
       setSelectedPatient(null);
-      
+
       recordHistory({
         action: 'consultation_completed',
         module: 'queue',
@@ -235,14 +235,14 @@ const DoctorQueue = () => {
   const handleSkipPatient = async (patientId) => {
     const patient = queue.find(p => p.id === patientId);
     if (!patient) return;
-    
+
     if (window.confirm(`Skip ${patient.patient} and move to end of queue?`)) {
       try {
         await updateAppointmentStatus(patientId, {
           skipped: true,
           status: 'waiting'
         });
-        
+
         recordHistory({
           action: 'patient_skipped',
           module: 'queue',
@@ -290,7 +290,7 @@ const DoctorQueue = () => {
         notes: 'Walk-in patient',
         hospital_id: currentUser?.hospital_id || currentUser?.hospitalId || '',
       });
-      
+
       setNewPatient({ name: '', token: '', type: 'regular', priority: 'normal', phone: '' });
       setShowAddPatient(false);
       alert(`Added ${newPatient.name} to queue (Token: ${newPatient.token})`);
@@ -306,7 +306,7 @@ const DoctorQueue = () => {
   };
 
   const getPriorityColor = (priority) => {
-    switch(priority) {
+    switch (priority) {
       case 'high': return '#ef4444';
       case 'medium': return '#f59e0b';
       default: return '#10b981';
@@ -314,7 +314,7 @@ const DoctorQueue = () => {
   };
 
   const getTypeIcon = (type) => {
-    switch(type) {
+    switch (type) {
       case 'emergency': return faExclamationTriangle;
       case 'follow-up': return faHistory;
       case 'new': return faUserClock;
@@ -336,7 +336,7 @@ const DoctorQueue = () => {
       {/* Header */}
       <header className="doctor-header">
         <div className="doctor-header-left">
-          <button 
+          <button
             className="doctor-btn doctor-btn-secondary"
             onClick={() => navigate('/doctor/dashboard')}
           >
@@ -349,9 +349,9 @@ const DoctorQueue = () => {
             </p>
           </div>
         </div>
-        
+
         <div className="doctor-header-right">
-          <button 
+          <button
             className={`break-btn ${isOnBreak ? 'on-break' : ''}`}
             onClick={toggleBreak}
           >
@@ -368,19 +368,19 @@ const DoctorQueue = () => {
           <div className="stat-value">{tokenStats.waiting}</div>
           <div className="stat-label">Waiting Tokens</div>
         </div>
-        
+
         <div className="stat-card green">
           <FontAwesomeIcon icon={faCheckCircle} className="stat-icon" />
           <div className="stat-value">{tokenStats.completed}</div>
           <div className="stat-label">Completed Tokens</div>
         </div>
-        
+
         <div className="stat-card orange">
           <FontAwesomeIcon icon={faClock} className="stat-icon" />
           <div className="stat-value">{tokenStats.inConsultation}</div>
           <div className="stat-label">In Consultation</div>
         </div>
-        
+
         <div className="stat-card purple">
           <FontAwesomeIcon icon={faUserClock} className="stat-icon" />
           <div className="stat-value">{tokenStats.issuedToday}</div>
@@ -406,7 +406,7 @@ const DoctorQueue = () => {
                 </span>
               )}
             </div>
-            
+
             {selectedPatient ? (
               <div className="current-patient-details">
                 <div className="patient-token">
@@ -418,7 +418,7 @@ const DoctorQueue = () => {
                   )}
                 </div>
                 <h4 className="patient-name">{selectedPatient.patient}</h4>
-                
+
                 <div className="patient-contact">
                   {selectedPatient.phone && (
                     <p>
@@ -426,27 +426,27 @@ const DoctorQueue = () => {
                     </p>
                   )}
                 </div>
-                
+
                 <div className="patient-info">
                   <p>
-                    <FontAwesomeIcon icon={faClock} /> 
+                    <FontAwesomeIcon icon={faClock} />
                     Scheduled: {selectedPatient.time}
                   </p>
                   <p>
-                    <FontAwesomeIcon icon={faFileMedical} /> 
+                    <FontAwesomeIcon icon={faFileMedical} />
                     Notes: {selectedPatient.notes}
                   </p>
                 </div>
-                
+
                 <div className="consultation-actions">
-                  <button 
+                  <button
                     className="complete-btn"
                     onClick={() => navigate(`/doctor/prescriptions?patientId=${selectedPatient.patientId}&appointmentId=${selectedPatient.appointmentId}`)}
                     style={{ background: '#3b82f6', marginBottom: '10px' }}
                   >
                     <FontAwesomeIcon icon={faStethoscope} /> Write Prescription
                   </button>
-                  <button 
+                  <button
                     className="complete-btn"
                     onClick={handleCompleteConsultation}
                   >
@@ -469,13 +469,13 @@ const DoctorQueue = () => {
               Queue Controls
             </h3>
             <div className="doctor-action-buttons">
-              <button 
+              <button
                 onClick={() => setShowAddPatient(true)}
                 className="doctor-action-btn"
               >
                 <FontAwesomeIcon icon={faPlus} /> Add Walk-in Patient
               </button>
-              <button 
+              <button
                 onClick={() => {
                   if (filteredQueue.length > 0) {
                     handleStartConsultation(filteredQueue[0]);
@@ -486,7 +486,7 @@ const DoctorQueue = () => {
               >
                 <FontAwesomeIcon icon={faArrowRight} /> Start Next in Queue
               </button>
-              <button 
+              <button
                 onClick={() => navigate('/doctor/appointments')}
                 className="doctor-action-btn"
               >
@@ -508,7 +508,7 @@ const DoctorQueue = () => {
                   <input
                     type="text"
                     value={newPatient.name}
-                    onChange={(e) => setNewPatient({...newPatient, name: e.target.value})}
+                    onChange={(e) => setNewPatient({ ...newPatient, name: e.target.value })}
                     placeholder="Enter patient name"
                     className="form-input"
                   />
@@ -518,7 +518,7 @@ const DoctorQueue = () => {
                   <input
                     type="text"
                     value={newPatient.token}
-                    onChange={(e) => setNewPatient({...newPatient, token: e.target.value})}
+                    onChange={(e) => setNewPatient({ ...newPatient, token: e.target.value })}
                     placeholder="Enter token number"
                     className="form-input"
                   />
@@ -528,7 +528,7 @@ const DoctorQueue = () => {
                   <input
                     type="tel"
                     value={newPatient.phone}
-                    onChange={(e) => setNewPatient({...newPatient, phone: e.target.value})}
+                    onChange={(e) => setNewPatient({ ...newPatient, phone: e.target.value })}
                     placeholder="Phone number (optional)"
                     className="form-input"
                   />
@@ -537,7 +537,7 @@ const DoctorQueue = () => {
                   <label>Visit Type</label>
                   <select
                     value={newPatient.type}
-                    onChange={(e) => setNewPatient({...newPatient, type: e.target.value})}
+                    onChange={(e) => setNewPatient({ ...newPatient, type: e.target.value })}
                     className="form-input"
                   >
                     <option value="regular">Regular Consultation</option>
@@ -550,7 +550,7 @@ const DoctorQueue = () => {
                   <label>Priority</label>
                   <select
                     value={newPatient.priority}
-                    onChange={(e) => setNewPatient({...newPatient, priority: e.target.value})}
+                    onChange={(e) => setNewPatient({ ...newPatient, priority: e.target.value })}
                     className="form-input"
                   >
                     <option value="normal">Normal</option>
@@ -559,13 +559,13 @@ const DoctorQueue = () => {
                   </select>
                 </div>
                 <div className="form-actions">
-                  <button 
+                  <button
                     onClick={() => setShowAddPatient(false)}
                     className="doctor-btn doctor-btn-secondary"
                   >
                     Cancel
                   </button>
-                  <button 
+                  <button
                     onClick={handleAddToQueue}
                     className="doctor-btn doctor-btn-primary"
                   >
@@ -622,8 +622,8 @@ const DoctorQueue = () => {
             ) : (
               <div className="queue-list detailed">
                 {filteredQueue.map((patient, index) => (
-                  <div 
-                    key={patient.id} 
+                  <div
+                    key={patient.id}
                     className={`queue-item ${patient.priority}`}
                     onClick={() => handleStartConsultation(patient)}
                   >
@@ -661,7 +661,7 @@ const DoctorQueue = () => {
                         {calculateWaitTime(patient.arrivalTime)}
                       </div>
                       <div className="queue-actions">
-                        <button 
+                        <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleStartConsultation(patient);
@@ -672,7 +672,7 @@ const DoctorQueue = () => {
                         >
                           <FontAwesomeIcon icon={faArrowRight} />
                         </button>
-                        <button 
+                        <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleSkipPatient(patient.id);
