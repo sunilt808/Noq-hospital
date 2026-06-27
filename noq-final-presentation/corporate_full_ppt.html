@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NOQ – Full Project Presentation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Reveal.js -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reset.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/simple.min.css" />
+    <!-- Icon set -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <!-- Custom styling -->
+    <link rel="stylesheet" href="corporate_full_ppt.css" />
+</head>
+<body class="theme-light">
+    <!-- Theme toggle button -->
+    <button id="themeToggle" class="theme-btn">Switch to Dark</button>
+    <!-- Sidebar (Table of Contents) -->
+    <nav class="sidebar">
+        <h2>Contents</h2>
+        <ul>
+            <li><a href="#slide-intro">Intro / Project Summary</a></li>
+            <li><a href="#slide-problem">Problem Statement</a></li>
+            <li><a href="#slide-solution">Solution Overview</a></li>
+            <li><a href="#slide-arch">System Architecture</a></li>
+            <li><a href="#slide-backend">Backend Highlights</a></li>
+            <li><a href="#slide-frontend">Frontend Highlights</a></li>
+            <li><a href="#slide-rbac">RBAC & Roles</a></li>
+            <li><a href="#slide-workflow">Booking Lifecycle</a></li>
+            <li><a href="#slide-algo">Core Algorithms</a></li>
+            <li><a href="#slide-revenue">Revenue Split & Ethics</a></li>
+            <li><a href="#slide-qanda">Interview Q&A Bank</a></li>
+            <li><a href="#slide-conclusion">Conclusion & Next Steps</a></li>
+        </ul>
+    </nav>
+    <div class="reveal">
+        <div class="slides">
+            <!-- Slide 1 – Intro -->
+            <section id="slide-intro" class="center-slide">
+                <h1>NOQ – Smart Hospital Queue Management</h1>
+                <h3 class="sub-title">Enterprise‑grade, role‑based outpatient workflow platform</h3>
+                <p>Prepared for final stakeholder meeting before deployment.</p>
+                <p><strong>Technologies:</strong> React 19, Vite, FastAPI, MongoDB, Docker‑Compose, CI/CD</p>
+            </section>
+            <!-- Slide 2 – Problem Statement -->
+            <section id="slide-problem">
+                <h2><i class="fa-solid fa-triangle-exclamation"></i> Problem Statement</h2>
+                <ul class="styled-list">
+                    <li><strong>Waiting‑room congestion</strong> – patients waste hours with no visibility.</li>
+                    <li><strong>Unstructured token systems</strong> – paper/ verbal tokens cause VIP bias and errors.</li>
+                    <li><strong>Revenue leakage</strong> – manual calculations lead to accounting mismatches.</li>
+                    <li><strong>Missing clinical data</strong> – no digital EMR, prescriptions, or analytics.</li>
+                </ul>
+            </section>
+            <!-- Slide 3 – Solution Overview -->
+            <section id="slide-solution">
+                <h2><i class="fa-solid fa-lightbulb"></i> Solution Overview</h2>
+                <p>NOQ replaces the analog queue with a real‑time digital token system that:</p>
+                <ul class="styled-list">
+                    <li>Provides live token tracking on mobile/web.</li>
+                    <li>Enforces strict FIFO ordering with zero VIP overrides.</li>
+                    <li>Integrates payment, EMR, and automated revenue split.</li>
+                    <li>Supports advanced booking for vulnerable groups while geofencing normal bookings.</li>
+                </ul>
+            </section>
+            <!-- Slide 4 – System Architecture -->
+            <section id="slide-arch">
+                <h2><i class="fa-solid fa-archway"></i> High‑Level Architecture</h2>
+                <div class="grid-3">
+                    <div class="card">
+                        <h4>Frontend</h4>
+                        <p>React 19 + Vite, WebSocket live updates, Geolocation API, role‑based dashboards.</p>
+                    </div>
+                    <div class="card">
+                        <h4>Backend API</h4>
+                        <p>FastAPI (async ASGI), JWT‑based RBAC, background tasks for audit logging.</p>
+                    </div>
+                    <div class="card">
+                        <h4>Data Store</h4>
+                        <p>MongoDB – document model for flexible clinical records, atomic <code>$inc</code> token counter.</p>
+                    </div>
+                </div>
+                <p style="margin-top:20px; font-size:0.9rem; color:var(--text-muted);">All services are containerised (Docker‑Compose) and orchestrated via CI/CD pipelines.</p>
+            </section>
+            <!-- Slide 5 – Backend Highlights -->
+            <section id="slide-backend">
+                <h2><i class="fa-solid fa-server"></i> Backend Highlights</h2>
+                <h3>Atomic Token Generation</h3>
+                <pre><code class="language-python"># routes/tokens.py (excerpt)
+@router.post("/token")
+async def create_token(req: TokenRequest):
+    token = await queue_service.generate_token(
+        hospital_id=req.hospital_id,
+        specialty=req.specialty,
+        patient_id=req.patient_id,
+    )
+    return {"token": token}
+                </code></pre>
+                <p>Implemented with <code>find_one_and_update</code> + <code>$inc</code> guaranteeing unique, sequential numbers even under high concurrency.</p>
+                <h3>RBAC Enforcement</h3>
+                <pre><code class="language-python">def require_role(allowed: List[Role]):
+    def dependency(token: str = Depends(oauth2_scheme)):
+        payload = jwt.decode(token, SETTINGS.SECRET, algorithms=["HS256"])
+        if payload["role"] not in allowed:
+            raise HTTPException(status_code=403)
+        return payload
+    return Depends(dependency)
+                </code></pre>
+                <p>FastAPI dependencies validate JWT role before any endpoint logic runs.</p>
+            </section>
+            <!-- Slide 6 – Frontend Highlights -->
+            <section id="slide-frontend">
+                <h2><i class="fa-solid fa-code"></i> Frontend Highlights</h2>
+                <h3>Geofencing for Normal Booking</h3>
+                <pre><code class="language-javascript">// BookAppointment.jsx (excerpt)
+const handleBooking = async () => {
+  const {lat, lng} = await getCurrentLocation();
+  if (!withinRadius(lat, lng, hospital.center, 0.5)) {
+    toast.error('You must be within 500 m of the hospital to book a token.');
+    return;
+  }
+  const resp = await api.post('/tokens', {...});
+  setToken(resp.data.token);
+};
+                </code></pre>
+                <p>Advanced bookings (pregnant, children ≤ 7, elders ≥ 70) bypass this check – controlled by backend policy.</p>
+                <h3>Live Queue Dashboard</h3>
+                <p>WebSocket streams token status changes; doctors call next, patients see live position.</p>
+            </section>
+            <!-- Slide 7 – RBAC & Roles -->
+            <section id="slide-rbac">
+                <h2><i class="fa-solid fa-users-gear"></i> Role‑Based Access Control</h2>
+                <div class="rbac-flow">
+                    <div class="rbac-item">
+                        <div class="rbac-icon"><i class="fa-solid fa-shield-halved"></i></div>
+                        <h4>Platform Admin</h4>
+                        <p>Global oversight, manager approvals, audit logs.</p>
+                    </div>
+                    <div class="rbac-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                    <div class="rbac-item">
+                        <div class="rbac-icon"><i class="fa-solid fa-hospital"></i></div>
+                        <h4>Hospital Manager</h4>
+                        <p>Manage doctors, rooms, daily queues, revenue view.</p>
+                    </div>
+                    <div class="rbac-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                    <div class="rbac-item">
+                        <div class="rbac-icon"><i class="fa-solid fa-user-doctor"></i></div>
+                        <h4>Doctor</h4>
+                        <p>Call tokens, write prescriptions, view patient history.</p>
+                    </div>
+                    <div class="rbac-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                    <div class="rbac-item">
+                        <div class="rbac-icon"><i class="fa-solid fa-user-injured"></i></div>
+                        <h4>Patient</h4>
+                        <p>Book tokens, track position, pay fees, download EMR.</p>
+                    </div>
+                </div>
+            </section>
+            <!-- Slide 8 – Booking Workflow -->
+            <section id="slide-workflow">
+                <h2><i class="fa-solid fa-route"></i> Patient‑to‑Clinic Booking Lifecycle</h2>
+                <ol class="styled-list">
+                    <li><strong>Initial Selection:</strong> Choose hospital branch and medical specialty.</li>
+                    <li><strong>Smart Allocation:</strong> System automatically assigns the least‑loaded doctor & room.</li>
+                    <li><strong>Secure Payment:</strong> Fee collected via integrated gateway; confirmation stored.</li>
+                    <li><strong>Geofence & Token Generation:</strong> Normal bookings require the user to be within a 500 m radius; advanced bookings (pregnant, children ≤ 7, elders ≥ 70) are exempt. After validation a sequential token is issued.</li>
+                </ol>
+            </section>
+            <!-- Slide 9 – Core Algorithms -->
+            <section id="slide-algo">
+                <h2><i class="fa-solid fa-microchip"></i> Core Algorithms & Policies</h2>
+                <h3>Atomic Queue Counter</h3>
+                <pre><code class="language-python">async def generate_token(db, queue_id):
+    result = await db.queues.find_one_and_update(
+        {"_id": queue_id},
+        {"$inc": {"counter": 1}},
+        return_document=ReturnDocument.AFTER,
+    )
+    return result["counter"]
+                </code></pre>
+                <h3>Geofence Validation (Haversine)</h3>
+                <pre><code class="language-javascript">function distance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) ** 2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a)); // km
+}
+                </code></pre>
+                <p>Token generation proceeds only if <code>distance <= 0.5 km</code> for normal bookings.</p>
+                <h3>Revenue Split Automation</h3>
+                <pre><code class="language-python">def split_revenue(total):
+    return {
+        "hospital": total * 0.80,
+        "doctor": total * 0.15,
+        "platform": total * 0.05,
+    }
+</code></pre>
+                <p>Triggered by a FastAPI background task when an appointment status changes to <code>completed</code>.</p>
+            </section>
+            <!-- Slide 10 – Revenue & Ethics -->
+            <section id="slide-revenue">
+                <h2><i class="fa-solid fa-money-bill-transfer"></i> Revenue Split & System Ethics</h2>
+                <ul class="styled-list">
+                    <li><strong>80 % → Hospital Manager</strong></li>
+                    <li><strong>15 % → Consulting Doctor</strong></li>
+                    <li><strong>5 % → Platform Service Fee</strong></li>
+                </ul>
+                <p>No VIP bypass – strict FIFO enforced on the doctor dashboard. Repeated patient absences incur a modest ₹50 penalty to discourage no‑shows.</p>
+            </section>
+            <!-- Slide 11 – Interview Q&A Bank -->
+            <section id="slide-qanda">
+                <h2><i class="fa-solid fa-comments"></i> Interview Q&A Bank</h2>
+                <ul class="styled-list">
+                    <li>Why was MongoDB chosen over a relational DB for clinical records?</li>
+                    <li>How does the atomic token generation guarantee uniqueness?</li>
+                    <li>Explain the geofencing flow and how spoofing is prevented.</li>
+                    <li>Detail the FastAPI RBAC implementation using JWT dependencies.</li>
+                    <li>How is the revenue split automated and persisted?</li>
+                    <li>What measures ensure audit‑logging without affecting API latency?</li>
+                </ul>
+            </section>
+            <!-- Slide 12 – Conclusion & Next Steps -->
+            <section id="slide-conclusion" class="center-slide">
+                <i class="fa-solid fa-circle-check fa-4x" style="color:#28a745; margin-bottom:20px;"></i>
+                <h2>Ready for Deployment</h2>
+                <p>All critical paths validated, performance benchmarks meet SLA (< 50 ms API latency), security reviewed, CI/CD pipelines operational.</p>
+                <p>Next steps: production Docker rollout, monitoring setup (Prometheus + Grafana), post‑launch user training.</p>
+                <p>Open for questions.</p>
+            </section>
+        </div>
+    </div>
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/highlight/highlight.js"></script>
+    <script>
+        // Initialise Reveal.js
+        Reveal.initialize({
+            hash: true,
+            slideNumber: 'c/t',
+            transition: 'slide',
+            controls: true,
+            progress: true,
+            plugins: [ RevealHighlight ]
+        });
+        // Light/Dark theme toggle
+        const themeBtn = document.getElementById('themeToggle');
+        themeBtn.addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            themeBtn.textContent = document.body.classList.contains('dark-mode') ? 'Switch to Light' : 'Switch to Dark';
+        });
+    </script>
+</body>
+</html>

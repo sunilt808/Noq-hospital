@@ -1,0 +1,287 @@
+/* Corporate Presentation Styling (Overrides Reveal.js defaults) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+    --bg-color: #f8f9fa;
+    --text-color: #212529;
+    --text-muted: #495057;
+    --card-bg: #ffffff;
+    --card-border: #e9ecef;
+    --primary-color: #0056b3;
+    --accent-color: #0d6efd;
+    --border-color: #dee2e6;
+    --shadow-color: rgba(0, 0, 0, 0.05);
+
+    /* Specific Borders */
+    --b-red: #dc3545;
+    --b-blue: #0d6efd;
+    --b-green: #198754;
+    --b-purple: #6f42c1;
+    --b-teal: #20c997;
+}
+
+body.dark-mode {
+    --bg-color: #0f172a;
+    --text-color: #f8fafc;
+    --text-muted: #94a3b8;
+    --card-bg: #1e293b;
+    --card-border: #334155;
+    --primary-color: #38bdf8;
+    --accent-color: #3b82f6;
+    --border-color: #334155;
+    --shadow-color: rgba(0, 0, 0, 0.3);
+
+    /* Specific Borders */
+    --b-red: #ef4444;
+    --b-blue: #3b82f6;
+    --b-green: #22c55e;
+    --b-purple: #a855f7;
+    --b-teal: #14b8a6;
+}
+
+body {
+    background: var(--bg-color) !important;
+    transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+.reveal {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    background: transparent !important;
+    color: var(--text-color);
+}
+
+.reveal h1,
+.reveal h2,
+.reveal h3,
+.reveal h4,
+.reveal h5,
+.reveal h6 {
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    text-transform: none;
+    color: var(--text-color);
+    transition: color 0.4s ease;
+}
+
+/* Theme Toggle Button */
+.theme-toggle {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    color: var(--text-color);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    box-shadow: 0 4px 6px var(--shadow-color);
+    transition: all 0.3s ease;
+}
+
+.theme-toggle:hover {
+    transform: scale(1.1);
+}
+
+/* Center Slides */
+.reveal .center-slide {
+    text-align: center;
+    padding-top: 10%;
+}
+
+.header-logo {
+    font-size: 1.5rem;
+    font-weight: 800;
+    margin-bottom: 20px;
+    letter-spacing: 2px;
+}
+
+.main-title {
+    font-size: 3.5rem !important;
+    line-height: 1.2 !important;
+    margin-bottom: 30px !important;
+    color: var(--text-color) !important;
+}
+
+.sub-title {
+    font-size: 1.8rem !important;
+    color: var(--primary-color) !important;
+    margin-bottom: 40px !important;
+}
+
+.author-info p {
+    font-size: 1rem;
+    margin: 5px 0;
+    color: var(--text-muted);
+}
+
+/* General Slide Structure */
+.slide-header {
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 15px;
+    margin-bottom: 30px;
+    text-align: left;
+}
+
+.slide-header h2 {
+    font-size: 2.2rem !important;
+    margin: 0 !important;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    color: var(--primary-color);
+}
+
+/* Grids */
+.two-col {
+    display: flex;
+    justify-content: space-between;
+    gap: 40px;
+    margin-top: 20px;
+}
+
+.two-col .col {
+    flex: 1;
+    text-align: left;
+}
+
+.grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+}
+
+/* Cards & Info Boxes */
+.card,
+.info-box {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 25px;
+    box-shadow: 0 6px 15px var(--shadow-color);
+    border: 1px solid var(--card-border);
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.card:hover,
+.info-box:hover {
+    transform: translateY(-3px);
+}
+
+.info-box {
+    text-align: left;
+    height: 100%;
+}
+
+.card h4,
+.info-box h4 {
+    font-size: 1.3rem !important;
+    margin: 15px 0 10px !important;
+    color: var(--text-color) !important;
+}
+
+.card p,
+.info-box p {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* Card Borders */
+.border-red {
+    border-top: 4px solid var(--b-red);
+}
+
+.border-blue {
+    border-top: 4px solid var(--b-blue);
+}
+
+.border-green {
+    border-top: 4px solid var(--b-green);
+}
+
+.border-purple {
+    border-top: 4px solid var(--b-purple);
+}
+
+.color-primary {
+    color: var(--primary-color);
+}
+
+/* Lists */
+.styled-list {
+    list-style: none;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.styled-list li {
+    font-size: 1.1rem;
+    margin-bottom: 15px;
+    padding-left: 25px;
+    position: relative;
+    line-height: 1.5;
+    color: var(--text-color);
+}
+
+.styled-list li::before {
+    content: '■';
+    color: var(--primary-color);
+    position: absolute;
+    left: 0;
+    top: 2px;
+    font-size: 0.8rem;
+}
+
+.sub-text {
+    display: block;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-top: 5px;
+}
+
+/* RBAC Flow */
+.rbac-flow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 40px;
+}
+
+.rbac-item {
+    flex: 1;
+    background: var(--card-bg);
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 10px var(--shadow-color);
+    text-align: center;
+    border: 1px solid var(--card-border);
+}
+
+.rbac-icon {
+    font-size: 2.5rem;
+    color: var(--primary-color);
+    margin-bottom: 15px;
+}
+
+.rbac-item h4 {
+    font-size: 1.1rem !important;
+    margin-bottom: 10px !important;
+}
+
+.rbac-item p {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+.rbac-arrow {
+    font-size: 1.5rem;
+}

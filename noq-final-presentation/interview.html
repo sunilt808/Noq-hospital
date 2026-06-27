@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOQ - Interview Preparation Kit</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --surface: #131b2c;
+            --surface-alt: #1e293b;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --border: rgba(255, 255, 255, 0.1);
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --accent: #38bdf8;
+            --green: #22c55e;
+            --purple: #a855f7;
+            --amber: #f59e0b;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding-bottom: 60px;
+        }
+
+        /* Header */
+        header {
+            background: rgba(19, 27, 44, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 20px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+        .header-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .logo { font-size: 1.5rem; font-weight: 800; color: var(--text); letter-spacing: -1px; display: flex; align-items: center; gap: 10px; }
+        .logo i { color: var(--primary); }
+        .nav-links a { color: var(--muted); text-decoration: none; margin-left: 20px; font-weight: 500; transition: 0.3s; }
+        .nav-links a:hover { color: var(--text); }
+
+        /* Hero */
+        .hero {
+            padding: 80px 0 60px;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            background: radial-gradient(circle at 50% -20%, rgba(59, 130, 246, 0.15), transparent 70%);
+        }
+        .badge {
+            display: inline-block; padding: 6px 14px; border-radius: 20px;
+            font-size: 0.75rem; font-weight: 700; letter-spacing: 1px;
+            background: rgba(59, 130, 246, 0.15); color: var(--primary);
+            border: 1px solid rgba(59, 130, 246, 0.3); margin-bottom: 20px;
+        }
+        .hero h1 { font-size: 3.5rem; font-weight: 800; letter-spacing: -1.5px; margin-bottom: 20px; line-height: 1.1; }
+        .hero p { font-size: 1.15rem; color: var(--muted); max-width: 700px; margin: 0 auto; }
+
+        /* Sections */
+        section { padding: 60px 0; border-bottom: 1px solid var(--border); }
+        .sec-title { font-size: 2rem; font-weight: 700; margin-bottom: 30px; display: flex; align-items: center; gap: 12px; }
+        .sec-title i { color: var(--primary); }
+        
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 24px;
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+        .card:hover { transform: translateY(-3px); border-color: rgba(255,255,255,0.2); }
+        .card h3 { font-size: 1.2rem; margin-bottom: 15px; color: var(--accent); display: flex; align-items: center; gap: 10px; }
+        .card p { color: var(--muted); margin-bottom: 15px; }
+        
+        ul { margin-left: 20px; color: var(--muted); }
+        li { margin-bottom: 8px; }
+        li strong { color: var(--text); }
+
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        
+        /* Accordion (Q&A) */
+        .qa-container {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .accordion {
+            border-bottom: 1px solid var(--border);
+        }
+        .accordion:last-child { border-bottom: none; }
+        
+        .acc-btn {
+            width: 100%; text-align: left; background: none; border: none;
+            padding: 20px 24px; color: var(--text); font-size: 1.05rem;
+            font-weight: 600; font-family: inherit; cursor: pointer;
+            display: flex; justify-content: space-between; align-items: center;
+            transition: background 0.2s;
+        }
+        .acc-btn:hover { background: rgba(255,255,255,0.02); }
+        .acc-btn i { color: var(--muted); transition: transform 0.3s ease; }
+        .acc-btn.active i { transform: rotate(180deg); color: var(--primary); }
+        .acc-btn.active { background: rgba(59, 130, 246, 0.05); }
+
+        .acc-content {
+            max-height: 0; overflow: hidden;
+            transition: max-height 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+            background: var(--bg);
+        }
+        .acc-inner { padding: 24px; color: var(--muted); border-top: 1px solid var(--border); line-height: 1.7; }
+        .acc-inner strong { color: var(--accent); }
+        
+        pre { background: var(--surface-alt); padding: 15px; border-radius: 8px; margin-top: 15px; overflow-x: auto; color: #a855f7; border: 1px solid var(--border); }
+        code { font-family: monospace; }
+        
+        @media (max-width: 768px) {
+            .grid-2 { grid-template-columns: 1fr; }
+            .hero h1 { font-size: 2.5rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="container header-content">
+            <div class="logo"><i class="fa-solid fa-hospital-user"></i> NOQ Interview Kit</div>
+            <div class="nav-links">
+                <a href="#overview">Overview</a>
+                <a href="#roles">Roles</a>
+                <a href="#algorithms">Algorithms</a>
+                <a href="#qa">Q&A Bank</a>
+            </div>
+        </div>
+    </header>
+
+    <div class="hero">
+        <div class="container">
+            <div class="badge">VIVA & TECHNICAL INTERVIEW GUIDE</div>
+            <h1>Master NOQ Defense</h1>
+            <p>A ready-made, comprehensive guide containing the system architecture, core logic, and frequently asked technical interview questions for the NOQ Hospital Management System.</p>
+        </div>
+    </div>
+
+    <div class="container">
+        
+        <!-- SECTION 1: OVERVIEW -->
+        <section id="overview">
+            <h2 class="sec-title"><i class="fa-solid fa-layer-group"></i> Project & Architecture Overview</h2>
+            <div class="card">
+                <h3><i class="fa-solid fa-rocket"></i> What is NOQ?</h3>
+                <p>NOQ is an enterprise-grade, role-based healthcare workflow optimization platform. It replaces paper-based registries and archaic verbal tokens with a real-time digital queue system connecting Platform Admins, Hospital Managers, Doctors, and Patients.</p>
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
+                    <h3 style="font-size: 1rem; color: var(--text);"><i class="fa-solid fa-server"></i> Architectural Evolution & Migration</h3>
+                    <p>The project was originally prototyped on <strong>Google Firebase</strong>. However, real-world benchmarking exposed critical performance bottlenecks and high costs due to per-document read charges (especially for analytics dashboards).</p>
+                    <p><strong>The Solution:</strong> Migrated to a custom backend stack using <strong>FastAPI (Python)</strong> for async request processing and <strong>MongoDB</strong>. This allowed for database-side aggregations, dropping API response times from ~400ms to ~45ms and improving dashboard load speeds by 80%.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 2: ROLES -->
+        <section id="roles">
+            <h2 class="sec-title"><i class="fa-solid fa-users-gear"></i> 4-Tier User Hierarchy (RBAC)</h2>
+            <div class="grid-2">
+                <div class="card">
+                    <h3><i class="fa-solid fa-user-shield" style="color: var(--red);"></i> 1. Platform Admin</h3>
+                    <ul>
+                        <li><strong>Oversight:</strong> Approves/rejects new Hospital Manager registrations.</li>
+                        <li><strong>Analytics:</strong> Monitors the global 5% platform service fee.</li>
+                        <li><strong>Compliance:</strong> Full access to system-wide audit logs.</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3><i class="fa-solid fa-hospital" style="color: var(--amber);"></i> 2. Hospital Manager</h3>
+                    <ul>
+                        <li><strong>Administration:</strong> Manages specific hospital branch locations.</li>
+                        <li><strong>Resources:</strong> CRUD operations on Doctors, Rooms, and Departments.</li>
+                        <li><strong>Queues:</strong> Configures daily OPD queues and capacities.</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3><i class="fa-solid fa-stethoscope" style="color: var(--primary);"></i> 3. Doctor</h3>
+                    <ul>
+                        <li><strong>OPD Interface:</strong> Sequential 'Call Next' queue processing.</li>
+                        <li><strong>Clinical Records:</strong> Writes digital prescriptions and tracks refills.</li>
+                        <li><strong>History:</strong> Accesses patient past medical history instantly.</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3><i class="fa-solid fa-user-injured" style="color: var(--green);"></i> 4. Patient</h3>
+                    <ul>
+                        <li><strong>Booking:</strong> Geofenced live tokens or advanced appointments.</li>
+                        <li><strong>Live Tracking:</strong> Monitors token position remotely to avoid waiting rooms.</li>
+                        <li><strong>Wallet & Feedback:</strong> Pays fees, downloads EMRs, and files complaints.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 3: CORE LOGIC -->
+        <section id="algorithms">
+            <h2 class="sec-title"><i class="fa-solid fa-microchip"></i> Core Logic & Algorithms</h2>
+            <div class="card">
+                <h3><i class="fa-solid fa-location-crosshairs"></i> Geofenced vs. At-Home Booking Policy</h3>
+                <p><strong>Normal Tokens (Geofenced):</strong> Must be booked within physical proximity of the hospital (e.g., 500 meters) to prevent spam. The backend computes the Haversine distance between patient GPS and hospital coordinates.</p>
+                <p><strong>Advanced Bookings (At-Home):</strong> Permitted ONLY for 3 vulnerable groups to prevent queue manipulation:</p>
+                <ul>
+                    <li>Pregnancy Cases</li>
+                    <li>Infants & Children (under 7 years)</li>
+                    <li>Elderly Patients (70+ years)</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3><i class="fa-solid fa-bolt"></i> Atomic Token Generation</h3>
+                <p>To prevent race conditions (two patients getting the same token), NOQ bypasses standard read-then-write logic. It uses MongoDB's <code>$inc</code> operator inside a single <code>find_one_and_update</code> command. This ensures engine-level atomic locks for perfectly sequential token numbers.</p>
+            </div>
+            <div class="grid-2">
+                <div class="card" style="margin-bottom: 0;">
+                    <h3 style="color: var(--green);"><i class="fa-solid fa-scale-balanced"></i> Platform Equality</h3>
+                    <p>There are zero VIP overrides or fast-tracks. The system forces strict FIFO (First-In-First-Out) calling based purely on check-in timestamps.</p>
+                </div>
+                <div class="card" style="margin-bottom: 0;">
+                    <h3 style="color: var(--purple);"><i class="fa-solid fa-money-bill-transfer"></i> Revenue Split</h3>
+                    <p>Automated backend hooks instantly divide consultation fees into an 80% (Hospital), 15% (Doctor), and 5% (Platform) split upon completion.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 4: Q&A BANK -->
+        <section id="qa">
+            <h2 class="sec-title"><i class="fa-solid fa-comments"></i> Technical Q&A Bank (Ready-Made)</h2>
+            <p style="color: var(--muted); margin-bottom: 25px;">Memorize these highly probable interview and viva questions covering the architecture and business logic.</p>
+            
+            <div class="qa-container">
+                
+                <!-- Q1 -->
+                <div class="accordion">
+                    <button class="acc-btn">
+                        <span>Q1: Why was MongoDB chosen over a relational database (SQL) for patient records?</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="acc-content">
+                        <div class="acc-inner">
+                            <strong>Answer:</strong> Clinical data is inherently semi-structured. A prescription might have three medications or fifteen; diagnostic notes vary widely. Storing this in SQL requires complex multi-table joins. MongoDB's document model stores nested arrays directly inside the patient record, keeping reads extremely fast. We maintain strict data integrity at the application layer using Pydantic schemas in FastAPI.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Q2 -->
+                <div class="accordion">
+                    <button class="acc-btn">
+                        <span>Q2: How does the system handle race conditions during simultaneous token bookings?</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="acc-content">
+                        <div class="acc-inner">
+                            <strong>Answer:</strong> If multiple patients try to book a token at the exact same millisecond, a standard database write risks duplicate numbers. NOQ prevents this by utilizing MongoDB's atomic <code>find_one_and_update</code> combined with the <code>$inc</code> operator. Executed as a single atomic write at the engine level, it guarantees every token is unique and sequentially generated.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Q3 -->
+                <div class="accordion">
+                    <button class="acc-btn">
+                        <span>Q3: Explain the implementation details of the Geofencing check.</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="acc-content">
+                        <div class="acc-inner">
+                            <strong>Answer:</strong> The React frontend captures coordinates via the browser's Geolocation API. The backend computes the distance between the patient and the hospital using the Haversine formula. If the calculated distance exceeds the hospital's threshold (e.g., 500m), the API returns a <code>403 Forbidden</code> status to prevent remote booking spam.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Q4 -->
+                <div class="accordion">
+                    <button class="acc-btn">
+                        <span>Q4: How is Role-Based Access Control (RBAC) enforced on the backend?</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="acc-content">
+                        <div class="acc-inner">
+                            <strong>Answer:</strong> RBAC is enforced via FastAPI dependencies. We define a <code>require_role(allowed_roles)</code> dependency. When a request arrives, it extracts the JWT from the Authorization header, verifies the signature using HS256, and checks the user's role payload. If unauthorized, it throws a <code>403 Forbidden</code> before the execution even reaches the database logic.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Q5 -->
+                <div class="accordion">
+                    <button class="acc-btn">
+                        <span>Q5: How does the Smart Load-Balanced Allocation algorithm work?</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="acc-content">
+                        <div class="acc-inner">
+                            <strong>Answer:</strong> When an eligible advanced booking (e.g. Pregnancy) is received, the backend searches for active doctors matching the required specialization. It aggregates active booking workloads for each doctor and automatically assigns the patient to the doctor with the lowest active load, ensuring queue equity.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Q6 -->
+                <div class="accordion">
+                    <button class="acc-btn">
+                        <span>Q6: How does the system handle patient absences?</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="acc-content">
+                        <div class="acc-inner">
+                            <strong>Answer:</strong> If a patient doesn't show up, the doctor marks the token as 'Absent'. A scheduled backend task checks for repeated absences. If flagged multiple times, the system adds a fixed penalty fee (e.g. ₹50) to their database profile. This penalty is appended to the invoice during their next booking flow to encourage queue responsibility.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Q7 -->
+                <div class="accordion">
+                    <button class="acc-btn">
+                        <span>Q7: Why use React 19 + Vite instead of Next.js?</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="acc-content">
+                        <div class="acc-inner">
+                            <strong>Answer:</strong> NOQ consists of heavily role-specific dashboards requiring real-time state updates (like polling live queue positions). A Single Page Application (SPA) is ideal for this. React 19 handles the component state efficiently, while Vite provides extremely fast hot module replacement (HMR) and optimized client-side routing bundles.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Q8 -->
+                <div class="accordion">
+                    <button class="acc-btn">
+                        <span>Q8: How does the Audit Logging system work without slowing down the API?</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="acc-content">
+                        <div class="acc-inner">
+                            <strong>Answer:</strong> To prevent database write latency from impacting users, logging is asynchronous. We use FastAPI's <code>BackgroundTasks</code>. After the main API response is returned to the user, the background thread silently writes the audit log (timestamp, user ID, IP, and data diffs) to the database for security compliance.
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </section>
+
+    </div>
+
+    <script>
+        // Accordion Logic
+        const accBtns = document.querySelectorAll('.acc-btn');
+        
+        accBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                // Toggle active class on button
+                this.classList.toggle('active');
+                
+                // Get the content div
+                const content = this.nextElementSibling;
+                
+                // Toggle max-height for sliding effect
+                if (content.style.maxHeight) {
+                    content.style.maxHeight = null;
+                } else {
+                    // Close all other accordions first (optional, for UX)
+                    accBtns.forEach(otherBtn => {
+                        if (otherBtn !== this && otherBtn.classList.contains('active')) {
+                            otherBtn.classList.remove('active');
+                            otherBtn.nextElementSibling.style.maxHeight = null;
+                        }
+                    });
+                    
+                    content.style.maxHeight = content.scrollHeight + "px";
+                }
+            });
+        });
+    </script>
+</body>
+</html>

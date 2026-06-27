@@ -74,3 +74,19 @@ The project exceeds the standard requirements for a B.E./B.Tech final year proje
 
 **Q10: What are the biggest challenges you faced and how did you overcome them?**
 *Answer:* Handling race conditions in token generation was a major challenge. If two patients booked a doctor at the exact same millisecond, they could get the same token number. We solved this by using MongoDB's `find_one_and_update` with the `$inc` operator, which guarantees atomic updates at the database level, ensuring every token is strictly sequential.
+
+**Q11: How does the system restrict normal vs advanced bookings using Geofencing?**
+*Answer:* To prevent spam and coordinate real-world attendance, standard token bookings require the patient to be in the immediate surroundings of the hospital. The client application tracks latitude/longitude coordinates and validates them on the backend using the Haversine formula. If the patient is outside the hospital surroundings, the booking is blocked. Advanced bookings can be done from home but are restricted to priority groups: pregnancy cases, babies under 7 years, and elders aged 70 and above.
+
+**Q12: Why does the system exclude emergency cases, and how are they handled?**
+*Answer:* NOQ is designed strictly as an outpatient (OPD) queue and scheduling optimizer. Emergencies require immediate, unstructured triage and physical care that cannot wait for a digital queue. Emergency cases bypass the application completely, and we display clear warning alerts directing patients to emergency contact numbers or the nearest physical ER.
+
+**Q13: How is platform equality and the absence of a VIP lane enforced in the database and endpoints?**
+*Answer:* There is no VIP or priority flag in the database schemas or endpoints. The queue sequence is strictly first-in, first-out (FIFO) based on check-in timestamps. The doctor's interface calls the next patient sequentially, ensuring absolute fairness and equality for all patients.
+
+**Q14: How does the patient accountability and absence logging system work?**
+*Answer:* If a patient does not show up, the doctor flags them as 'Absent'. This triggers an update in their record. Repeated absences generate warnings. If the behavior continues, a small, fixed accountability penalty fee (e.g. ₹50) is appended to their next hospital invoice to encourage responsible queue behavior.
+
+**Q15: What mechanism guarantees doctor accountability?**
+*Answer:* Patients can report complaints regarding doctor delays, absence, or quality of care. These are compiled on the Hospital Manager dashboard. The manager can review the reports and trigger disciplinary actions, such as sending warnings or temporarily suspending the doctor's account, which immediately disables their active queue profiles on the platform.
+
