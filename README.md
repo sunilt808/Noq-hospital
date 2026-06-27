@@ -2,6 +2,8 @@
 
 *A Fair, Real-Time, and Scalable Hospital Workflow Platform*
 
+![Landing Page](file:///d:/nqrpro/screenshots/landing.png)
+
 A comprehensive, production-ready hospital management system built with modern web technologies: **MongoDB** for data persistence, **FastAPI** for the backend API, and **React** for the frontend.
 
 ---
@@ -159,6 +161,20 @@ noq-frontend/
 * **Backend**: FastAPI, Pydantic, PyMongo, Motor
 * **Database**: MongoDB (Atlas/Community)
 * **Authentication**: JWT, Bcrypt
+
+---
+
+## 📸 Application Screenshots
+
+### 🖥️ Main Interfaces
+| Landing Page | Login Portal |
+|:---:|:---:|
+| ![Landing](file:///d:/nqrpro/screenshots/landing.png) | ![Login](file:///d:/nqrpro/screenshots/login.png) |
+
+### 👥 User Dashboards
+| Patient Dashboard | Admin Dashboard |
+|:---:|:---:|
+| ![Patient](file:///d:/nqrpro/screenshots/patient_dashboard.png) | ![Admin](file:///d:/nqrpro/screenshots/admin_dashboard.png) |
 
 ---
 

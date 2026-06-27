@@ -30,7 +30,7 @@ const Login = () => {
   const navigate = useNavigate();
   const { login: authContextLogin } = useAuth();
   
-  const [role, setRole] = useState('admin');
+  const [role, setRole] = useState('hm');
   const [formData, setFormData] = useState({
     email: '',
     password: '',

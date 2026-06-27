@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOQ - Engineering Review</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Slide Indicators -->
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="slide-counter"><span id="currentSlideNum">1</span> / 12</div>
+    <div class="nav-hints">Use <span>↑</span> <span>↓</span> or Scroll to Navigate</div>
+
+    <div class="presentation-container" id="presentationContainer">
+
+        <!-- 1. Cover -->
+        <section class="slide" id="slide-1">
+            <div class="content text-center">
+                <div class="glow-orb" style="top: -10%; left: 50%; transform: translateX(-50%); background: #06b6d4;"></div>
+                <div class="badge fade-up">ENGINEERING ARCHITECTURAL REVIEW</div>
+                <h1 class="hero-title fade-up delay-1">NOQ</h1>
+                <h2 class="hero-subtitle fade-up delay-2">Smart Hospital Queue & Appointment System</h2>
+                <div class="hero-meta fade-up delay-3">
+                    <span><i class="fa-solid fa-code"></i> Developed by Sunil T</span>
+                    <span><i class="fa-solid fa-calendar"></i> June 2026</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Problem -->
+        <section class="slide" id="slide-2">
+            <div class="content grid-2">
+                <div class="text-left">
+                    <div class="badge bg-red fade-left">THE CATALYST</div>
+                    <h2 class="section-title fade-left delay-1">Why NOQ Exists</h2>
+                    <p class="section-desc fade-left delay-2">Hospitals are plagued by legacy bottlenecks that severely degrade patient experience and operational efficiency.</p>
+                </div>
+                <div class="card-stack">
+                    <div class="glass-card card-red fade-right delay-1">
+                        <i class="fa-solid fa-users-slash icon-lg text-red"></i>
+                        <h3>Zero Visibility</h3>
+                        <p>Patients wait hours in chaotic OPD rooms.</p>
+                    </div>
+                    <div class="glass-card card-red fade-right delay-2">
+                        <i class="fa-solid fa-file-circle-xmark icon-lg text-red"></i>
+                        <h3>Data Loss</h3>
+                        <p>Paper prescriptions are destroyed or lost.</p>
+                    </div>
+                    <div class="glass-card card-red fade-right delay-3">
+                        <i class="fa-solid fa-database icon-lg text-red"></i>
+                        <h3>The Firebase Crisis</h3>
+                        <p>Our initial V1 hit massive quota limits on dashboard aggregations.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Solution -->
+        <section class="slide" id="slide-3">
+            <div class="content text-center">
+                <div class="glow-orb" style="top: 20%; left: 10%; background: #10b981;"></div>
+                <div class="badge bg-green fade-up">THE SOLUTION</div>
+                <h2 class="section-title fade-up delay-1">A Unified Digital Ecosystem</h2>
+                <p class="section-desc fade-up delay-2" style="max-width: 800px; margin: 0 auto 50px;">A role-based, real-time platform that eradicates physical queues and centralizes all medical operations.</p>
+                
+                <div class="grid-4 fade-up delay-3">
+                    <div class="glass-card card-green">
+                        <i class="fa-solid fa-mobile-screen icon-lg text-green"></i>
+                        <h3>Live Queues</h3>
+                    </div>
+                    <div class="glass-card card-green">
+                        <i class="fa-solid fa-money-bill-transfer icon-lg text-green"></i>
+                        <h3>Auto Splits</h3>
+                    </div>
+                    <div class="glass-card card-green">
+                        <i class="fa-solid fa-file-prescription icon-lg text-green"></i>
+                        <h3>Digital EMR</h3>
+                    </div>
+                    <div class="glass-card card-green">
+                        <i class="fa-solid fa-user-shield icon-lg text-green"></i>
+                        <h3>Strict RBAC</h3>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Migration Strategy -->
+        <section class="slide" id="slide-4">
+            <div class="content grid-2">
+                <div class="glass-card p-0 overflow-hidden fade-up">
+                    <div class="migration-header bg-red">
+                        <h4><i class="fa-brands fa-google"></i> Legacy (Firebase)</h4>
+                    </div>
+                    <div class="migration-body">
+                        <ul class="check-list red">
+                            <li><i class="fa-solid fa-xmark"></i> Heavy read quota limitations</li>
+                            <li><i class="fa-solid fa-xmark"></i> Client-side aggregation lag</li>
+                            <li><i class="fa-solid fa-xmark"></i> Vendor lock-in</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="glass-card p-0 overflow-hidden fade-up delay-1">
+                    <div class="migration-header bg-blue">
+                        <h4><i class="fa-brands fa-python"></i> Modern (FastAPI + MongoDB)</h4>
+                    </div>
+                    <div class="migration-body">
+                        <ul class="check-list blue">
+                            <li><i class="fa-solid fa-check"></i> Unlimited scaling & analytics</li>
+                            <li><i class="fa-solid fa-check"></i> Native MongoDB aggregations</li>
+                            <li><i class="fa-solid fa-check"></i> 80% faster dashboard load</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Tech Stack -->
+        <section class="slide" id="slide-5">
+            <div class="content text-center">
+                <h2 class="section-title fade-up">The Modern <span class="text-gradient-blue">Tech Stack</span></h2>
+                <div class="grid-3" style="margin-top: 60px;">
+                    <div class="tech-card fade-up delay-1">
+                        <div class="tech-icon"><i class="fa-brands fa-react text-cyan"></i></div>
+                        <h3>React 19 + Vite</h3>
+                        <p>Component-driven UI with lightning fast HMR.</p>
+                    </div>
+                    <div class="tech-card fade-up delay-2">
+                        <div class="tech-icon"><i class="fa-brands fa-python text-yellow"></i></div>
+                        <h3>FastAPI</h3>
+                        <p>Async Python architecture with Pydantic validation.</p>
+                    </div>
+                    <div class="tech-card fade-up delay-3">
+                        <div class="tech-icon"><i class="fa-solid fa-leaf text-green"></i></div>
+                        <h3>MongoDB</h3>
+                        <p>Dynamic document schemas for variable clinical data.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Roles -->
+        <section class="slide" id="slide-6">
+            <div class="content text-center">
+                <div class="badge bg-purple fade-up">ARCHITECTURE</div>
+                <h2 class="section-title fade-up delay-1">4-Tier Hierarchy</h2>
+                <div class="roles-container fade-up delay-2">
+                    <div class="role-box">
+                        <i class="fa-solid fa-user-tie"></i>
+                        <span>Admin</span>
+                        <div class="tooltip">Global approvals & platform analytics</div>
+                    </div>
+                    <div class="connector"></div>
+                    <div class="role-box">
+                        <i class="fa-regular fa-hospital"></i>
+                        <span>Manager</span>
+                        <div class="tooltip">Hospital configuration & queues</div>
+                    </div>
+                    <div class="connector"></div>
+                    <div class="role-box">
+                        <i class="fa-solid fa-user-doctor"></i>
+                        <span>Doctor</span>
+                        <div class="tooltip">Prescriptions & live queue management</div>
+                    </div>
+                    <div class="connector"></div>
+                    <div class="role-box">
+                        <i class="fa-solid fa-bed-pulse"></i>
+                        <span>Patient</span>
+                        <div class="tooltip">Bookings & live token tracking</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Queue Logic -->
+        <section class="slide" id="slide-7">
+            <div class="content grid-2">
+                <div class="text-left fade-left">
+                    <div class="badge bg-cyan">ALGORITHM</div>
+                    <h2 class="section-title">Atomic Queues</h2>
+                    <p class="section-desc">To prevent catastrophic race conditions when multiple patients book simultaneously, NOQ bypasses standard reads and utilizes MongoDB's native atomic operators.</p>
+                    <ul class="check-list cyan" style="margin-top: 20px;">
+                        <li><i class="fa-solid fa-bolt"></i> Guarantees zero duplicate tokens</li>
+                        <li><i class="fa-solid fa-bolt"></i> Instantly updates waiting count</li>
+                    </ul>
+                </div>
+                <div class="code-window fade-right delay-1">
+                    <div class="code-header">
+                        <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+                        <span class="filename">queue_service.py</span>
+                    </div>
+                    <pre><code><span class="keyword">await</span> db.queues.<span class="function">find_one_and_update</span>(
+    {<span class="string">"_id"</span>: queue_id},
+    {<span class="string">"$inc"</span>: {
+        <span class="string">"token_counter"</span>: <span class="number">1</span>,
+        <span class="string">"waiting_count"</span>: <span class="number">1</span>
+    }},
+    return_document=ReturnDocument.AFTER
+)</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- 8. Advanced Booking -->
+        <section class="slide" id="slide-8">
+            <div class="content grid-2">
+                <div class="load-balancer-visual fade-left">
+                    <div class="patient-request">Pregnancy Case</div>
+                    <div class="arrows"><i class="fa-solid fa-arrow-down"></i></div>
+                    <div class="doctor-nodes">
+                        <div class="d-node">Dr. Smith <span class="load red">Load: 14</span></div>
+                        <div class="d-node active">Dr. Jane <span class="load green">Load: 2</span></div>
+                        <div class="d-node">Dr. Doe <span class="load yellow">Load: 8</span></div>
+                    </div>
+                </div>
+                <div class="text-left fade-right delay-1">
+                    <div class="badge bg-purple">LOAD BALANCING</div>
+                    <h2 class="section-title">Smart Allocation</h2>
+                    <p class="section-desc">Advanced bookings automatically assign patients to the most available specialist.</p>
+                    <ul class="check-list purple" style="margin-top: 20px;">
+                        <li><i class="fa-solid fa-check"></i> Matches specialization keywords.</li>
+                        <li><i class="fa-solid fa-check"></i> Aggregates active workloads.</li>
+                        <li><i class="fa-solid fa-check"></i> Prevents doctor burnout.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 9. Security -->
+        <section class="slide" id="slide-9">
+            <div class="content text-center">
+                <h2 class="section-title fade-up">Enterprise <span class="text-gradient-red">Security</span></h2>
+                <div class="grid-3" style="margin-top: 60px;">
+                    <div class="glass-card fade-up delay-1">
+                        <i class="fa-solid fa-fingerprint icon-lg text-red"></i>
+                        <h3>PBKDF2 Hashing</h3>
+                        <p>100,000 iterations + Salt</p>
+                    </div>
+                    <div class="glass-card fade-up delay-2">
+                        <i class="fa-solid fa-key icon-lg text-red"></i>
+                        <h3>JWT Bearer</h3>
+                        <p>Stateless 24hr authentication</p>
+                    </div>
+                    <div class="glass-card fade-up delay-3">
+                        <i class="fa-solid fa-clipboard-check icon-lg text-red"></i>
+                        <h3>Audit Trails</h3>
+                        <p>Every CRUD action tracked via IP</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 10. Analytics -->
+        <section class="slide" id="slide-10">
+            <div class="content grid-2">
+                <div class="text-left fade-left">
+                    <div class="badge bg-cyan">FINANCIALS</div>
+                    <h2 class="section-title">Automated Revenue</h2>
+                    <p class="section-desc">No more manual accounting. Upon appointment completion, the backend hooks immediately calculate the 15/80/5 distribution and log it for live dashboard consumption.</p>
+                </div>
+                <div class="chart-wrapper fade-right delay-1">
+                    <canvas id="revenueChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- 11. Results -->
+        <section class="slide" id="slide-11">
+            <div class="content text-center">
+                <h2 class="section-title fade-up">Project <span class="text-gradient-green">Impact</span></h2>
+                <div class="grid-3 stat-grid fade-up delay-1">
+                    <div class="stat-box">
+                        <div class="stat-num" data-val="80">0</div>
+                        <div class="stat-label">% Faster Dashboards</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-num" data-val="100">0</div>
+                        <div class="stat-label">% Digital EMR</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-num" data-val="40">0</div>
+                        <div class="stat-label">% Wait Time Reduction</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 12. Conclusion -->
+        <section class="slide" id="slide-12">
+            <div class="content text-center">
+                <div class="glow-orb" style="top: 50%; left: 50%; transform: translate(-50%, -50%); background: #8b5cf6; width: 600px; height: 600px; opacity: 0.15;"></div>
+                <i class="fa-solid fa-stethoscope fa-4x text-gradient-blue fade-up"></i>
+                <h2 class="section-title fade-up delay-1" style="margin-top: 30px;">Thank You</h2>
+                <p class="section-desc fade-up delay-2" style="margin: 0 auto;">Ready for Viva & Technical Q&A</p>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
