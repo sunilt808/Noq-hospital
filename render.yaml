@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: noq-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: JWT_EXPIRATION_MINUTES
+        value: 1440
+      - key: DATABASE_NAME
+        value: noq_hospital_db
+      - key: JWT_SECRET
+        sync: false
+      - key: MONGODB_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false

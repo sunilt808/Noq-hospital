@@ -1,5 +1,0 @@
-queue timing showing
-break show+auto expire 15min(it showing to queue existed patients+and in bookkng page(patient)and patient dashboard )
-advance booking proper manahement
-proper revies revenue and complaint with databsase (revenue totally showing for hmok but doctors  specific amount how much he's contribution like based on token reg )
-admin and hm controls 

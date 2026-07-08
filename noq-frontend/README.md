@@ -8,7 +8,7 @@ NOQ is a multi-role hospital queue and appointment platform for Admin, Hospital 
 - Firebase Authentication
 - Firebase Firestore (free-tier friendly)
 - FastAPI backend (JWT + Firebase token support)
-- Deployment: Vercel (frontend) + Railway (backend)
+- Deployment: Vercel (frontend) + Render (backend)
 
 ## Local Run
 
@@ -134,21 +134,38 @@ Collections/storage used by modules:
 Frontend (Vercel or local `.env`):
 
 ```bash
-VITE_API_URL=https://your-railway-backend-url
+VITE_API_URL=https://your-render-backend-url
 ```
 
-Backend (Railway):
+Backend (Render):
 
 ```bash
 JWT_SECRET=your_strong_secret
-# Firebase service account credentials as Railway secret variables
+MONGODB_URL=your_mongodb_connection_string
+DATABASE_NAME=noq_hospital_db
+FRONTEND_URL=https://your-vercel-app-url
+JWT_EXPIRATION_MINUTES=1440
 ```
 
-## Deployment (Vercel + Railway)
+## Deployment (Vercel + Render)
 
-- Frontend (Vercel): set `VITE_API_URL` to your Railway backend URL.
-- Backend (Railway): configure `JWT_SECRET` and Firebase service account credentials.
+- Frontend (Vercel): set `VITE_API_URL` to your Render backend URL.
+- Backend (Render): configure `JWT_SECRET`, `MONGODB_URL`, `DATABASE_NAME`, and `FRONTEND_URL`.
 - Keep Firebase project on Spark/free tier unless scale demands upgrade.
+
+### Quick Deploy Checklist
+
+1. Deploy backend on Render from this repo using root directory `backend`.
+2. Set backend start command to:
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port $PORT
+```
+
+3. After frontend is deployed, set backend `FRONTEND_URL` to your Vercel domain.
+4. Deploy frontend on Vercel with root directory `noq-frontend`.
+5. Set frontend `VITE_API_URL` to your backend Render domain.
+6. Re-deploy backend and frontend after env changes.
 
 ## Notes
 
