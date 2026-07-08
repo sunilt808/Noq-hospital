@@ -243,3 +243,57 @@ async def get_revenue_by_doctor(
     except Exception as e:
         logger.error(f"Error fetching revenue by doctor: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch revenue by doctor")
+
+
+@router.get("/by-hospital", response_model=StandardResponse)
+async def get_revenue_by_hospital(
+    auth_payload: dict = Depends(require_auth)
+):
+    """Get revenue breakdown by hospital from MongoDB."""
+    try:
+        if mongodb is None: return StandardResponse(success=False, message="DB Error")
+        
+        query = {"status": "completed"}
+        cursor = mongodb.appointments.find(query)
+        completed_appointments = await cursor.to_list(length=5000)
+        
+        # Group by hospital and sum revenue/patients
+        revenue_by_hospital = {}
+        for appt in completed_appointments:
+            hospital_id = appt.get("hospital_id")
+            if not hospital_id:
+                continue
+            
+            hospital_name = appt.get("hospital_name") or "Unknown"
+            fee = float(appt.get("fee", 0) or 0)
+            
+            if hospital_id not in revenue_by_hospital:
+                revenue_by_hospital[hospital_id] = {
+                    "hospital_id": hospital_id,
+                    "hospital_name": hospital_name,
+                    "total_revenue": 0,
+                    "patient_count": 0,
+                    "rating": 4.5,  # Default rating
+                }
+            
+            revenue_by_hospital[hospital_id]["total_revenue"] += fee
+            revenue_by_hospital[hospital_id]["patient_count"] += 1
+        
+        # Sort by revenue descending
+        hospitals_revenue = sorted(
+            revenue_by_hospital.values(),
+            key=lambda x: x["total_revenue"],
+            reverse=True
+        )
+        
+        return StandardResponse(
+            success=True,
+            message="Revenue by hospital fetched.",
+            data={
+                "hospitals": hospitals_revenue,
+                "count": len(hospitals_revenue),
+            },
+        )
+    except Exception as e:
+        logger.error(f"Error fetching revenue by hospital: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch revenue by hospital")

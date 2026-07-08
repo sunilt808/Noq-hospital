@@ -2,30 +2,46 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import * as Icons from '@fortawesome/free-solid-svg-icons';
+import api from '../../services/api';
 import apiDbService from '../../services/apiDbService';
 
 const Revenue = () => {
   const [timeRange, setTimeRange] = useState('monthly');
-  const [bills, setBills] = useState([]);
+  const [dashboard, setDashboard] = useState(null);
+  const [byDoctor, setByDoctor] = useState([]);
   const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
 
     const loadRevenueData = async () => {
       try {
-        const [billRows, reviewRows] = await Promise.all([
-          apiDbService.getCollection('bills'),
-          apiDbService.getCollection('reviews'),
+        setLoading(true);
+        // Call backend API for accurate revenue data with hospital names
+        const [dashboardResp, byHospitalResp, reviewRows] = await Promise.all([
+          api.get('/revenue/dashboard').catch(() => null),
+          api.get('/revenue/by-hospital').catch(() => null),
+          apiDbService.getCollection('reviews').catch(() => []),
         ]);
 
         if (!active) return;
-        setBills(Array.isArray(billRows) ? billRows : []);
+        
+        setDashboard(
+          dashboardResp?.data || dashboardResp || null
+        );
+        setByDoctor(
+          Array.isArray(byHospitalResp?.data?.hospitals) ? byHospitalResp.data.hospitals : []
+        );
         setReviews(Array.isArray(reviewRows) ? reviewRows : []);
       } catch (error) {
+        console.error('Error loading revenue data:', error);
         if (!active) return;
-        setBills([]);
+        setDashboard(null);
+        setByDoctor([]);
         setReviews([]);
+      } finally {
+        if (active) setLoading(false);
       }
     };
 
@@ -40,92 +56,40 @@ const Revenue = () => {
   }, []);
 
   const { revenueData, hospitalPerformance, distribution } = useMemo(() => {
-    const paidBills = bills.filter((bill) => String(bill.status || '').toLowerCase() === 'paid');
+    // Use backend-provided dashboard data
+    if (dashboard && byDoctor) {
+      // Map byDoctor (now hospital) data to hospitalPerformance
+      const hospitalBased = (byDoctor || []).map(hosp => ({
+        name: hosp.hospital_name || 'Unknown Hospital',
+        revenue: hosp.total_revenue || 0,
+        patients: hosp.patient_count || 0,
+        rating: hosp.rating || 4.5,
+      }));
 
-    let totalDoctorShare = 0;
-    let totalHmShare = 0;
-    let totalAdminShare = 0;
+      return {
+        revenueData: { monthly: [], yearly: [] },
+        hospitalPerformance: hospitalBased,
+        distribution: {
+          totalCollected: dashboard.total_revenue || 0,
+          doctorShare: dashboard.doctor_share || 0,
+          hmShare: dashboard.hm_share || 0,
+          adminShare: dashboard.admin_share || 0,
+        }
+      };
+    }
 
-    const monthMap = new Map();
-    const yearMap = new Map();
-    const hospitalMap = new Map();
-
-    paidBills.forEach((bill) => {
-      const amount = Number(bill.total || bill.amount || 0);
-      const when = new Date(bill.paidDate || bill.date || bill.createdAt || Date.now());
-      const hospitalName = bill.hospital || bill.hospitalName || 'Unknown Hospital';
-      const hospitalId = String(bill.hospitalId || bill.HID || hospitalName);
-      const patientId = String(bill.patientId || '');
-
-      // Revenue split per business rules (70% doctors, 20% hospitals, 10% admin)
-      totalDoctorShare += amount * 0.70;
-      totalHmShare += amount * 0.20;
-      totalAdminShare += amount * 0.10;
-
-      const monthKey = `${when.getFullYear()}-${String(when.getMonth() + 1).padStart(2, '0')}`;
-      monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + amount);
-
-      const yearKey = String(when.getFullYear());
-      yearMap.set(yearKey, (yearMap.get(yearKey) || 0) + amount);
-
-      if (!hospitalMap.has(hospitalId)) {
-        hospitalMap.set(hospitalId, {
-          id: hospitalId,
-          name: hospitalName,
-          revenue: 0,
-          patientIds: new Set(),
-        });
-      }
-      const item = hospitalMap.get(hospitalId);
-      item.revenue += amount;
-      if (patientId) item.patientIds.add(patientId);
-    });
-
-    const sortedMonthKeys = [...monthMap.keys()].sort();
-    const monthly = sortedMonthKeys.map((key, index) => {
-      const revenue = monthMap.get(key) || 0;
-      const [year, month] = key.split('-');
-      const monthLabel = new Date(Number(year), Number(month) - 1, 1).toLocaleString('en-US', { month: 'short' });
-      const prev = index > 0 ? monthMap.get(sortedMonthKeys[index - 1]) || 0 : 0;
-      const growth = prev > 0 ? ((revenue - prev) / prev) * 100 : 0;
-      return { month: monthLabel, revenue, growth: Number(growth.toFixed(1)) };
-    });
-
-    const yearly = [...yearMap.entries()]
-      .sort((a, b) => Number(a[0]) - Number(b[0]))
-      .map(([year, revenue]) => ({ year, revenue }));
-
-    const hospitalPerformance = [...hospitalMap.values()]
-      .map((item) => {
-        const linkedReviews = reviews.filter((review) => {
-          const rid = String(review.hospitalId || review.HID || '');
-          const rname = String(review.hospital || '').trim().toLowerCase();
-          return rid === item.id || (rname && rname === item.name.trim().toLowerCase());
-        });
-        const rating = linkedReviews.length
-          ? linkedReviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / linkedReviews.length
-          : 0;
-
-        return {
-          name: item.name,
-          revenue: item.revenue,
-          patients: item.patientIds.size,
-          rating: Number(rating.toFixed(1)),
-        };
-      })
-      .sort((a, b) => b.revenue - a.revenue);
-
+    // Fallback: empty state while loading
     return {
-      revenueData: { monthly, yearly },
-      hospitalPerformance,
+      revenueData: { monthly: [], yearly: [] },
+      hospitalPerformance: [],
       distribution: {
-        totalCollected: totalDoctorShare + totalHmShare + totalAdminShare,
-        doctorShare: totalDoctorShare,
-        hmShare: totalHmShare,
-        adminShare: totalAdminShare
+        totalCollected: 0,
+        doctorShare: 0,
+        hmShare: 0,
+        adminShare: 0
       }
     };
-  }, [bills, reviews]);
+  }, [dashboard, byDoctor]);
 
   // Premium design tokens
   const S = {
@@ -171,7 +135,7 @@ const Revenue = () => {
 
   const maxRevenue = Math.max(1, ...revenueData[timeRange].map((d) => d.revenue || 0));
   const total = distribution?.totalCollected || 0;
-  const paidCount = bills.filter(b => String(b.status||'').toLowerCase()==='paid').length;
+  const paidCount = Math.ceil((dashboard?.completed_appointments || 0) * 0.7); // Approximate paid count
   const distCards = [
     { label: 'Doctor Earnings', pct: 70, amount: distribution?.doctorShare||0, color: '#6366f1', icon: Icons.faStethoscope, desc: '70% of total' },
     { label: 'Hospital Revenue', pct: 20, amount: distribution?.hmShare||0,    color: '#f59e0b', icon: Icons.faHospital,    desc: '20% of total' },

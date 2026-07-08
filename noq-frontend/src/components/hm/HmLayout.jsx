@@ -28,6 +28,8 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import NotificationBadge from '../NotificationBadge';
+import ThemeToggle from '../ThemeToggle';
 
 const HmLayout = ({ children }) => {
   const navigate = useNavigate();
@@ -598,26 +600,9 @@ const HmLayout = ({ children }) => {
             </form>
             
             <div style={responsiveStyles.headerActions}>
-              <button 
-                style={responsiveStyles.actionBtn}
-                onClick={() => setShowNotifications(!showNotifications)}
-                title="Notifications"
-                onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
-                onMouseOut={e => e.currentTarget.style.background = 'white'}
-              >
-                <FontAwesomeIcon icon={faBell} />
-                <span style={responsiveStyles.notificationBadge}>3</span>
-              </button>
+              <NotificationBadge />
               
-              <button 
-                style={responsiveStyles.actionBtn}
-                onClick={toggleDarkMode}
-                title={darkMode ? "Light Mode" : "Dark Mode"}
-                onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
-                onMouseOut={e => e.currentTarget.style.background = 'white'}
-              >
-                <FontAwesomeIcon icon={darkMode ? faSun : faMoon} />
-              </button>
+              <ThemeToggle />
               
               <button 
                 style={responsiveStyles.actionBtn}

@@ -24,6 +24,8 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import NotificationBadge from '../NotificationBadge';
+import ThemeToggle from '../ThemeToggle';
 
 const DoctorLayout = () => {
   const navigate = useNavigate();
@@ -505,33 +507,9 @@ const DoctorLayout = () => {
 
           {/* Right: Actions */}
           <div style={styles.headerActions}>
-            <div 
-              style={styles.notificationBadge}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = '#4f46e5';
-                e.currentTarget.style.background = '#f1f5f9';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = '#475569';
-                e.currentTarget.style.background = '#f8fafc';
-              }}
-              title="Notifications"
-            >
-              <FontAwesomeIcon icon={faBell} />
-              {notifications > 0 && (
-                <span style={styles.notificationCount}>
-                  {notifications}
-                </span>
-              )}
-            </div>
+            <NotificationBadge />
             
-            <div
-              style={{...styles.notificationBadge, cursor: 'pointer'}}
-              onClick={toggleTheme}
-              title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            >
-              <FontAwesomeIcon icon={isDark ? faSun : faMoon} />
-            </div>
+            <ThemeToggle />
             
             <button
               style={styles.logoutButton}

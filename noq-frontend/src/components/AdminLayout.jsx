@@ -6,6 +6,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import useApiData from '../hooks/useApiData';
+import NotificationBadge from './NotificationBadge';
+import ThemeToggle from './ThemeToggle';
 
 const AdminLayout = ({ children }) => {
   const navigate = useNavigate();
@@ -564,26 +566,9 @@ const AdminLayout = ({ children }) => {
           </div>
           
           <div style={styles.headerActions}>
-            <button 
-              className="action-btn"
-              style={styles.actionBtn}
-              onClick={() => navigate('/admin/notifications')}
-              title="Notifications"
-            >
-              <FontAwesomeIcon icon={Icons.faBell} />
-              {notifications > 0 && (
-                <span style={styles.notificationBadge}>{notifications}</span>
-              )}
-            </button>
+            <NotificationBadge />
             
-            <button 
-              className="action-btn"
-              style={styles.actionBtn}
-              onClick={toggleTheme}
-              title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
-            >
-              <FontAwesomeIcon icon={darkMode ? Icons.faSun : Icons.faMoon} />
-            </button>
+            <ThemeToggle />
             
             <button 
               className="action-btn"

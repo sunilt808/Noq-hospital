@@ -13,10 +13,12 @@ import {
   faCheckCircle,
   faHourglassHalf
 } from '@fortawesome/free-solid-svg-icons';
+import { useAuth } from '../../../context/AuthContext';
 import { queueService, tokenService } from '../../../services/queueService';
 
 const Queues = () => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [queues, setQueues] = useState([]);
   const [tokens, setTokens] = useState([]);
 
@@ -53,31 +55,44 @@ const Queues = () => {
 
   const loadQueueData = async () => {
     try {
-      const queueData = await queueService.fetchAll();
+      setLoading(true);
+      console.log('Loading queue data...');
+      
+      const hospitalId = currentUser?.hospitalId || currentUser?.HID || '';
+      const queueData = await queueService.fetchAll(hospitalId);
+      console.log('Queue data response:', queueData);
+      
       const queueList = Array.isArray(queueData?.queues)
         ? queueData.queues
         : Array.isArray(queueData)
           ? queueData
           : [];
 
+      console.log(`Fetched ${queueList.length} queues`);
+
       const tokenBuckets = await Promise.all(
         queueList.map(async (queue) => {
-          const tokenData = await tokenService.fetchByQueue(queue.id);
-          const tokenList = Array.isArray(tokenData?.tokens)
-            ? tokenData.tokens
-            : Array.isArray(tokenData)
-              ? tokenData
-              : [];
-          return {
-            queueId: queue.id,
-            tokens: tokenList,
-          };
+          try {
+            const tokenData = await tokenService.fetchByQueue(queue.id || queue._id);
+            const tokenList = Array.isArray(tokenData?.tokens)
+              ? tokenData.tokens
+              : Array.isArray(tokenData)
+                ? tokenData
+                : [];
+            return {
+              queueId: queue.id || queue._id,
+              tokens: tokenList,
+            };
+          } catch (err) {
+            console.warn(`Failed to fetch tokens for queue ${queue.id}:`, err);
+            return { queueId: queue.id || queue._id, tokens: [] };
+          }
         })
       );
 
       const tokensFlat = tokenBuckets.flatMap((bucket) =>
         bucket.tokens.map((token) => {
-          const queue = queueList.find((item) => String(item.id) === String(bucket.queueId));
+          const queue = queueList.find((item) => String(item.id || item._id) === String(bucket.queueId));
           return {
             id: token.id || token._id,
             token: token.token_code || token.tokenCode || '-',
@@ -92,10 +107,11 @@ const Queues = () => {
       );
 
       const normalizedQueues = queueList.map((queue) => {
-        const bucket = tokenBuckets.find((entry) => String(entry.queueId) === String(queue.id));
+        const bucket = tokenBuckets.find((entry) => String(entry.queueId) === String(queue.id || queue._id));
         return normalizeQueue(queue, bucket?.tokens || []);
       });
 
+      console.log(`Normalized ${normalizedQueues.length} queues, ${tokensFlat.length} total tokens`);
       setQueues(normalizedQueues);
       setTokens(tokensFlat.slice(0, 20));
     } catch (error) {
@@ -109,13 +125,13 @@ const Queues = () => {
 
   useEffect(() => {
     loadQueueData();
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     if (!autoRefresh) return undefined;
     const interval = setInterval(loadQueueData, 30000);
     return () => clearInterval(interval);
-  }, [autoRefresh]);
+  }, [autoRefresh, loadQueueData]);
 
   const filteredQueues = queues.filter(queue => {
     const matchesSearch = queue.doctorName.toLowerCase().includes(search.toLowerCase()) ||

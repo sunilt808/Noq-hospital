@@ -75,4 +75,44 @@ export const notificationService = {
   subscribe: (callback) => subscribeRealtimeEvent(CHANNEL, callback),
 };
 
+// Theme management
+export const themeService = {
+  getCurrentTheme: () => {
+    try {
+      return localStorage.getItem('app_theme') || 'light';
+    } catch {
+      return 'light';
+    }
+  },
+
+  setTheme: (theme) => {
+    try {
+      localStorage.setItem('app_theme', theme);
+      document.documentElement.setAttribute('data-theme', theme);
+      if (theme === 'dark') {
+        document.body.style.backgroundColor = '#0f172a';
+        document.body.style.color = '#f1f5f9';
+      } else {
+        document.body.style.backgroundColor = '#f8fafc';
+        document.body.style.color = '#1e293b';
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  toggleTheme: () => {
+    const current = themeService.getCurrentTheme();
+    const next = current === 'light' ? 'dark' : 'light';
+    themeService.setTheme(next);
+    return next;
+  },
+
+  applyTheme: () => {
+    const theme = themeService.getCurrentTheme();
+    themeService.setTheme(theme);
+  }
+};
+
 export default notificationService;

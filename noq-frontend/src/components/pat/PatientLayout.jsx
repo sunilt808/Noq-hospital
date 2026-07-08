@@ -27,6 +27,8 @@ import {
   faMoon,
 } from '@fortawesome/free-solid-svg-icons';
 import { useTheme } from '../../context/ThemeContext';
+import NotificationBadge from '../NotificationBadge';
+import ThemeToggle from '../ThemeToggle';
 import './p.css';
 
 /* ======================================================
@@ -213,19 +215,8 @@ const PatientLayout = ({ children }) => {
         }}>
           <h3>Patient Portal</h3>
           <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-            <button
-              onClick={toggleTheme}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: isDark ? '#f59e0b' : '#64748b',
-                fontSize: '18px'
-              }}
-              title={isDark ? "Light Mode" : "Dark Mode"}
-            >
-              <FontAwesomeIcon icon={isDark ? faSun : faMoon} />
-            </button>
+            <NotificationBadge />
+            <ThemeToggle />
             <button
               onClick={async () => {
                 await logout();

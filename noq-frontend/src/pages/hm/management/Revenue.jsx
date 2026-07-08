@@ -11,38 +11,61 @@ import {
   faClock,
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../../context/AuthContext';
-import revenueService from '../../../services/revenueService';
 import api from '../../../services/api';
 
 const Revenue = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const [hospitals, setHospitals] = useState([]);
-  const [bills, setBills] = useState([]);
+  const [dashboard, setDashboard] = useState(null);
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
 
     const loadData = async () => {
       try {
-        const [hospitalRes, billRes] = await Promise.all([
-          api.get('/hospitals?status_filter=all'),
-          api.get('/bills'),
+        setLoading(true);
+        const hospitalId = currentUser?.hospitalId || currentUser?.HID || '';
+        
+        // Call backend API for hospital-specific revenue data
+        const [dashboardRes, appointmentsRes] = await Promise.all([
+          hospitalId ? api.get(`/revenue/dashboard?hospital_id=${hospitalId}`).catch(() => null) : Promise.resolve(null),
+          hospitalId ? api.get(`/appointments?hospital_id=${hospitalId}`).catch(() => null) : Promise.resolve(null),
         ]);
+
         if (!active) return;
         
-        // Backend returns { success, data: { hospitals: [...] } } or similar?
-        // Let's check hospitals.py/bills.py response formats.
-        // hospitals.py returns List[HospitalResponse] directly.
-        // bills.py returns StandardResponse(success=True, data={"bills": bills})
+        setDashboard(dashboardRes?.data || dashboardRes || null);
         
-        setHospitals(Array.isArray(hospitalRes) ? hospitalRes : []);
-        setBills(billRes?.data?.bills || []);
+        // Get completed appointments for transactions
+        const appts = Array.isArray(appointmentsRes?.data) ? appointmentsRes.data : 
+                     Array.isArray(appointmentsRes?.data?.appointments) ? appointmentsRes.data.appointments : [];
+        
+        const completed = (appts || [])
+          .filter(a => a.status === 'completed')
+          .slice(0, 10)
+          .map(a => ({
+            id: a._id || a.id,
+            patient: a.patient_name || 'Unknown Patient',
+            doctor: a.doctor_name || 'Unknown Doctor',
+            amount: a.fee || 0,
+            time: new Date(a.appointment_date).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+            status: 'Completed',
+            category: a.department || 'General',
+          }));
+        
+        setTransactions(completed);
       } catch (err) {
         console.error('Failed to load revenue data:', err);
         if (!active) return;
-        setHospitals([]);
-        setBills([]);
+        setDashboard(null);
+        setTransactions([]);
+      } finally {
+        if (active) setLoading(false);
       }
     };
 
@@ -52,63 +75,46 @@ const Revenue = () => {
       active = false;
       window.removeEventListener('focus', loadData);
     };
-  }, []);
+  }, [currentUser]);
 
   const data = useMemo(() => {
-    const matchedHospital =
-      hospitals.find((item) => String(item.HID || item.id || '') === String(currentUser?.hospitalId || currentUser?.HID || '')) ||
-      hospitals.find((item) => item.email?.toLowerCase() === currentUser?.email?.toLowerCase()) ||
-      hospitals.find((item) => item.hospitalName?.toLowerCase() === currentUser?.hospitalName?.toLowerCase()) ||
-      null;
+    const hospitalName = currentUser?.hospitalName || 'Hospital';
+    
+    const metrics = {
+      monthRevenue: dashboard?.completed_revenue || 0,
+      totalRevenue: dashboard?.completed_revenue || 0,
+      avgTransaction: transactions.length > 0 
+        ? transactions.reduce((sum, t) => sum + t.amount, 0) / transactions.length 
+        : 0,
+      totalTransactions: dashboard?.completed_appointments || 0,
+    };
 
-    const hospitalId = String(matchedHospital?.HID || matchedHospital?.id || currentUser?.hospitalId || currentUser?.HID || '');
-    const hospitalName = matchedHospital?.hospitalName || matchedHospital?.hospital_name || matchedHospital?.name || currentUser?.hospitalName || '';
+    // Group transactions by department for department stats
+    const deptMap = {};
+    transactions.forEach(t => {
+      if (!deptMap[t.category]) {
+        deptMap[t.category] = { revenue: 0, count: 0 };
+      }
+      deptMap[t.category].revenue += t.amount;
+      deptMap[t.category].count += 1;
+    });
 
-    // Use revenueService for consistent calculations
-    const revenueData = revenueService.calculateHospitalRevenue(bills, hospitalId);
-
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-
-    const monthlyData = revenueService.getMonthlyRevenue(bills, hospitalId);
-    const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
-    const monthRevenue = monthlyData[monthKey] || 0;
-
-    const transactions = revenueData.transactions.map((bill) => ({
-      id: bill.id,
-      patient: bill.patient,
-      doctor: bill.doctor,
-      amount: bill.amount,
-      time: new Date(bill.date || Date.now()).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-      status: bill.status,
-      category: bill.category,
-    }));
-
-    const departmentStats = Object.entries(revenueData.byCategory || {})
+    const departmentStats = Object.entries(deptMap)
       .map(([name, data]) => ({
         name,
-        revenue: data.amount,
-        patients: Math.floor(data.count),
+        revenue: data.revenue,
+        patients: data.count,
       }))
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 6);
 
     return {
       hospitalName,
-      metrics: {
-        monthRevenue,
-        totalRevenue: revenueData.totalRevenue,
-        avgTransaction: revenueData.avgTransaction,
-        totalTransactions: revenueData.billsCount,
-      },
+      metrics,
       transactions,
       departmentStats,
     };
-  }, [bills, currentUser, hospitals]);
+  }, [dashboard, transactions, currentUser]);
 
   const styles = {
     container: { padding: '1.5rem', background: '#f8fafc', minHeight: '100vh' },
