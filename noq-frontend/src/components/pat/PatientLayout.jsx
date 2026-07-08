@@ -23,7 +23,10 @@ import {
   faBell,
   faSignOutAlt,
   faFlag,
+  faSun,
+  faMoon,
 } from '@fortawesome/free-solid-svg-icons';
+import { useTheme } from '../../context/ThemeContext';
 import './p.css';
 
 /* ======================================================
@@ -54,6 +57,7 @@ const PatientLayout = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser, logout, loading: authLoading } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeMenu, setActiveMenu] = useState('');
@@ -198,7 +202,51 @@ const PatientLayout = ({ children }) => {
 
       {/* MAIN CONTENT */}
       <main className="patient-main">
-        {children}
+        <header className="patient-top-header" style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '10px 20px',
+          background: isDark ? '#1e293b' : 'white',
+          borderBottom: isDark ? '1px solid #334155' : '1px solid #e2e8f0',
+          color: isDark ? '#f1f5f9' : '#1e293b'
+        }}>
+          <h3>Patient Portal</h3>
+          <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+            <button
+              onClick={toggleTheme}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: isDark ? '#f59e0b' : '#64748b',
+                fontSize: '18px'
+              }}
+              title={isDark ? "Light Mode" : "Dark Mode"}
+            >
+              <FontAwesomeIcon icon={isDark ? faSun : faMoon} />
+            </button>
+            <button
+              onClick={async () => {
+                await logout();
+                navigate('/login', { replace: true });
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#ef4444',
+                fontSize: '18px'
+              }}
+              title="Logout"
+            >
+              <FontAwesomeIcon icon={faSignOutAlt} />
+            </button>
+          </div>
+        </header>
+        <div style={{ padding: '20px' }}>
+          {children}
+        </div>
       </main>
 
     </div>

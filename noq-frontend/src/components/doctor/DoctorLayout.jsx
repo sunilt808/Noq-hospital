@@ -18,14 +18,18 @@ import {
   faStethoscope,
   faBed,
   faPrescriptionBottle,
-  faShieldHeart
+  faShieldHeart,
+  faSun,
+  faMoon
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 
 const DoctorLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser, logout } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const [notifications, setNotifications] = useState(3);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [doctorInfo, setDoctorInfo] = useState({
@@ -57,11 +61,11 @@ const DoctorLayout = () => {
       display: 'flex',
       minHeight: '100vh',
       fontFamily: "'Segoe UI', 'Inter', system-ui, sans-serif",
-      backgroundColor: '#f5f7fa'
+      backgroundColor: isDark ? '#0f172a' : '#f5f7fa'
     },
     sidebar: {
       width: isSidebarCollapsed ? '70px' : '220px',
-      background: 'linear-gradient(180deg, #1a237e 0%, #283593 100%)',
+      background: isDark ? 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)' : 'linear-gradient(180deg, #1a237e 0%, #283593 100%)',
       color: 'white',
       padding: '0',
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -186,13 +190,13 @@ const DoctorLayout = () => {
       minWidth: 0
     },
     header: {
-      background: 'white',
+      background: isDark ? '#1e293b' : 'white',
       padding: '15px 25px',
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-      borderBottom: '1px solid #e2e8f0',
+      boxShadow: isDark ? 'none' : '0 1px 3px rgba(0,0,0,0.05)',
+      borderBottom: isDark ? '1px solid #334155' : '1px solid #e2e8f0',
       minHeight: '70px'
     },
     headerLeft: {
@@ -261,7 +265,7 @@ const DoctorLayout = () => {
     headerTitle: {
       fontSize: '20px',
       fontWeight: '600',
-      color: '#1e293b',
+      color: isDark ? '#e2e8f0' : '#1e293b',
       margin: '0',
       display: 'flex',
       alignItems: 'center',
@@ -329,7 +333,7 @@ const DoctorLayout = () => {
       flex: '1',
       padding: '20px',
       overflowY: 'auto',
-      background: '#f5f7fa',
+      background: isDark ? '#0f172a' : '#f5f7fa',
       maxHeight: 'calc(100vh - 70px)'
     },
     contentCard: {
@@ -519,6 +523,14 @@ const DoctorLayout = () => {
                   {notifications}
                 </span>
               )}
+            </div>
+            
+            <div
+              style={{...styles.notificationBadge, cursor: 'pointer'}}
+              onClick={toggleTheme}
+              title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            >
+              <FontAwesomeIcon icon={isDark ? faSun : faMoon} />
             </div>
             
             <button

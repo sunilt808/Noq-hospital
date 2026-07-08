@@ -158,6 +158,24 @@ const DoctorAppointments = () => {
           appointmentId: String(appointmentId),
           meta: { patientName: app?.patient_name, time: app?.time, date: app?.date },
         });
+
+        // Trigger Patient Notification about Cancellation + Refund
+        try {
+          const { notificationService } = await import('../../services/notificationService');
+          if (app && app.patient_id) {
+            const docName = currentUser?.full_name || currentUser?.name || 'Doctor';
+            await notificationService.publish({
+              user_id: String(app.patient_id),
+              title: "Appointment Cancelled - Full Refund",
+              message: `Your appointment with Dr. ${docName} has been cancelled. A full refund has been initiated to your account.`,
+              type: "warning",
+              link: "/patient/billing"
+            });
+          }
+        } catch (notifErr) {
+          console.warn("Could not publish cancel notification:", notifErr);
+        }
+
         // Update local state
         setAppointments(prev => prev.map(apt => apt.id === appointmentId ? { ...apt, status: 'cancelled' } : apt));
         alert('Appointment cancelled');

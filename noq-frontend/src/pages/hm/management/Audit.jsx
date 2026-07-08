@@ -148,10 +148,28 @@ const Audit = () => {
     link.click();
   };
 
-  const clearScopedLogs = () => {
-    if (!window.confirm('Clear visible audit logs?')) return;
-    clearHistoryByIds(logs.map((item) => item.id));
-    setRefreshKey((prev) => prev + 1);
+  const clearScopedLogs = async () => {
+    const option = window.confirm(
+      "Choose 'OK' to delete logs older than 30 days, or 'Cancel' to perform a complete audit log wipe."
+    );
+    try {
+      if (option) {
+        // Clear logs older than 30 days
+        await api.delete('/users/audit/clear?older_than_days=30');
+        alert('Cleared logs older than 30 days.');
+      } else {
+        const fullClear = window.confirm('Wipe ALL audit logs completely?');
+        if (fullClear) {
+          await api.delete('/users/audit/clear');
+          alert('All logs wiped.');
+        }
+      }
+      clearHistoryByIds(logs.map((item) => item.id));
+      setRefreshKey((prev) => prev + 1);
+    } catch (err) {
+      console.error(err);
+      alert('Error clearing logs');
+    }
   };
 
   const styles = {

@@ -57,6 +57,7 @@ async def record_revenue_distribution(appointment: dict):
 @router.get("/distribution", response_model=StandardResponse)
 async def get_revenue_distribution(
     hospital_id: Optional[str] = None,
+    hospital_name: Optional[str] = None,
     auth_payload: dict = Depends(require_auth)
 ):
     """Get aggregated revenue distribution breakdown from MongoDB."""
@@ -64,6 +65,12 @@ async def get_revenue_distribution(
         if mongodb is None: return StandardResponse(success=False, message="DB Error")
         
         query = {}
+        # Allow callers to pass hospital name instead of id (Admin-facing UX improvement)
+        if hospital_name and not hospital_id:
+            hdoc = await mongodb.hospitals.find_one({"hospital_name": hospital_name}) or await mongodb.hospitals.find_one({"name": hospital_name})
+            if hdoc:
+                hospital_id = hdoc.get("_id")
+
         if hospital_id:
             query["hospital_id"] = hospital_id
         
@@ -94,6 +101,7 @@ async def get_revenue_distribution(
 @router.get("/dashboard", response_model=StandardResponse)
 async def get_revenue_dashboard(
     hospital_id: Optional[str] = None,
+    hospital_name: Optional[str] = None,
     auth_payload: dict = Depends(require_auth)
 ):
     """Get revenue dashboard for hospital admin from MongoDB."""
@@ -101,6 +109,11 @@ async def get_revenue_dashboard(
         if mongodb is None: return StandardResponse(success=False, message="DB Error")
         
         query = {}
+        if hospital_name and not hospital_id:
+            hdoc = await mongodb.hospitals.find_one({"hospital_name": hospital_name}) or await mongodb.hospitals.find_one({"name": hospital_name})
+            if hdoc:
+                hospital_id = hdoc.get("_id")
+
         if hospital_id:
             query["hospital_id"] = hospital_id
         
@@ -170,6 +183,7 @@ async def get_revenue_dashboard(
 @router.get("/by-doctor", response_model=StandardResponse)
 async def get_revenue_by_doctor(
     hospital_id: Optional[str] = None,
+    hospital_name: Optional[str] = None,
     auth_payload: dict = Depends(require_auth)
 ):
     """Get revenue breakdown by doctor from MongoDB."""
@@ -177,6 +191,11 @@ async def get_revenue_by_doctor(
         if mongodb is None: return StandardResponse(success=False, message="DB Error")
         
         query = {"status": "completed"}
+        if hospital_name and not hospital_id:
+            hdoc = await mongodb.hospitals.find_one({"hospital_name": hospital_name}) or await mongodb.hospitals.find_one({"name": hospital_name})
+            if hdoc:
+                hospital_id = hdoc.get("_id")
+
         if hospital_id:
             query["hospital_id"] = hospital_id
         

@@ -38,23 +38,43 @@ async def get_notifications(limit: int = 50, auth_payload: dict = Depends(requir
 
 @router.post("/internal")
 async def create_notification(payload: dict, auth_payload: dict = Depends(require_auth)):
-    """Create a notification for a user (internal use / admin only)."""
+    """Create a notification for a user or target role."""
     try:
         if mongodb is None:
             return {"success": False}
-        notif_id = f"NTF-{uuid.uuid4().hex[:8].upper()}"
-        doc = {
-            "_id": notif_id,
-            "user_id": payload.get("user_id", ""),
-            "title": payload.get("title", "Notification"),
-            "message": payload.get("message", ""),
-            "type": payload.get("type", "info"),
-            "link": payload.get("link", ""),
-            "read": False,
-            "created_at": datetime.utcnow(),
-        }
-        await mongodb.notifications.insert_one(doc)
-        return {"success": True, "id": notif_id}
+            
+        target = payload.get("target")
+        user_ids = []
+        
+        # If user_id is explicitly set
+        if payload.get("user_id"):
+            user_ids.append(payload.get("user_id"))
+        elif target:
+            # Look up users with matching target role
+            cursor = mongodb.users.find({"role": target})
+            users = await cursor.to_list(length=1000)
+            user_ids = [str(u["_id"]) for u in users]
+            
+        if not user_ids:
+            return {"success": False, "message": "No targets found"}
+            
+        inserted_ids = []
+        for uid in user_ids:
+            notif_id = f"NTF-{uuid.uuid4().hex[:8].upper()}"
+            doc = {
+                "_id": notif_id,
+                "user_id": uid,
+                "title": payload.get("title", "Notification"),
+                "message": payload.get("message", ""),
+                "type": payload.get("type", "info"),
+                "link": payload.get("link", ""),
+                "read": False,
+                "created_at": datetime.utcnow(),
+            }
+            await mongodb.notifications.insert_one(doc)
+            inserted_ids.append(notif_id)
+            
+        return {"success": True, "ids": inserted_ids}
     except Exception as e:
         logger.error(f"Error creating notification: {e}")
         return {"success": False}

@@ -44,6 +44,16 @@ def _serialize_appointment(appt: dict) -> dict:
         if field in appt and isinstance(appt[field], datetime):
             appt[field] = appt[field].isoformat()
     
+    # Resolve hospital name if missing
+    if "hospital_name" not in appt and "hospitalName" not in appt:
+        h_id = appt.get("hospital_id")
+        if h_id:
+            # Let's perform a blocking/async check or set a default.
+            # Since _serialize_appointment is synchronous, we can run it in event loop or fetch synchronously,
+            # but usually, we can add it directly during GET endpoints, or perform a quick lookup.
+            # To be safe and simple, let's update GET endpoints instead or use async helper.
+            pass
+
     # Ensure token object exists for frontend compatibility
     if "token" not in appt:
         token_val = appt.get("token_number") or appt.get("tokenNumber") or "N/A"
@@ -83,6 +93,16 @@ async def get_my_appointments(
 
         cursor = mongodb.appointments.find(query).sort("created_at", -1)
         appointments = await cursor.to_list(length=1000)
+
+        # Fetch and cache hospital names to avoid N/A in patient ratings modal
+        hospitals_cache = {}
+        for a in appointments:
+            h_id = a.get("hospital_id")
+            if h_id and "hospital_name" not in a and "hospitalName" not in a:
+                if h_id not in hospitals_cache:
+                    h_doc = await mongodb.hospitals.find_one({"_id": h_id})
+                    hospitals_cache[h_id] = h_doc.get("hospital_name") if h_doc else "N/A"
+                a["hospital_name"] = hospitals_cache[h_id]
 
         return {
             "appointments": [_serialize_appointment(a) for a in appointments],
@@ -219,9 +239,18 @@ async def create_appointment(
         
         appt_id = payload.get("id") or f"APT-{uuid.uuid4().hex[:8].upper()}"
 
+        # Look up hospital name
+        h_id = payload.get("hospitalId") or payload.get("hospital_id", "")
+        h_name = "N/A"
+        if h_id:
+            h_doc = await mongodb.hospitals.find_one({"_id": h_id})
+            if h_doc:
+                h_name = h_doc.get("hospital_name") or h_doc.get("name") or "Hospital"
+
         appt_doc = {
             "_id": appt_id,
-            "hospital_id": payload.get("hospitalId") or payload.get("hospital_id", ""),
+            "hospital_id": h_id,
+            "hospital_name": h_name,
             "doctor_id": payload.get("doctorId") or payload.get("doctor_id", ""),
             "patient_id": payload.get("patientId") or payload.get("patient_id", ""),
             "patient_name": payload.get("patientName") or payload.get("patient_name", ""),

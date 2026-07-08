@@ -5,6 +5,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import * as Icons from '@fortawesome/free-solid-svg-icons';
 import apiDbService from '../../services/apiDbService';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 
 const DEFAULT_SETTINGS = {
   theme: 'light',
@@ -32,6 +33,7 @@ const DEFAULT_SECURITY = {
 const Settings = () => {
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
+  const { setTheme } = useTheme();
   const settingsDocId = String(currentUser?.id || 'admin-settings');
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [security, setSecurity] = useState(DEFAULT_SECURITY);
@@ -57,8 +59,8 @@ const Settings = () => {
       const doc = await apiDbService.getDocument('admin_settings', settingsDocId);
       if (!active) return;
 
-      const loadedSettings = doc?.settings || DEFAULT_SETTINGS;
-      const loadedSecurity = doc?.security || DEFAULT_SECURITY;
+      const loadedSettings = { ...DEFAULT_SETTINGS, ...(doc?.settings || {}), notifications: { ...DEFAULT_SETTINGS.notifications, ...(doc?.settings?.notifications || {}) } };
+      const loadedSecurity = { ...DEFAULT_SECURITY, ...(doc?.security || {}) };
       const loadedProfile = {
         name: doc?.profile?.name || currentUser?.name || 'Admin User',
         email: doc?.profile?.email || currentUser?.email || 'admin@mail.com',
@@ -103,6 +105,11 @@ const Settings = () => {
   const handleSaveSettings = () => {
     setSaving(true);
     setSaveMessage('Saving settings...');
+    
+    // Apply theme globally
+    if (settings.theme === 'light' || settings.theme === 'dark') {
+      setTheme(settings.theme);
+    }
     
     setTimeout(async () => {
       await persistSettings('Settings saved successfully!');

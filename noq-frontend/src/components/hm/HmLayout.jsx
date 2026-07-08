@@ -27,6 +27,7 @@ import {
   faFlag
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 
 const HmLayout = ({ children }) => {
   const navigate = useNavigate();
@@ -43,15 +44,7 @@ const HmLayout = ({ children }) => {
   const loading = false;
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
   
-  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
-  const [darkMode, setDarkMode] = useState(() => {
-    try {
-      const saved = sessionStorage.getItem('hmDarkMode');
-      return saved ? JSON.parse(saved) : false;
-    } catch {
-      return false;
-    }
-  });
+  const { isDark: darkMode, toggleTheme: toggleDarkMode } = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   
@@ -72,10 +65,7 @@ const HmLayout = ({ children }) => {
     };
   }, [hospitals, currentHospitalId, currentUser?.hospitalName]);
   
-  // Store dark mode in sessionStorage instead of localStorage
-  useEffect(() => {
-    sessionStorage.setItem('hmDarkMode', JSON.stringify(darkMode));
-  }, [darkMode]);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
   
   const stats = useMemo(() => {
     if (loading || !currentUser) {
@@ -140,10 +130,7 @@ const HmLayout = ({ children }) => {
       console.log(`Search for: ${searchTerm}`);
     }
   };
-  
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
-  };
+
   
   const updateProfile = () => {
     navigate('/hm/management/hospital-profile');

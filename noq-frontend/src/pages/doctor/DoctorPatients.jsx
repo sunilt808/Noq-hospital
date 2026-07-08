@@ -22,6 +22,11 @@ const DoctorPatients = () => {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showPatientDetails, setShowPatientDetails] = useState(false);
   const [loading, setLoading] = useState(true);
+  
+  // Missing Modal & Action states
+  const [showWarnModal, setShowWarnModal] = useState(false);
+  const [showBlockModal, setShowBlockModal] = useState(false);
+  const [actionPatient, setActionPatient] = useState(null);
 
   useEffect(() => {
     if (!authLoading && (!currentUser || currentUser.role !== 'doctor')) {
@@ -38,7 +43,24 @@ const DoctorPatients = () => {
       try {
         setLoading(true);
         const data = await doctorService.getDoctorPatients(currentUser.id);
-        setPatients(Array.isArray(data) ? data : []);
+        const raw = Array.isArray(data) ? data : [];
+        // Normalize patient records — backend returns raw user objects
+        const normalized = raw.map(p => ({
+          ...p,
+          name: p.full_name || p.name || 'Unknown',
+          phone: p.phone || 'N/A',
+          email: p.email || 'N/A',
+          age: p.age || '-',
+          gender: p.gender || '-',
+          status: p.status || 'active',
+          blockLevel: p.blockLevel ?? 0,
+          warnings: Array.isArray(p.warnings) ? p.warnings : [],
+          totalVisits: p.totalVisits ?? 0,
+          missedAppointments: p.missedAppointments ?? 0,
+          fines: p.fines ?? 0,
+          notes: p.notes || 'No notes',
+        }));
+        setPatients(normalized);
       } catch (error) {
         console.error('Error loading patients:', error);
         setPatients([]);
@@ -108,6 +130,16 @@ const DoctorPatients = () => {
       warnings: []
     }));
     alert(`Unblocked ${patient.name}. They can now book appointments.`);
+  };
+
+  const confirmWarnPatient = () => {
+    handleWarnPatient(actionPatient);
+    setShowWarnModal(false);
+  };
+
+  const confirmBlockPatient = () => {
+    handleBlockPatient(actionPatient);
+    setShowBlockModal(false);
   };
 
   const viewPatientDetails = (patient) => {

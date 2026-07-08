@@ -161,6 +161,35 @@ async def call_token(token_id: str) -> Optional[dict]:
             {"$set": {"current_token": token_id}}
         )
         token["id"] = token["_id"]
+        # Push notifications: inform patient and notify doctor/hospital manager
+        try:
+            try:
+                from routes.notifications import push_notification
+            except Exception:
+                from backend.routes.notifications import push_notification
+            # Patient notification
+            patient_id = token.get("patient_id")
+            if patient_id:
+                await push_notification(
+                    user_id=str(patient_id),
+                    title="It's your turn",
+                    message=f"Your token {token.get('token_code', token.get('token_number'))} is being called.",
+                    notif_type="queue_call",
+                    link=f"/patient/queue/{token.get('queue_id')}"
+                )
+
+            # Doctor/HM notification — notify doctor about token called
+            doctor_id = token.get("doctor_id")
+            if doctor_id:
+                await push_notification(
+                    user_id=str(doctor_id),
+                    title="Token called",
+                    message=f"Token {token.get('token_code', token.get('token_number'))} called in queue {token.get('queue_id')}",
+                    notif_type="queue",
+                    link=f"/doctor/queue/{token.get('queue_id')}"
+                )
+        except Exception:
+            logger.warning("Failed to push queue notifications")
     return token
 
 async def complete_token(token_id: str) -> Optional[dict]:

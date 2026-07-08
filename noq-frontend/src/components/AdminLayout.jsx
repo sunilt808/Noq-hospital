@@ -1,38 +1,26 @@
-// components/AdminLayout.jsx - API-only (no localStorage)
+// components/AdminLayout.jsx - API-only (no localStorage), uses global ThemeContext
 import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import * as Icons from '@fortawesome/free-solid-svg-icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import useApiData from '../hooks/useApiData';
 
 const AdminLayout = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser, logout } = useAuth();
+  const { isDark: darkMode, toggleTheme } = useTheme();
   const { hospitals, reviews } = useApiData();
   
   const pendingApprovalsCount = hospitals?.filter?.(h => String(h.status || '').toLowerCase() === 'pending')?.length || null;
   const reviewsCount = reviews?.length || null;
   
-  const [darkMode, setDarkMode] = useState(() => {
-    try {
-      // Store dark mode in sessionStorage instead of localStorage
-      const saved = sessionStorage.getItem('adminDarkMode');
-      return saved ? JSON.parse(saved) : false;
-    } catch {
-      return false;
-    }
-  });
   const [searchTerm, setSearchTerm] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [notifications] = useState(3);
-  
-  // Save dark mode preference to sessionStorage (not localStorage)
-  useEffect(() => {
-    sessionStorage.setItem('adminDarkMode', JSON.stringify(darkMode));
-  }, [darkMode]);
 
   // Handle search
   const handleSearch = (e) => {
@@ -591,7 +579,7 @@ const AdminLayout = ({ children }) => {
             <button 
               className="action-btn"
               style={styles.actionBtn}
-              onClick={() => setDarkMode(!darkMode)}
+              onClick={toggleTheme}
               title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
             >
               <FontAwesomeIcon icon={darkMode ? Icons.faSun : Icons.faMoon} />
@@ -599,11 +587,11 @@ const AdminLayout = ({ children }) => {
             
             <button 
               className="action-btn"
-              style={styles.actionBtn}
-              onClick={() => navigate('/admin/help')}
-              title="Help & Support"
+              style={{...styles.actionBtn, color: '#ef4444'}}
+              onClick={handleLogout}
+              title="Logout"
             >
-              <FontAwesomeIcon icon={Icons.faQuestionCircle} />
+              <FontAwesomeIcon icon={Icons.faSignOutAlt} />
             </button>
             
             <div 

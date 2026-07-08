@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, status, Request, Depends
@@ -442,6 +442,25 @@ async def get_credential_audits(
     except Exception as e:
         logger.error(f"Error getting credential audits: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.delete("/audit/clear")
+async def clear_audit_logs(
+    older_than_days: int = None
+):
+    """Clear audit logs from MongoDB. If older_than_days is specified, clears logs older than that (e.g. 30 days)."""
+    try:
+        query = {}
+        if older_than_days is not None:
+            cutoff = datetime.utcnow() - timedelta(days=older_than_days)
+            query["timestamp"] = {"$lt": cutoff}
+
+        result = await mongodb.audit_logs.delete_many(query)
+        return {"success": True, "deleted_count": result.deleted_count}
+    except Exception as e:
+        logger.error(f"Error clearing audit logs: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 
 
 

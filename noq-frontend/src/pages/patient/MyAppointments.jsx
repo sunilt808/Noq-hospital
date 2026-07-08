@@ -113,9 +113,17 @@ const MyAppointments = () => {
     });
     setShowReviewModal(true);
   };
-
   const submitReview = async () => {
     if (!currentUser || !reviewTarget) return;
+
+    // Verify appointment status is completed/visited before allowing review submission
+    const status = String(reviewTarget.status || '').toLowerCase();
+    const isCompleted = ['completed', 'visited', 'done', 'closed'].includes(status);
+    if (!isCompleted) {
+      alert('You can only review hospitals and appointments that you have successfully visited/completed.');
+      setReviewSubmitting(false);
+      return;
+    }
 
     const comment = String(reviewForm.comment || '').trim();
     if (comment.length < 5) {
@@ -205,7 +213,7 @@ const MyAppointments = () => {
           </div>
           <div style={styles.tokenRow}>
             <span style={styles.tokenLabel}>Hospital</span>
-            <span style={styles.tokenValue}>{appointment.hospitalName || 'N/A'}</span>
+            <span style={styles.tokenValue}>{appointment.hospital_name || appointment.hospitalName || 'N/A'}</span>
           </div>
           <div style={styles.tokenRow}>
             <span style={styles.tokenLabel}>Doctor</span>
