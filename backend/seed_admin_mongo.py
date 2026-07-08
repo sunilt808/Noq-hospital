@@ -10,6 +10,9 @@ import os
 from datetime import datetime
 from uuid import uuid4
 from motor.motor_asyncio import AsyncIOMotorClient
+from dotenv import load_dotenv
+
+load_dotenv()
 
 MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
 DATABASE_NAME = os.getenv("DATABASE_NAME", "noq_hospital_db")
@@ -64,7 +67,7 @@ async def seed():
                     "updated_at": datetime.utcnow(),
                 }}
             )
-            print(f"  ✅ Updated  | {role:<10} | {email:<30} | password: {password}")
+            print(f"  [OK] Updated  | {role:<10} | {email:<30} | password: {password}")
         else:
             doc = {
                 "_id": str(uuid4()),
@@ -79,23 +82,23 @@ async def seed():
                 "updated_at": datetime.utcnow(),
             }
             await users.insert_one(doc)
-            print(f"  ✅ Created  | {role:<10} | {email:<30} | password: {password}")
+            print(f"  [OK] Created  | {role:<10} | {email:<30} | password: {password}")
 
     print("=" * 60)
 
     # Verify all logins work
-    print("\n🔍 Verifying passwords...")
+    print("\n--- Verifying passwords...")
     for cred in CREDENTIALS:
         email = cred["email"].lower().strip()
         user = await users.find_one({"email": email})
         if user:
             ok = verify_password(cred["password"], user["password_hash"])
             status = user.get("status", "?")
-            print(f"  {'✅' if ok else '❌'} {cred['role']:<10} | {email:<30} | status={status} | pw_ok={ok}")
+            print(f"  {'[OK]' if ok else '[FAIL]'} {cred['role']:<10} | {email:<30} | status={status} | pw_ok={ok}")
         else:
-            print(f"  ❌ NOT FOUND: {email}")
+            print(f"  [FAIL] NOT FOUND: {email}")
 
-    print("\n✅ Done! You can now login with:")
+    print("\n[OK] Done! You can now login with:")
     print("   admin@noq.com / Admin@123\n")
     client.close()
 
