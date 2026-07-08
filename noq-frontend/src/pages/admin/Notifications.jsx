@@ -10,8 +10,9 @@ const Notifications = () => {
   const user = currentUser || {};
   const [notifications, setNotifications] = useState([]);
 
-  const loadNotifications = () => {
-    setNotifications(notificationService.getForUser(user));
+  const loadNotifications = async () => {
+    const data = await notificationService.getForUser(user);
+    setNotifications(data);
   };
 
   useEffect(() => {
@@ -20,16 +21,19 @@ const Notifications = () => {
     return () => unsubscribe();
   }, []);
 
-  const markAsRead = (id) => {
-    notificationService.markRead(id, user);
+  const markAsRead = async (id) => {
+    await notificationService.markRead(id, user);
+    loadNotifications();
   };
 
-  const markAllAsRead = () => {
-    notificationService.markAllReadForUser(user);
+  const markAllAsRead = async () => {
+    await notificationService.markAllReadForUser(user);
+    loadNotifications();
   };
 
-  const deleteNotification = (id) => {
-    notificationService.deleteForUser(id, user);
+  const deleteNotification = async (id) => {
+    await notificationService.deleteForUser(id, user);
+    loadNotifications();
   };
 
   const getRelativeTime = (timestamp) => {

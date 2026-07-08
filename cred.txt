@@ -9,3 +9,5 @@ Password: hm@123
 Patient
 Email: patient@gmail.com
 Password: patient@123
+
+# Note: There are currently no doctor users in the Atlas database.

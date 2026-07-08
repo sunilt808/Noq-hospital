@@ -94,6 +94,36 @@ async def mark_all_read(auth_payload: dict = Depends(require_auth)):
         return {"success": False}
 
 
+@router.delete("/{notification_id}")
+async def delete_notification(notification_id: str, auth_payload: dict = Depends(require_auth)):
+    """Delete a notification."""
+    try:
+        if mongodb is None:
+            return {"success": False}
+        user_id = auth_payload.get("sub")
+        result = await mongodb.notifications.delete_one(
+            {"_id": notification_id, "user_id": user_id}
+        )
+        return {"success": result.deleted_count > 0}
+    except Exception as e:
+        logger.error(f"Error deleting notification: {e}")
+        return {"success": False}
+
+
+@router.delete("")
+async def clear_all_notifications(auth_payload: dict = Depends(require_auth)):
+    """Clear all notifications for current user."""
+    try:
+        if mongodb is None:
+            return {"success": False}
+        user_id = auth_payload.get("sub")
+        await mongodb.notifications.delete_many({"user_id": user_id})
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"Error clearing notifications: {e}")
+        return {"success": False}
+
+
 async def push_notification(user_id: str, title: str, message: str, notif_type: str = "info", link: str = ""):
     """Internal helper: push a notification to a user's inbox."""
     try:

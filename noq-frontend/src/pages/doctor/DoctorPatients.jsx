@@ -145,7 +145,7 @@ const DoctorPatients = () => {
     }
   };
 
-  if (loading || authLoading || !doctor) {
+  if (loading || authLoading || !currentUser) {
     return (
       <div className="doctor-loading">
         <div className="loading-spinner"></div>

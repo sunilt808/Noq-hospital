@@ -48,8 +48,9 @@ const Notifications = () => {
   const [filter, setFilter] = useState('all');
   const [notifications, setNotifications] = useState([]);
 
-  const load = () => {
-    setNotifications(notificationService.getForUser(user));
+  const load = async () => {
+    const data = await notificationService.getForUser(user);
+    setNotifications(data);
   };
 
   useEffect(() => {
@@ -64,6 +65,16 @@ const Notifications = () => {
     if (filter === 'unread') return notifications.filter((n) => !n.read);
     return notifications;
   }, [notifications, filter]);
+
+  const handleMarkAllRead = async () => {
+    await notificationService.markAllReadForUser(user);
+    load();
+  };
+
+  const handleClearAll = async () => {
+    await notificationService.clearForUser(user);
+    load();
+  };
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '24px' }}>
@@ -82,13 +93,13 @@ const Notifications = () => {
 
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
-            onClick={() => notificationService.markAllReadForUser(user)}
+            onClick={handleMarkAllRead}
             style={{ border: 'none', background: '#2563eb', color: '#fff', borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}
           >
             <FontAwesomeIcon icon={faCheckDouble} /> Mark all read
           </button>
           <button
-            onClick={() => notificationService.clearForUser(user)}
+            onClick={handleClearAll}
             style={{ border: 'none', background: '#dc2626', color: '#fff', borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}
           >
             <FontAwesomeIcon icon={faTrash} /> Clear all
