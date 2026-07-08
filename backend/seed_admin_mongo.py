@@ -42,7 +42,7 @@ async def seed():
     db = client[DATABASE_NAME]
     users = db["users"]
 
-    print(f"\n🔗 Connected to MongoDB: {MONGODB_URL} / {DATABASE_NAME}")
+    print(f"\nConnected to MongoDB: {MONGODB_URL} / {DATABASE_NAME}")
     print("=" * 60)
 
     for cred in CREDENTIALS:

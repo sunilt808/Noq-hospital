@@ -22,9 +22,6 @@ const DoctorPatients = () => {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showPatientDetails, setShowPatientDetails] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [showWarnModal, setShowWarnModal] = useState(false);
-  const [showBlockModal, setShowBlockModal] = useState(false);
-  const [actionPatient, setActionPatient] = useState(null);
 
   useEffect(() => {
     if (!authLoading && (!currentUser || currentUser.role !== 'doctor')) {
@@ -63,7 +60,7 @@ const DoctorPatients = () => {
 
   const filteredPatients = patients.filter(patient => {
     const matchesSearch = (patient.full_name || patient.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (patient.phone || '').includes(searchTerm);
+      (patient.phone || '').includes(searchTerm);
     const matchesFilter = filterStatus === 'all' || patient.status === filterStatus;
     return matchesSearch && matchesFilter;
   });
@@ -118,20 +115,8 @@ const DoctorPatients = () => {
     setShowPatientDetails(true);
   };
 
-  const confirmWarnPatient = () => {
-    if (actionPatient) handleWarnPatient(actionPatient);
-    setShowWarnModal(false);
-    setActionPatient(null);
-  };
-
-  const confirmBlockPatient = () => {
-    if (actionPatient) handleBlockPatient(actionPatient);
-    setShowBlockModal(false);
-    setActionPatient(null);
-  };
-
   const getStatusColor = (status) => {
-    switch(status) {
+    switch (status) {
       case 'active': return '#10b981';
       case 'warned': return '#f59e0b';
       case 'fined': return '#ef4444';
@@ -141,7 +126,7 @@ const DoctorPatients = () => {
   };
 
   const getStatusIcon = (status) => {
-    switch(status) {
+    switch (status) {
       case 'active': return faCheckCircle;
       case 'warned': return faExclamationTriangle;
       case 'fined': return faMoneyBill;
@@ -151,7 +136,7 @@ const DoctorPatients = () => {
   };
 
   const getBlockLevelText = (level) => {
-    switch(level) {
+    switch (level) {
       case 0: return 'No issues';
       case 1: return '1st miss - Warned';
       case 2: return '2nd miss - Fined';
@@ -160,7 +145,7 @@ const DoctorPatients = () => {
     }
   };
 
-  if (loading || authLoading || !currentUser) {
+  if (loading || authLoading || !doctor) {
     return (
       <div className="doctor-loading">
         <div className="loading-spinner"></div>
@@ -174,7 +159,7 @@ const DoctorPatients = () => {
       {/* Header */}
       <header className="doctor-header">
         <div className="doctor-header-left">
-          <button 
+          <button
             className="doctor-btn doctor-btn-secondary"
             onClick={() => navigate('/doctor/dashboard')}
           >
@@ -196,19 +181,19 @@ const DoctorPatients = () => {
           <div className="stat-value">{patients.length}</div>
           <div className="stat-label">Total Patients</div>
         </div>
-        
+
         <div className="stat-card green">
           <FontAwesomeIcon icon={faCheckCircle} className="stat-icon" />
           <div className="stat-value">{patients.filter(p => p.status === 'active').length}</div>
           <div className="stat-label">Active</div>
         </div>
-        
+
         <div className="stat-card orange">
           <FontAwesomeIcon icon={faWarning} className="stat-icon" />
           <div className="stat-value">{patients.filter(p => p.status === 'warned' || p.status === 'fined').length}</div>
           <div className="stat-label">Warned/Fined</div>
         </div>
-        
+
         <div className="stat-card red">
           <FontAwesomeIcon icon={faBan} className="stat-icon" />
           <div className="stat-value">{patients.filter(p => p.status === 'blocked').length}</div>
@@ -263,8 +248,8 @@ const DoctorPatients = () => {
             ) : (
               <div className="patients-list">
                 {filteredPatients.map(patient => (
-                  <div 
-                    key={patient.id} 
+                  <div
+                    key={patient.id}
                     className={`patient-item ${patient.status}`}
                   >
                     <div className="patient-item-left">
@@ -274,7 +259,7 @@ const DoctorPatients = () => {
                       <div className="patient-info">
                         <div className="patient-header">
                           <h4 className="patient-name">{patient.name}</h4>
-                          <span 
+                          <span
                             className="patient-status"
                             style={{ color: getStatusColor(patient.status) }}
                           >
@@ -307,16 +292,16 @@ const DoctorPatients = () => {
                     </div>
                     <div className="patient-item-right">
                       <div className="patient-actions">
-                        <button 
+                        <button
                           onClick={() => viewPatientDetails(patient)}
                           className="view-btn"
                           title="View Details"
                         >
                           <FontAwesomeIcon icon={faEye} />
                         </button>
-                        
+
                         {patient.status === 'active' && (
-                          <button 
+                          <button
                             onClick={() => handleWarnPatient(patient)}
                             className="warn-btn"
                             title="Warn for Miss"
@@ -324,9 +309,9 @@ const DoctorPatients = () => {
                             <FontAwesomeIcon icon={faExclamationTriangle} />
                           </button>
                         )}
-                        
+
                         {patient.status === 'warned' && (
-                          <button 
+                          <button
                             onClick={() => handleFinePatient(patient)}
                             className="fine-btn"
                             title="Fine for 2nd Miss"
@@ -334,9 +319,9 @@ const DoctorPatients = () => {
                             <FontAwesomeIcon icon={faMoneyBill} />
                           </button>
                         )}
-                        
+
                         {patient.status === 'fined' && (
-                          <button 
+                          <button
                             onClick={() => handleBlockPatient(patient)}
                             className="block-btn"
                             title="Block for 3rd Miss"
@@ -344,9 +329,9 @@ const DoctorPatients = () => {
                             <FontAwesomeIcon icon={faBan} />
                           </button>
                         )}
-                        
+
                         {patient.status === 'blocked' && (
-                          <button 
+                          <button
                             onClick={() => handleUnblockPatient(patient)}
                             className="unblock-btn"
                             title="Unblock Patient"
@@ -373,14 +358,14 @@ const DoctorPatients = () => {
                   <FontAwesomeIcon icon={faUserInjured} />
                   Patient Details
                 </h3>
-                <button 
+                <button
                   onClick={() => setShowPatientDetails(false)}
                   className="close-btn"
                 >
                   ×
                 </button>
               </div>
-              
+
               <div className="patient-details-view">
                 <div className="patient-profile">
                   <div className="patient-avatar-large">
@@ -391,7 +376,7 @@ const DoctorPatients = () => {
                     <p className="patient-meta">
                       {selectedPatient.age} years • {selectedPatient.gender}
                     </p>
-                    <div className="status-badge-large" style={{ 
+                    <div className="status-badge-large" style={{
                       background: getStatusColor(selectedPatient.status) + '20',
                       color: getStatusColor(selectedPatient.status)
                     }}>
@@ -405,11 +390,11 @@ const DoctorPatients = () => {
                   <h4>Contact Information</h4>
                   <div className="contact-details">
                     <p>
-                      <FontAwesomeIcon icon={faPhone} /> 
+                      <FontAwesomeIcon icon={faPhone} />
                       <strong>Phone:</strong> {selectedPatient.phone}
                     </p>
                     <p>
-                      <FontAwesomeIcon icon={faEnvelope} /> 
+                      <FontAwesomeIcon icon={faEnvelope} />
                       <strong>Email:</strong> {selectedPatient.email}
                     </p>
                   </div>
@@ -464,22 +449,22 @@ const DoctorPatients = () => {
 
                 <div className="patient-action-buttons">
                   {selectedPatient.status !== 'blocked' ? (
-                    <button 
+                    <button
                       onClick={() => {
                         setActionPatient(selectedPatient);
-                        selectedPatient.blockLevel === 0 
+                        selectedPatient.blockLevel === 0
                           ? setShowWarnModal(true)
                           : selectedPatient.blockLevel === 1
-                          ? handleFinePatient(selectedPatient)
-                          : setShowBlockModal(true);
+                            ? handleFinePatient(selectedPatient)
+                            : setShowBlockModal(true);
                       }}
                       className="doctor-btn doctor-btn-danger"
                     >
                       {selectedPatient.blockLevel === 0 ? 'Warn Patient' :
-                       selectedPatient.blockLevel === 1 ? 'Fine Patient' : 'Block Patient'}
+                        selectedPatient.blockLevel === 1 ? 'Fine Patient' : 'Block Patient'}
                     </button>
                   ) : (
-                    <button 
+                    <button
                       onClick={() => handleUnblockPatient(selectedPatient)}
                       className="doctor-btn doctor-btn-success"
                     >
@@ -552,13 +537,13 @@ const DoctorPatients = () => {
             <div className="modal-body">
               <p>Send warning to <strong>{actionPatient.name}</strong> for 1st missed appointment?</p>
               <div className="modal-actions">
-                <button 
+                <button
                   onClick={() => setShowWarnModal(false)}
                   className="doctor-btn doctor-btn-secondary"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   onClick={confirmWarnPatient}
                   className="doctor-btn doctor-btn-danger"
                 >
@@ -589,13 +574,13 @@ const DoctorPatients = () => {
                 This is the 3rd missed appointment. Patient will not be able to book new appointments.
               </p>
               <div className="modal-actions">
-                <button 
+                <button
                   onClick={() => setShowBlockModal(false)}
                   className="doctor-btn doctor-btn-secondary"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   onClick={confirmBlockPatient}
                   className="doctor-btn doctor-btn-danger"
                 >

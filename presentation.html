@@ -1,5 +1,10 @@
 <!DOCTYPE html>
+
+
+
+<!--mongodb+srv://1ds24cs421_db_usersunil:Sunil%40421%23%23%23@noqcluster.r89tbz5.mongodb.net/noq_hospital_db?retryWrites=true&w=majority&appName=NOQCluster    -->
 <html lang="en">
+
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -8,24 +13,88 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/dracula.min.css">
     <style>
-        .reveal h1, .reveal h2, .reveal h3 { text-transform: none; color: #4ade80; }
-        .reveal .slide-background { background: #0f172a; }
-        .highlight { color: #38bdf8; }
-        .features-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; text-align: left; font-size: 0.7em; }
-        .features-grid div { background: rgba(255,255,255,0.05); padding: 20px; border-radius: 10px; border-left: 4px solid #4ade80; }
-        ul.styled-list { font-size: 0.8em; text-align: left; line-height: 1.6; display: inline-block; }
-        ul.styled-list li { margin-bottom: 15px; }
-        .tech-icons { display: flex; justify-content: space-around; font-size: 0.6em; margin-top: 40px; }
-        .tech-box { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); width: 40%; }
-        .flow-diagram { display: flex; align-items: center; justify-content: space-between; font-size: 0.6em; margin-top: 30px; }
-        .flow-box { background: #1e293b; padding: 15px 25px; border-radius: 8px; border: 1px solid #475569; }
-        .arrow { color: #4ade80; font-size: 1.5em; }
+        .reveal h1,
+        .reveal h2,
+        .reveal h3 {
+            text-transform: none;
+            color: #4ade80;
+        }
+
+        .reveal .slide-background {
+            background: #0f172a;
+        }
+
+        .highlight {
+            color: #38bdf8;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            text-align: left;
+            font-size: 0.7em;
+        }
+
+        .features-grid div {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #4ade80;
+        }
+
+        ul.styled-list {
+            font-size: 0.8em;
+            text-align: left;
+            line-height: 1.6;
+            display: inline-block;
+        }
+
+        ul.styled-list li {
+            margin-bottom: 15px;
+        }
+
+        .tech-icons {
+            display: flex;
+            justify-content: space-around;
+            font-size: 0.6em;
+            margin-top: 40px;
+        }
+
+        .tech-box {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            width: 40%;
+        }
+
+        .flow-diagram {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.6em;
+            margin-top: 30px;
+        }
+
+        .flow-box {
+            background: #1e293b;
+            padding: 15px 25px;
+            border-radius: 8px;
+            border: 1px solid #475569;
+        }
+
+        .arrow {
+            color: #4ade80;
+            font-size: 1.5em;
+        }
     </style>
 </head>
+
 <body>
     <div class="reveal">
         <div class="slides">
-            
+
             <!-- Slide 1: Title -->
             <section>
                 <h2>NOQ</h2>
@@ -38,18 +107,24 @@
             <section>
                 <h2>The Problem</h2>
                 <ul class="styled-list">
-                    <li><span class="highlight">Manual Processes:</span> Reliance on paper registers and verbal calls.</li>
-                    <li><span class="highlight">High Wait Times:</span> Patients wait for hours without visibility into queue position.</li>
-                    <li><span class="highlight">Operational Blindspots:</span> Hospital managers lack real-time data on hospital efficiency.</li>
-                    <li><span class="highlight">Revenue Leakage:</span> Manual billing processes lead to discrepancies.</li>
-                    <li><span class="highlight">Poor Feedback Loop:</span> No centralized system for handling patient complaints or reviews.</li>
+                    <li><span class="highlight">Manual Processes:</span> Reliance on paper registers and verbal calls.
+                    </li>
+                    <li><span class="highlight">High Wait Times:</span> Patients wait for hours without visibility into
+                        queue position.</li>
+                    <li><span class="highlight">Operational Blindspots:</span> Hospital managers lack real-time data on
+                        hospital efficiency.</li>
+                    <li><span class="highlight">Revenue Leakage:</span> Manual billing processes lead to discrepancies.
+                    </li>
+                    <li><span class="highlight">Poor Feedback Loop:</span> No centralized system for handling patient
+                        complaints or reviews.</li>
                 </ul>
             </section>
 
             <!-- Slide 3: The Solution -->
             <section>
                 <h2>The Solution: NOQ Platform</h2>
-                <p style="font-size: 0.8em; text-align: left;">A centralized digital ecosystem unifying 4 key stakeholders:</p>
+                <p style="font-size: 0.8em; text-align: left;">A centralized digital ecosystem unifying 4 key
+                    stakeholders:</p>
                 <div class="flow-diagram">
                     <div class="flow-box"><strong>Super Admin</strong><br>Global oversight</div>
                     <div class="arrow">↔</div>
@@ -90,10 +165,14 @@
             <section>
                 <h2>System Architecture</h2>
                 <ul class="styled-list">
-                    <li><span class="highlight">Client-Server Model:</span> Independent React SPA communicating via REST APIs.</li>
-                    <li><span class="highlight">Modular Design:</span> 18 distinct API route modules and 6 business logic services.</li>
-                    <li><span class="highlight">Data Layer:</span> MongoDB handles dynamic documents (Queues, Prescriptions, Audits).</li>
-                    <li><span class="highlight">Stateless Auth:</span> Secure JWT Bearer tokens passed in HTTP headers.</li>
+                    <li><span class="highlight">Client-Server Model:</span> Independent React SPA communicating via REST
+                        APIs.</li>
+                    <li><span class="highlight">Modular Design:</span> 18 distinct API route modules and 6 business
+                        logic services.</li>
+                    <li><span class="highlight">Data Layer:</span> MongoDB handles dynamic documents (Queues,
+                        Prescriptions, Audits).</li>
+                    <li><span class="highlight">Stateless Auth:</span> Secure JWT Bearer tokens passed in HTTP headers.
+                    </li>
                 </ul>
             </section>
 
@@ -124,10 +203,14 @@
             <section>
                 <h2>Security & Compliance</h2>
                 <ul class="styled-list">
-                    <li><span class="highlight">Role-Based Access Control (RBAC):</span> Strict frontend route guards + backend dependency validation.</li>
-                    <li><span class="highlight">Password Security:</span> PBKDF2-HMAC-SHA256 with 100,000 iterations & random salting.</li>
-                    <li><span class="highlight">Audit Trail:</span> Every critical action (Create, Update, Delete, Login) is logged centrally with IP tracking.</li>
-                    <li><span class="highlight">Soft Deletes:</span> Hospitals and Users are never hard-deleted to preserve data integrity.</li>
+                    <li><span class="highlight">Role-Based Access Control (RBAC):</span> Strict frontend route guards +
+                        backend dependency validation.</li>
+                    <li><span class="highlight">Password Security:</span> PBKDF2-HMAC-SHA256 with 100,000 iterations &
+                        random salting.</li>
+                    <li><span class="highlight">Audit Trail:</span> Every critical action (Create, Update, Delete,
+                        Login) is logged centrally with IP tracking.</li>
+                    <li><span class="highlight">Soft Deletes:</span> Hospitals and Users are never hard-deleted to
+                        preserve data integrity.</li>
                 </ul>
             </section>
 
@@ -135,10 +218,15 @@
             <section>
                 <h2>Advanced Policy & Features</h2>
                 <ul class="styled-list">
-                    <li><span class="highlight">Geofenced Booking:</span> Normal tokens must be booked from hospital surroundings. At-home booking support is strictly restricted to Pregnancy, Babies (&lt;7y), and Elders (70+).</li>
-                    <li><span class="highlight">Zero Emergencies:</span> Excluded entirely from app to focus on OPD queue stability. Critical patients bypass directly.</li>
-                    <li><span class="highlight">Systemic Equality:</span> Strict FIFO queue sequence with no VIP lane or skip configurations.</li>
-                    <li><span class="highlight">Accountability:</span> Patients reported 'Absent' get warnings and small penalty fees. Doctor reports trigger manager warnings/suspensions.</li>
+                    <li><span class="highlight">Geofenced Booking:</span> Normal tokens must be booked from hospital
+                        surroundings. At-home booking support is strictly restricted to Pregnancy, Babies (&lt;7y), and
+                        Elders (70+).</li>
+                    <li><span class="highlight">Zero Emergencies:</span> Excluded entirely from app to focus on OPD
+                        queue stability. Critical patients bypass directly.</li>
+                    <li><span class="highlight">Systemic Equality:</span> Strict FIFO queue sequence with no VIP lane or
+                        skip configurations.</li>
+                    <li><span class="highlight">Accountability:</span> Patients reported 'Absent' get warnings and small
+                        penalty fees. Doctor reports trigger manager warnings/suspensions.</li>
                 </ul>
             </section>
 
@@ -162,7 +250,7 @@
 
         </div>
     </div>
-    
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.js"></script>
     <script>
         Reveal.initialize({
@@ -175,4 +263,5 @@
         });
     </script>
 </body>
+
 </html>
