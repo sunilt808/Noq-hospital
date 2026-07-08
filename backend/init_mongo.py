@@ -6,6 +6,9 @@ from uuid import uuid4
 from motor.motor_asyncio import AsyncIOMotorClient
 import hashlib
 import secrets
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Keep it simple, don't import from backend here to avoid circular imports during refactoring
 MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
@@ -22,90 +25,14 @@ async def init_mongo():
     client = AsyncIOMotorClient(MONGODB_URL)
     db = client[DATABASE_NAME]
     
-    print("Seeding hospitals...")
-    hospitals_data = [
-        {
-            "_id": "Noq-100003",
-            "name": "Fortis Hospital",
-            "address": "789 Care Avenue",
-            "phone": "+91-80-2211-7777",
-            "email": "fortis@healthcare.com",
-            "city": "Bangalore",
-            "state": "Karnataka",
-            "pincode": "560001",
-            "status": "active",
-            "created_at": datetime.utcnow()
-        },
-        {
-            "_id": "Noq-100003",
-            "name": "Fortis Hospital",
-            "address": "789 Care Avenue",
-            "phone": "+91-80-2211-7777",
-            "email": "fortis@healthcare.com",
-            "city": "Bangalore",
-            "state": "Karnataka",
-            "pincode": "560001",
-            "status": "active",
-            "created_at": datetime.utcnow()
-        },
-    ]
-    
-    for h in hospitals_data:
-        await db.hospitals.update_one({"_id": h["_id"]}, {"$set": h}, upsert=True)
-    
-    print("Seeding departments...")
-    departments_data = [
-        {"_id": "DEPT-001", "hospital_id": "Noq-100001", "name": "Cardiology", "description": "Heart and cardio-vascular care", "status": "active"},
-        {"_id": "DEPT-002", "hospital_id": "Noq-100001", "name": "Neurology", "description": "Nervous system care", "status": "active"},
-        {"_id": "DEPT-003", "hospital_id": "Noq-100001", "name": "Orthopedic", "description": "Bone and joint care", "status": "active"},
-        {"_id": "DEPT-004", "hospital_id": "Noq-100002", "name": "Cardiology", "description": "Heart and cardio-vascular care", "status": "active"},
-        {"_id": "DEPT-005", "hospital_id": "Noq-100002", "name": "General Surgery", "description": "General surgical procedures", "status": "active"},
-        {"_id": "DEPT-006", "hospital_id": "Noq-100003", "name": "Pediatrics", "description": "Child care", "status": "active"},
-    ]
-    
-    for d in departments_data:
-        await db.departments.update_one({"_id": d["_id"]}, {"$set": d}, upsert=True)
+    print("Testing connection...")
+    try:
+        await db.command("ping")
+        print("✓ Successfully connected to MongoDB!")
+    except Exception as e:
+        print(f"✗ Failed to connect to MongoDB: {e}")
         
-    print("Seeding users...")
-    users_data = [
-        {
-            "_id": str(uuid4()),
-            "email": "admin@noq.com",
-            "password_hash": hash_password("admin@123"),
-            "full_name": "Admin User",
-            "role": "admin",
-            "status": "active",
-            "created_at": datetime.utcnow()
-        },
-        {
-            "_id": "DOC-DRSMITH",
-            "email": "doctor@apollo.com",
-            "hospital_id": "Noq-100001",
-            "hospital_name": "Apollo Hospital",
-            "department_id": "DEPT-001",
-            "department_name": "Cardiology",
-            "full_name": "Dr. Smith",
-            "password_hash": hash_password("doctor@123"),
-            "role": "doctor",
-            "specialization": "Cardiologist",
-            "status": "active",
-            "created_at": datetime.utcnow()
-        },
-        {
-            "_id": "PAT-GURU",
-            "email": "patient@gmail.com",
-            "full_name": "Guru Patient",
-            "password_hash": hash_password("patient@123"),
-            "role": "patient",
-            "status": "active",
-            "created_at": datetime.utcnow()
-        },
-    ]
-    
-    for u in users_data:
-        await db.users.update_one({"email": u["email"]}, {"$set": u}, upsert=True)
-        
-    print("✓ MongoDB initialization completed!")
+    print("✓ MongoDB initialization completed! (Skipping predefined data per configuration)")
 
 if __name__ == "__main__":
     asyncio.run(init_mongo())

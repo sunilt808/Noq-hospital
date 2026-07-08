@@ -136,18 +136,18 @@ class AuthService:
             
             # Create token
             token = AuthService.create_access_token({
-                "sub": user.get("_id"),
+                "sub": str(user.get("_id")),
                 "email": user.get("email"),
                 "role": user.get("role"),
             })
             
             # Log successful login
-            await AuditLogger.log_login(user.get("_id"), ip_address, success=True)
+            await AuditLogger.log_login(str(user.get("_id")), ip_address, success=True)
             
             logger.info(f"User logged in successfully: {email} ({user.get('role')})")
             
             return {
-                "id": user.get("_id"),
+                "id": str(user.get("_id")),
                 "email": user.get("email"),
                 "full_name": user.get("full_name"),
                 "role": user.get("role"),
@@ -276,7 +276,7 @@ class UserService:
             user = await mongodb.users.find_one({"id": user_id})
             if not user:
                 raise ValueError(f"User not found: {user_id}")
-        user["id"] = user["_id"]
+        user["id"] = str(user["_id"])
         return user
     
     @staticmethod
@@ -286,7 +286,7 @@ class UserService:
         user = await mongodb.users.find_one({"email": email.lower().strip()})
         if not user:
             raise ValueError(f"User not found: {email}")
-        user["id"] = user["_id"]
+        user["id"] = str(user["_id"])
         return user
     
     @staticmethod
@@ -367,7 +367,7 @@ class UserService:
                 user_id=user_id,
             )
             
-            return {**user, **update_data, "id": user_key}
+            return {**user, **update_data, "id": str(user_key)}
             
         except Exception as e:
             logger.error(f"User update error: {e}", exc_info=True)

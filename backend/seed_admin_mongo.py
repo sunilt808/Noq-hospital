@@ -16,9 +16,8 @@ DATABASE_NAME = os.getenv("DATABASE_NAME", "noq_hospital_db")
 
 CREDENTIALS = [
     {"email": "admin@noq.com",      "password": "Admin@123",    "full_name": "System Admin",     "role": "admin"},
-    {"email": "hm@apollo.com",      "password": "Hm@apollo1",   "full_name": "Apollo HM",        "role": "hm"},
-    {"email": "doctor@apollo.com",  "password": "Doctor@123",   "full_name": "Apollo Doctor",    "role": "doctor"},
-    {"email": "patient@test.com",   "password": "Patient@123",  "full_name": "Test Patient",     "role": "patient"},
+    {"email": "hm@noq.com",         "password": "hm@123",       "full_name": "Hospital Manager", "role": "hm"},
+    {"email": "patient@gmail.com",  "password": "patient@123",  "full_name": "Test Patient",     "role": "patient"},
 ]
 
 
