@@ -39,7 +39,7 @@ const Queues = () => {
     const nextTokenCode = waitingTokens[0]?.token_code || waitingTokens[0]?.tokenCode || '-';
 
     return {
-      id: queue.id,
+      id: queue.id || queue._id,
       doctorName: queue.doctor_name || queue.doctorName || 'Doctor',
       department: queue.department || 'General',
       room: queue.room || '-',
@@ -79,7 +79,7 @@ const Queues = () => {
         bucket.tokens.map((token) => {
           const queue = queueList.find((item) => String(item.id) === String(bucket.queueId));
           return {
-            id: token.id,
+            id: token.id || token._id,
             token: token.token_code || token.tokenCode || '-',
             patient: token.patient_name || token.patientName || 'Patient',
             doctor: queue?.doctor_name || queue?.doctorName || 'Doctor',

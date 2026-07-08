@@ -1,5 +1,9 @@
 # backend/main.py - NOQ Smart Queue Management System API
 
+# Load .env FIRST — before any other import reads os.getenv()
+from dotenv import load_dotenv
+load_dotenv()
+
 import logging
 import os
 from fastapi import FastAPI, Request
@@ -35,12 +39,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ALLOWED_ORIGINS = [
+# Dev origins always allowed
+_DEV_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5174",
 ]
+
+# Production frontend URL injected via environment variable
+_FRONTEND_URL = os.getenv("FRONTEND_URL", "")
+
+ALLOWED_ORIGINS: list[str] = list(set(
+    _DEV_ORIGINS + ([_FRONTEND_URL.rstrip("/")] if _FRONTEND_URL else [])
+))
 
 
 @asynccontextmanager

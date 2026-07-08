@@ -15,7 +15,12 @@ from hospital_id_utils import is_valid_hospital_id
 logger = logging.getLogger(__name__)
 
 # JWT configuration
-JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    raise RuntimeError(
+        "JWT_SECRET environment variable is not set. "
+        "Set it to a strong random value before starting the server."
+    )
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_MINUTES = int(os.getenv("JWT_EXPIRATION_MINUTES", "1440"))
 

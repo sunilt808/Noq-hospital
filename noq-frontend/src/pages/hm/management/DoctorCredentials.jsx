@@ -68,6 +68,8 @@ const DoctorCredentials = () => {
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [passwordSequence, setPasswordSequence] = useState({});
+  const [viewingUser, setViewingUser] = useState(null);
+  const [showViewPassword, setShowViewPassword] = useState(false);
   const hmHospitalId = String(currentUser?.hospitalId || currentUser?.hospital_id || currentUser?.HID || '');
   const hmName = currentUser?.name || currentUser?.full_name || 'Hospital Manager';
 
@@ -88,8 +90,9 @@ const DoctorCredentials = () => {
 
     const normalizedUsers = backendDoctors.map((user) => ({
       ...user,
+      id: user.id || user._id || user.doctorId || Math.random().toString(),
       name: user.full_name || user.name || '',
-      doctorId: user.doctorId || user.id,
+      doctorId: user.doctorId || user.id || user._id || '',
       hospitalId: user.hospitalId || user.hospital_id || '',
       hospitalName: user.hospitalName || user.hospital_name || '',
       specialization: user.specialization || '',
@@ -822,16 +825,16 @@ Password Type: ${user.passwordStructure || 'Standard'}`;
                           <div style={styles.credentialRow}>
                             <FontAwesomeIcon icon={faLock} />
                             <span style={styles.credentialValue}>
-                              {showPasswordId === user.id ? user.password : '••••••••••'}
+                              {user.password}
                             </span>
-                            <button 
-                              onClick={() => togglePasswordVisibility(user.id)}
-                              style={styles.passwordToggle}
-                              className="password-toggle"
-                            >
-                              <FontAwesomeIcon icon={showPasswordId === user.id ? faEyeSlash : faEye} />
-                            </button>
                           </div>
+                          <button 
+                            onClick={() => { setViewingUser(user); setShowViewPassword(false); }}
+                            style={{...styles.viewBtn, marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center'}}
+                            className="view-btn"
+                          >
+                            <FontAwesomeIcon icon={faEye} /> View Credentials
+                          </button>
                           <div style={styles.passwordStrength}>
                             <div className="password-strength-meter">
                               <div 
@@ -1070,6 +1073,119 @@ Password Type: ${user.passwordStructure || 'Standard'}`;
           </div>
         </div>
       )}
+
+      {/* ── VIEW CREDENTIALS MODAL ─────────────────────────────────── */}
+      {viewingUser && (
+        <div className="modal-overlay" style={styles.modalOverlay} onClick={() => setViewingUser(null)}>
+          <div className="modal" style={{...styles.modal, maxWidth: '480px'}} onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{...styles.modalHeader, background: 'linear-gradient(135deg,#1e40af,#3b82f6)', borderRadius: '0.75rem 0.75rem 0 0'}}>
+              <h3 style={{...styles.modalTitle, color: 'white'}}>
+                <FontAwesomeIcon icon={faIdCard} /> Doctor Credentials
+              </h3>
+              <button onClick={() => setViewingUser(null)} style={{...styles.modalClose, color: 'white'}}>
+                <FontAwesomeIcon icon={faTimes} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={styles.modalBody}>
+              {/* Avatar row */}
+              <div style={{display:'flex', alignItems:'center', gap:'1rem', marginBottom:'1.5rem', padding:'1rem', background:'#f0f9ff', borderRadius:'0.75rem', border:'1px solid #bae6fd'}}>
+                <div style={{width:'3.5rem', height:'3.5rem', borderRadius:'50%', background:'linear-gradient(135deg,#1e40af,#3b82f6)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+                  <FontAwesomeIcon icon={faUserMd} style={{color:'white', fontSize:'1.4rem'}} />
+                </div>
+                <div>
+                  <div style={{fontWeight:'700', fontSize:'1.1rem', color:'#1e293b'}}>{viewingUser.name}</div>
+                  <div style={{fontSize:'0.8rem', color:'#0369a1', marginTop:'0.2rem'}}>
+                    <span style={{background:'#dbeafe', padding:'0.15rem 0.5rem', borderRadius:'9999px', fontWeight:'500'}}>
+                      {viewingUser.status === 'active' ? '● Active' : '○ Disabled'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Credential rows */}
+              {[
+                { icon: faIdCard,      label: 'Doctor ID',       value: viewingUser.doctorId || viewingUser.id },
+                { icon: faEnvelope,    label: 'Email',           value: viewingUser.email },
+                { icon: faStethoscope, label: 'Specialization',  value: viewingUser.specialization || '—' },
+                { icon: faUserMd,      label: 'Department',      value: viewingUser.departmentName || '—' },
+                { icon: faBuilding,    label: 'Hospital',        value: viewingUser.hospitalName || '—' },
+              ].map(({ icon, label, value }) => (
+                <div key={label} style={{display:'flex', alignItems:'flex-start', gap:'0.75rem', padding:'0.75rem 0', borderBottom:'1px solid #f1f5f9'}}>
+                  <div style={{width:'1.5rem', color:'#3b82f6', flexShrink:0, paddingTop:'0.1rem'}}>
+                    <FontAwesomeIcon icon={icon} />
+                  </div>
+                  <div>
+                    <div style={{fontSize:'0.75rem', color:'#64748b', fontWeight:'500', textTransform:'uppercase', letterSpacing:'0.05em'}}>{label}</div>
+                    <div style={{fontFamily: label === 'Doctor ID' || label === 'Email' ? 'monospace' : 'inherit', fontSize:'0.9rem', color:'#1e293b', marginTop:'0.15rem', wordBreak:'break-all'}}>{value}</div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Password row */}
+              <div style={{display:'flex', alignItems:'flex-start', gap:'0.75rem', padding:'0.75rem 0', borderBottom:'1px solid #f1f5f9'}}>
+                <div style={{width:'1.5rem', color:'#3b82f6', flexShrink:0, paddingTop:'0.1rem'}}>
+                  <FontAwesomeIcon icon={faLock} />
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:'0.75rem', color:'#64748b', fontWeight:'500', textTransform:'uppercase', letterSpacing:'0.05em'}}>Password</div>
+                  <div style={{display:'flex', alignItems:'center', gap:'0.5rem', marginTop:'0.15rem'}}>
+                    <span style={{fontFamily:'monospace', fontSize:'0.9rem', color:'#1e293b'}}>
+                      {showViewPassword ? viewingUser.password : '••••••••••'}
+                    </span>
+                    <button
+                      onClick={() => setShowViewPassword(v => !v)}
+                      style={{background:'none', border:'none', cursor:'pointer', color:'#64748b', padding:'0.2rem', lineHeight:1}}
+                      title={showViewPassword ? 'Hide password' : 'Show password'}
+                    >
+                      <FontAwesomeIcon icon={showViewPassword ? faEyeSlash : faEye} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Last changed */}
+              <div style={{display:'flex', alignItems:'flex-start', gap:'0.75rem', padding:'0.75rem 0'}}>
+                <div style={{width:'1.5rem', color:'#3b82f6', flexShrink:0, paddingTop:'0.1rem'}}>
+                  <FontAwesomeIcon icon={faCalendar} />
+                </div>
+                <div>
+                  <div style={{fontSize:'0.75rem', color:'#64748b', fontWeight:'500', textTransform:'uppercase', letterSpacing:'0.05em'}}>Last Password Change</div>
+                  <div style={{fontSize:'0.9rem', color:'#1e293b', marginTop:'0.15rem'}}>
+                    {viewingUser.lastPasswordChange
+                      ? new Date(viewingUser.lastPasswordChange).toLocaleString()
+                      : 'Never changed'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Password type note */}
+              <div style={{marginTop:'1rem', padding:'0.75rem', background:'#f8fafc', borderRadius:'0.5rem', border:'1px solid #e2e8f0', fontSize:'0.8rem', color:'#64748b'}}>
+                <FontAwesomeIcon icon={faShieldAlt} style={{marginRight:'0.4rem', color:'#3b82f6'}} />
+                Password Type: {viewingUser.passwordStructure || 'Standard'}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{padding:'1rem 1.5rem', borderTop:'1px solid #e2e8f0', display:'flex', gap:'0.75rem'}}>
+              <button
+                onClick={() => copyCredentials(viewingUser)}
+                style={{flex:1, padding:'0.65rem', background:'#f1f5f9', color:'#475569', border:'1px solid #cbd5e1', borderRadius:'0.5rem', cursor:'pointer', fontSize:'0.9rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'0.5rem'}}
+              >
+                <FontAwesomeIcon icon={faCopy} /> Copy All
+              </button>
+              <button
+                onClick={() => setViewingUser(null)}
+                style={{flex:1, padding:'0.65rem', background:'#1e40af', color:'white', border:'none', borderRadius:'0.5rem', cursor:'pointer', fontSize:'0.9rem', fontWeight:'600'}}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1152,7 +1268,8 @@ const styles = {
   confirmWarning: { padding: '0.75rem', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '0.5rem', color: '#92400e', display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.875rem' },
   confirmActions: { padding: '1.5rem', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '1rem' },
   confirmCancelBtn: { flex: 1, padding: '0.75rem', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: '0.5rem', cursor: 'pointer', fontSize: '1rem', transition: 'all 0.2s' },
-  confirmSubmitBtn: { flex: 1, padding: '0.75rem', background: '#dc2626', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontSize: '1rem', transition: 'all 0.2s' }
+  confirmSubmitBtn: { flex: 1, padding: '0.75rem', background: '#dc2626', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontSize: '1rem', transition: 'all 0.2s' },
+  viewBtn: { padding: '0.5rem', background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.875rem', transition: 'all 0.2s' }
 };
 
 export default DoctorCredentials;

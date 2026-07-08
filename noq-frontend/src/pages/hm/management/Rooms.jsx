@@ -555,7 +555,7 @@ const Rooms = () => {
     
     if (editing) {
       const updated = rooms.map(room =>
-        room.id === editing.id ? { 
+        (room.id || room._id) === editing.id ? { 
           ...room, 
           number: formData.number.trim(),
           deptId: String(formData.deptId),

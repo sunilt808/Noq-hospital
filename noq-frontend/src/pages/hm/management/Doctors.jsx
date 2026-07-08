@@ -110,7 +110,7 @@ const Doctors = () => {
 
       const normalizedRooms = (Array.isArray(roomRows) ? roomRows : []).map((room) => ({
         ...room,
-        id: room.id,
+        id: room.id || room._id,
         hospitalId: String(room.hospitalId || room.hospital_id || room.HID || ''),
         deptId: String(room.deptId || room.departmentId || room.department_id || ''),
         number: String(room.number || room.room_number || room.roomNo || ''),

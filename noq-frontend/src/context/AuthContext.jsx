@@ -12,6 +12,7 @@ const STORAGE_KEYS = {
 
 const normalizeUser = (user = {}) => ({
   ...user,
+  id: user.id || user._id || '',
   hospitalId: user.hospital_id || user.hospitalId || '',
   hospital_id: user.hospital_id || user.hospitalId || '',
 });

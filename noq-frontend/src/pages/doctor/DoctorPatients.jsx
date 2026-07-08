@@ -22,6 +22,9 @@ const DoctorPatients = () => {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showPatientDetails, setShowPatientDetails] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showWarnModal, setShowWarnModal] = useState(false);
+  const [showBlockModal, setShowBlockModal] = useState(false);
+  const [actionPatient, setActionPatient] = useState(null);
 
   useEffect(() => {
     if (!authLoading && (!currentUser || currentUser.role !== 'doctor')) {
@@ -115,6 +118,18 @@ const DoctorPatients = () => {
     setShowPatientDetails(true);
   };
 
+  const confirmWarnPatient = () => {
+    if (actionPatient) handleWarnPatient(actionPatient);
+    setShowWarnModal(false);
+    setActionPatient(null);
+  };
+
+  const confirmBlockPatient = () => {
+    if (actionPatient) handleBlockPatient(actionPatient);
+    setShowBlockModal(false);
+    setActionPatient(null);
+  };
+
   const getStatusColor = (status) => {
     switch(status) {
       case 'active': return '#10b981';
@@ -145,7 +160,7 @@ const DoctorPatients = () => {
     }
   };
 
-  if (loading || authLoading || !doctor) {
+  if (loading || authLoading || !currentUser) {
     return (
       <div className="doctor-loading">
         <div className="loading-spinner"></div>
