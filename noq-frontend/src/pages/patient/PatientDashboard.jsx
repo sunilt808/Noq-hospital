@@ -567,6 +567,7 @@ const PatientDashboard = () => {
                           <h4 className="doctor-name">{appointment.doctorName}</h4>
                           <span style={{ color: '#10b981', fontWeight: 'bold' }}>
                             <FontAwesomeIcon icon={faCheck} /> Completed
+                            <br/>
                           </span>
                         </div>
                         <p className="doctor-specialty">
@@ -580,6 +581,7 @@ const PatientDashboard = () => {
                       </div>
                     </div>
                     <div className="appointment-item-right">
+                      <br/><br/><br/><br/><br/><br/>
                       <button 
                         onClick={() => openReviewModal(appointment)}
                         className="patient-btn patient-btn-primary"
